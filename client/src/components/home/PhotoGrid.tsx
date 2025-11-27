@@ -1,16 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { zlePhotos } from "@/data/zlePhotos";
 
-const photos = [
-  { id: 1, src: "/zle-photos/hero/482962260_672715478670567_9138744049105169252_n.jpg", alt: "ZLE crew action" },
-  { id: 2, src: "/zle-photos/hero/490969493_9465249883567716_45085364111691781_n.jpg", alt: "Street skating" },
-  { id: 3, src: "/zle-photos/hero/566224854_841810661761047_3308462119001091558_n.jpg", alt: "ZLE event" },
-  { id: 4, src: "/zle-photos/events/465887700_562845979664892_2375756772027174848_n.jpg", alt: "Crew session" },
-  { id: 5, src: "/zle-photos/events/466398027_562848076331349_5013157104235974205_n.jpg", alt: "Street life" },
-  { id: 6, src: "/zle-photos/events/472313581_597125122903644_2724985617026038877_n.jpg", alt: "Urban scene" },
+const initialPhotos = [
+  { id: 1, src: zlePhotos.hero[0], alt: "ZLE crew action" },
+  { id: 2, src: zlePhotos.hero[1], alt: "Street skating" },
+  { id: 3, src: zlePhotos.hero[2], alt: "ZLE event" },
+  { id: 4, src: zlePhotos.hero[3], alt: "Crew session" },
+  { id: 5, src: zlePhotos.hero[4], alt: "Street life" },
+  { id: 6, src: zlePhotos.hero[5], alt: "Urban scene" },
 ];
 
 export function PhotoGrid() {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [photos, setPhotos] = useState(initialPhotos);
+  const [fadingIndex, setFadingIndex] = useState<number | null>(null);
+  const [photoPoolIndex, setPhotoPoolIndex] = useState(6);
+
+  const rotatePhoto = useCallback(() => {
+    const indexToReplace = Math.floor(Math.random() * 6);
+    const nextPhotoSrc = zlePhotos.hero[photoPoolIndex % zlePhotos.hero.length];
+    
+    setFadingIndex(indexToReplace);
+    
+    setTimeout(() => {
+      setPhotos(prev => prev.map((photo, i) => 
+        i === indexToReplace 
+          ? { ...photo, src: nextPhotoSrc }
+          : photo
+      ));
+      setFadingIndex(null);
+    }, 500);
+    
+    setPhotoPoolIndex(prev => prev + 1);
+  }, [photoPoolIndex]);
+
+  useEffect(() => {
+    const interval = setInterval(rotatePhoto, 5000);
+    return () => clearInterval(interval);
+  }, [rotatePhoto]);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto">
@@ -32,6 +59,8 @@ export function PhotoGrid() {
             src={photo.src}
             alt={photo.alt}
             className={`w-full h-full object-cover transition-all duration-500 ${
+              fadingIndex === index ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
+            } ${
               hoveredId === photo.id
                 ? "scale-105 brightness-110"
                 : "scale-100 brightness-100"

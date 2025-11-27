@@ -11,6 +11,10 @@ export function ProductCard({ product }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
+  
+  const hasMultipleImages = product.images && product.images.length > 1;
+  const primaryImage = product.image;
+  const secondaryImage = hasMultipleImages && product.images ? product.images[1] : null;
 
   return (
     <>
@@ -23,13 +27,23 @@ export function ProductCard({ product }: ProductCardProps) {
       >
         <div className="relative aspect-square mb-4 overflow-hidden rounded-sm zle-photo-frame">
           <img
-            src={product.image}
+            src={primaryImage}
             alt={product.name}
-            className={`w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
-              isSoldOut ? "" : isHovered ? "scale-105 brightness-110" : ""
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
+              isSoldOut ? "" : isHovered && secondaryImage ? "opacity-0" : isHovered ? "scale-105 brightness-110" : ""
             }`}
             loading="lazy"
           />
+          {secondaryImage && (
+            <img
+              src={secondaryImage}
+              alt={`${product.name} - alternate view`}
+              className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
+                isHovered ? "opacity-100 scale-105 brightness-110" : "opacity-0"
+              }`}
+              loading="lazy"
+            />
+          )}
           <div 
             className={`absolute inset-0 transition-opacity duration-300 ${
               isHovered ? "opacity-0" : "bg-black/10 opacity-100"

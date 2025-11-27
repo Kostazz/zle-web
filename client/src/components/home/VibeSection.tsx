@@ -1,14 +1,41 @@
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { zlePhotos } from "@/data/zlePhotos";
 
-const vibePhotos = [
-  { id: 1, src: "/zle-photos/events/475944748_645588801383235_7822522371695246484_n.jpg", alt: "ZLE session" },
-  { id: 2, src: "/zle-photos/events/476351374_646176131324502_6634174743711684081_n.jpg", alt: "Crew vibes" },
-  { id: 3, src: "/zle-photos/events/483525925_671270902148358_7913084539928304019_n.jpg", alt: "Street life" },
-];
+const vibeAlts = ["ZLE session", "Crew vibes", "Street life"];
 
 export function VibeSection() {
+  const [currentPhotos, setCurrentPhotos] = useState([
+    zlePhotos.vibe[0],
+    zlePhotos.vibe[1],
+    zlePhotos.vibe[2],
+  ]);
+  const [fadingIndex, setFadingIndex] = useState<number | null>(null);
+  const [photoPoolIndex, setPhotoPoolIndex] = useState(3);
+
+  const rotatePhoto = useCallback(() => {
+    const indexToReplace = Math.floor(Math.random() * 3);
+    const nextPhotoSrc = zlePhotos.vibe[photoPoolIndex % zlePhotos.vibe.length];
+    
+    setFadingIndex(indexToReplace);
+    
+    setTimeout(() => {
+      setCurrentPhotos(prev => prev.map((photo, i) => 
+        i === indexToReplace ? nextPhotoSrc : photo
+      ));
+      setFadingIndex(null);
+    }, 600);
+    
+    setPhotoPoolIndex(prev => prev + 1);
+  }, [photoPoolIndex]);
+
+  useEffect(() => {
+    const interval = setInterval(rotatePhoto, 7000);
+    return () => clearInterval(interval);
+  }, [rotatePhoto]);
+
   return (
     <section className="py-20 md:py-32 border-t border-white/10">
       <div className="container mx-auto px-4">
@@ -28,16 +55,20 @@ export function VibeSection() {
           </div>
 
           <div className="grid grid-cols-3 gap-3 md:gap-6 mb-12 md:mb-16">
-            {vibePhotos.map((photo) => (
+            {currentPhotos.map((photo, index) => (
               <div
-                key={photo.id}
+                key={index}
                 className="aspect-square overflow-hidden zle-photo-frame"
-                data-testid={`image-vibe-${photo.id}`}
+                data-testid={`image-vibe-${index + 1}`}
               >
                 <img
-                  src={photo.src}
-                  alt={photo.alt}
-                  className="w-full h-full object-cover zle-bw-photo hover:scale-105 transition-transform duration-500"
+                  src={photo}
+                  alt={vibeAlts[index]}
+                  className={`w-full h-full object-cover zle-bw-photo hover:scale-105 transition-all duration-600 ${
+                    fadingIndex === index 
+                      ? "opacity-0 translate-y-2" 
+                      : "opacity-100 translate-y-0"
+                  }`}
                   loading="lazy"
                 />
               </div>

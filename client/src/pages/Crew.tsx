@@ -1,5 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { CrewList } from "@/components/crew/CrewList";
+import { CrewRotator } from "@/components/crew/CrewRotator";
 
 export default function Crew() {
   return (
@@ -18,7 +19,19 @@ export default function Crew() {
             </p>
           </div>
 
-          <CrewList />
+          <div className="mb-16 md:mb-20">
+            <h2 className="font-heading text-xl md:text-2xl text-white/80 tracking-wider mb-6 zle-text-3d-subtle">
+              CREW V POHYBU
+            </h2>
+            <CrewRotator />
+          </div>
+
+          <div>
+            <h2 className="font-heading text-xl md:text-2xl text-white/80 tracking-wider mb-6 zle-text-3d-subtle">
+              POZNEJ NÁS
+            </h2>
+            <CrewList />
+          </div>
         </div>
       </section>
     </Layout>

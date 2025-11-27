@@ -1,0 +1,173 @@
+✅ Prompt pro Replit agenta – „ZLE HLÁŠKA DNE“ + AI vibe generator
+
+⚠️ Instrukce (dodrž prosím velmi striktně):
+
+NESAHAT do backendu (server/…, databáze, Stripe, Resend, auth).
+
+NEPOZMĬŇOVAT existující layout nebo e-commerce funkce.
+
+Přidáváme pouze novou frontend sekci v React/TSX.
+
+Zachovat ZLE street/underground styl.
+
+Kód musí být bezpečný, jednoduchý a bez závislosti na externích AI API (použij interní generátor / lokální pseudo-AI pattern).
+
+1) Vytvoř novou komponentu ZleQuote.tsx
+
+Umístění:
+client/src/components/home/ZleQuote.tsx
+
+Funkce komponenty:
+
+Každý den vygeneruje unikátní hlášku typu „Co je dneska ZLE“.
+
+Použít interní pseudo-AI generátor: kombinace patternů + náhodných slov + vibe dictionary.
+
+Hláška se nesmí opakovat → ukládej timestamp + hash hlášky do localStorage.
+
+Pokud se user vrátí ve stejný den → zobraz stejnou hlášku.
+
+Pokud uplyne nový den → vytvoř novou.
+
+Struktura hlášky:
+
+1 krátká věta
+
+ZLE styl: crew, street, skate, real life, ironie, humor, občas filozofie
+
+Např.:
+
+„Dneska je ZLE šlápnout na realitu a jet dál.“
+
+„ZLE level 7: přežít rail i šéfa.“
+
+„ZLE je, když ti flip uteče, ale vibe zůstane.“
+
+„ZLE znamená nezastavit se, i když tě život grindne.“
+
+Styl komponenty:
+
+černá/šedá textura pozadí jako ostatní
+
+bílé písmo, lehce 3D (text-shadow)
+
+ikonka ⚡ nebo 🜂 (ASCII vibe) – ale nenápadně
+
+fade-in animace
+
+2) Přidej slovník vibe slov
+
+Vytvoř nový soubor:
+client/src/data/zleQuotes.ts
+
+Obsah:
+
+pole pro začátky vět (openers)
+
+pole pro “co je dneska ZLE” (core)
+
+pole pro „další level“ (levels)
+
+pole slangových ZLE výrazů (vibeWords)
+
+Agent může doplnit vlastní set, ale minimálně 30 výrazů.
+
+3) Daily quote engine
+
+Do ZleQuote.tsx implementuj:
+
+funkce generateQuote() → spojí náhodné části slovníku
+
+funkce getTodayQuote() →
+
+zkontroluje localStorage (zleQuote_day a zleQuote_text)
+
+pokud existuje dnešní datum → vrátí uloženou
+
+jinak vytvoří novou, uloží, zobrazí
+
+funkce hashQuote() → vytvoří jednoduchý hash, aby se neopakovala
+
+4) Umístění na homepage
+
+Komponentu umísti do:
+
+client/src/pages/Home.tsx
+pod hero sekci, nad vibe sekci.
+
+Nadpis:
+
+<h2 className="font-heading text-3xl md:text-5xl text-white text-center mb-6 tracking-wider">
+  DNEŠNÍ ZLE HLÁŠKA
+</h2>
+
+
+Text hlášky:
+
+<p className="text-white/80 text-center text-xl md:text-2xl max-w-2xl mx-auto 
+             drop-shadow-[0_0_10px_rgba(255,255,255,0.15)]
+             animate-fade-in">
+
+5) „Základy pro reklamy“
+
+Přidej soubor:
+client/src/data/zleAds.ts
+
+Obsah:
+
+pole krátkých „ZLE reklamních sloganů“
+
+formát:
+
+export const zleAds = [
+   "ZLE® – real street, real shit.",
+   "Od crew pro crew.",
+   "ZLE je víc než logo. Je to vibe.",
+   "Nenosíme to. Žijeme to.",
+   "ZLE – made in street, not in boardroom."
+]
+
+
+NIC NEINTEGRUJ do stránky zatím.
+Jen vytvoř soubor a export → bude připravené na příští fázi.
+
+6) Zachovat styl ZLE Hybrid H2
+
+černobílá textura
+
+grain
+
+jemné 3D texty
+
+hrany ne úplně rovné, spíš raw vibe
+
+žádné emoji krom ASCII / minimalistických
+
+7) Po dokončení napiš shrnutí
+
+Prosím vypiš:
+
+seznam vytvořených souborů
+
+seznam upravených komponent
+
+potvrzení, že nedošlo k zásahu do backendu, routingu, Stripe ani auth
+
+screenshot renderu (auto-náhled)
+
+🔥 Co tím získáme?
+✔ Denní unikátní AI „ZLE vibe“
+
+Každý den fresh hláška → lidi se budou vracet.
+
+✔ Základ pro ZLE social feed
+
+Později to můžeme automaticky sdílet na Instagram, TikTok, Threads.
+
+✔ Připravená „reklamní identita“
+
+ZLE Ads se později stanou bannery, IG stories nebo videíčka.
+
+✔ Úplně nový level identity
+
+Tahle funkce dělá z webu něco, co nikdo jiný ve skate scéně nemá.
