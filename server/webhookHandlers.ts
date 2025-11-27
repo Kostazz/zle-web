@@ -1,6 +1,7 @@
 // Webhook handlers for Stripe events - ZLE e-commerce
 import { getStripeSync } from './stripeClient';
 import { storage } from './storage';
+import { sendOrderConfirmationEmail } from './emailService';
 import type { CartItem } from '@shared/schema';
 
 export class WebhookHandlers {
@@ -57,12 +58,19 @@ async function handleCheckoutCompleted(session: any) {
         await storage.updateStock(item.productId, item.quantity);
       }
       
-      await storage.updateOrder(orderId, {
+      const updatedOrder = await storage.updateOrder(orderId, {
         paymentStatus: 'paid',
         paymentIntentId: session.payment_intent,
         status: 'confirmed',
       });
       console.log(`Order ${orderId} payment completed via checkout.session.completed`);
+      
+      // Send order confirmation email
+      if (updatedOrder) {
+        sendOrderConfirmationEmail(updatedOrder).catch(err => 
+          console.error('Failed to send confirmation email:', err)
+        );
+      }
     }
   }
 }

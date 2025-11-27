@@ -5,6 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertOrderSchema, type CartItem, products } from "@shared/schema";
 import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { sendShippingUpdateEmail } from "./emailService";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -507,11 +508,39 @@ export async function registerRoutes(
   app.patch("/api/admin/orders/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const updates = req.body;
+      const { status, paymentStatus } = req.body;
+      
+      // Get current order to check if status changed
+      const currentOrder = await storage.getOrder(id);
+      if (!currentOrder) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      // Only include fields that are explicitly provided
+      const updates: Record<string, any> = {};
+      if (status !== undefined) updates.status = status;
+      if (paymentStatus !== undefined) updates.paymentStatus = paymentStatus;
+      
+      // Only update if there are actual changes
+      if (Object.keys(updates).length === 0) {
+        return res.json(currentOrder);
+      }
+      
       const order = await storage.updateOrder(id, updates);
       if (!order) {
         return res.status(404).json({ error: "Order not found" });
       }
+      
+      // Send shipping update email if status changed to a notifiable status
+      if (status && status !== currentOrder.status) {
+        const notifiableStatuses = ['confirmed', 'shipped', 'delivered'];
+        if (notifiableStatuses.includes(status)) {
+          sendShippingUpdateEmail(order, status).catch(err => 
+            console.error('Failed to send shipping update email:', err)
+          );
+        }
+      }
+      
       res.json(order);
     } catch (error) {
       console.error("Error updating order:", error);
