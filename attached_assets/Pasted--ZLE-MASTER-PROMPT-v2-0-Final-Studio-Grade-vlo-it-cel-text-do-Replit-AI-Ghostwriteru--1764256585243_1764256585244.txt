@@ -1,0 +1,319 @@
+🖤🔥 ZLE MASTER PROMPT v2.0 (Final Studio Grade)
+
+(vložit celý text do Replit AI / Ghostwriteru)
+
+📌 ÚVOD
+
+Stavíme kompletní React web + eshop pro českou skate značku ZLE.
+ZLE = underground × crew × real street life × zine vibe × špína × styl.
+
+Mám připravený projekt exportovaný z PiApp Studia + složky s fotkami.
+Potřebuju, aby Replit AI celý projekt:
+
+sám přestrukturoval,
+
+sjednotil vizuál podle ZLE Hybrid Style System (H2),
+
+vytvořil funkční e-shop (cart, checkout),
+
+vytvořil full homepage s hero gridem,
+
+doplnil vše do profesionální podoby.
+
+🔥 1) ASSETS – PROSÍM ORGANIZUJ TAKTO
+
+V projektu vytvoř tyto složky (pokud nejsou):
+
+/public/assets
+    /bg-collage
+    /gallery
+    /merch
+    /logo
+    /archive
+    /facesafe
+
+
+Použití:
+
+bg-collage → fotky do pozadí (koláž, grain, dirty)
+
+gallery → hezčí fotky do hero a sekce ZLE life
+
+merch → fotky triček, mikin, produktů
+
+logo → bílé ZLE logo + retro fire logo
+
+archive → staré fotky (B3, Black Bridge Bastards)
+
+facesafe → fotky, které musí být anonymní (AI: grain/blur/shadow)
+
+Všechny fotky ve facesafe používej pouze stylizované (grain/blur), nikdy do hero nebo produktů.
+
+🔥 2) ZLE HYBRID STYLE SYSTEM (H2)
+
+Dodrž přesně tento styling:
+
+Pozadí (background):
+
+celoplošná černobílá koláž z /assets/bg-collage
+
+heavy grain
+
+dirty film texture
+
+low detail (obličeje neidentifikovatelné)
+
+opacity 10–25 %
+
+jemný parallax scrolling
+
+žádný color tint (pure B&W)
+
+Popředí (foreground):
+
+čisté bílé bloky
+
+velká kontrastní typografie
+
+jednoduché rámečky
+
+žádné gradienty, žádné neonky
+
+ZLE = černá × bílá × špína v textuře
+
+Fonty:
+
+Používej:
+
+Inter, Archivo Black nebo Montserrat
+
+Nadpisy: weight 700–900
+
+Text: weight 300–500
+
+Většinou CAPS
+
+Žádné zaoblené friendly fonty
+
+🔥 3) HERO SEKCE (DOMINANTNÍ STYL ZNAČKY)
+
+Struktura:
+
+Gigantický nápis:
+
+JEĎ TO ZLE
+
+
+(bílé, bold, CAPS, žádný efekt)
+
+Pod tím:
+Grid 2×3 fotek → vybral fotky z /assets/gallery.
+
+Fotky mají:
+
+grain
+
+jemný film flicker
+
+hover: slight zoom + light shadow
+
+animace vyjíždění z pozadí (lehké)
+
+Text pod gridem:
+
+ZLE = český underground, crew, humor, real life.
+
+
+CTA:
+
+JDU DO SHOPU
+
+
+→ anchor na /shop
+
+🔥 4) STRUKTURA WEBU (ROUTES / SEKCE)
+Home
+
+Hero (viz výše)
+
+ZLE vibe section (krátký odstavec + 3 fotky)
+
+Odkaz na story
+
+CTA na shop
+
+Shop
+
+Grid produktů (hoodies, tees, caps)
+
+Každý produkt: fotka, název, cena, výběr velikostí
+
+Kliknutí = otevře modal s více fotkami
+
+Košík (cart) v pravém horním rohu (ikonka)
+
+Story
+
+Timeline fotky z /assets/archive
+
+Krátké věty
+
+Fotky horizontálně / slider styl
+
+Minimal texty, vibe true story
+
+Crew
+
+Fotky crew (jen crew-only)
+
+Krátké popisky: přezdívka + vibe
+
+Černobílé fotky, drsný grain
+
+Kontakt
+
+Email
+
+Instagram link
+
+Odkaz na TotalBoardShop
+
+Jednoduché CTA
+
+🔥 5) ESHOP FUNKČNÍ LOGIKA
+Product data
+
+Vytvoř soubor:
+
+src/data/products.js
+
+
+Každý produkt obsahuje:
+
+{
+  id: "zle-hoodie-alpha",
+  name: "ZLE Hoodie Alpha",
+  price: 1290,
+  sizes: ["S","M","L","XL"],
+  image: "/assets/merch/hoodie1.jpg",
+  category: "hoodie",
+  description: "Černá hoodie s bílým ZLE logem. Raw print."
+}
+
+Cart
+
+uložený v localStorage
+
+přidání / odebrání kusů
+
+zobrazení součtu
+
+počet položek jako badge u ikonky cartu
+
+Checkout
+
+jednoduchý form: jméno, email, adresa
+
+odeslání = zobrazí rekapitulaci
+
+zatím žádné platby
+
+🔥 6) UX / UI DETAILY (DŮLEŽITÉ)
+Animace
+
+jemný fade-in pro hero grid
+
+parallax background
+
+hover zoom + shadow na fotkách
+
+top nav → underline při hoveru
+
+žádné přehnané animace
+
+Mobile layout
+
+hero grid = 3×2 nebo slider
+
+hamburger menu
+
+text min. 15–16px
+
+CTA centrálně
+
+Produktové fotky
+
+bílé pozadí
+
+mírný drop shadow
+
+žádná barva navíc
+
+🔥 7) REFARKTOR KÓDU Z PIAPP STUDIA
+
+Prosím:
+
+smaž všechen boilerplate
+
+udělej komponenty čisté a přehledné
+
+vytvoř složky:
+
+/components/layout
+/components/home
+/components/shop
+/components/story
+/components/crew
+
+
+Pojmenuj komponenty profesionálně, např.:
+
+Hero.js
+
+PhotoGrid.js
+
+ProductCard.js
+
+ProductGrid.js
+
+Cart.js
+
+Checkout.js
+
+StoryTimeline.js
+
+CrewList.js
+
+🔥 8) FINÁLNÍ CÍL
+
+Web musí být:
+
+absolutně čitelný
+
+absolutně ZLE vibe
+
+profi e-shop, žádný chaos
+
+připravený pro deploy
+
+připravený pro PiApp Studio
+
+snadno rozšiřitelný
+
+🔥 9) ZAČNI TÍMTO:
+
+Zkontroluj strukturu assets.
+
+Uprav layout background koláže.
+
+Vytvoř Hero podle přesného popisu.
+
+Založ shop architekturu.
+
+Doplněj cart + checkout.
+
+Dolad UI/UX a animace.
+
+Vyčisti kód.
+
+Potom mi vrať kompletní funkční verzi.
