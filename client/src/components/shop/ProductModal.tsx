@@ -183,12 +183,12 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
                 className={`w-full font-heading text-sm tracking-wider py-6 ${
                   isSoldOut 
                     ? "bg-white/20 text-white/40 cursor-not-allowed" 
-                    : "bg-white text-black hover:bg-white/90"
+                    : "bg-white text-black hover:bg-white/90 zle-button-3d"
                 }`}
                 data-testid="button-add-to-cart"
               >
                 <ShoppingBag className="mr-2 h-4 w-4" />
-                {isSoldOut ? "VYPRODANO" : "PRIDAT DO KOSIKU"}
+                {isSoldOut ? "VYPRODÁNO" : "PŘIDAT DO KOŠÍKU"}
               </Button>
             </div>
           </div>

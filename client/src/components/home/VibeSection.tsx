@@ -2,14 +2,10 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
-import urbanImg from "@assets/generated_images/urban_skate_scene_grain.png";
-import crewImg from "@assets/generated_images/crew_silhouettes_grain.png";
-import streetImg from "@assets/generated_images/street_corner_urban.png";
-
 const vibePhotos = [
-  { id: 1, src: urbanImg, alt: "Urban scene" },
-  { id: 2, src: crewImg, alt: "Crew vibes" },
-  { id: 3, src: streetImg, alt: "Street life" },
+  { id: 1, src: "/zle-photos/events/475944748_645588801383235_7822522371695246484_n.jpg", alt: "ZLE session" },
+  { id: 2, src: "/zle-photos/events/476351374_646176131324502_6634174743711684081_n.jpg", alt: "Crew vibes" },
+  { id: 3, src: "/zle-photos/events/483525925_671270902148358_7913084539928304019_n.jpg", alt: "Street life" },
 ];
 
 export function VibeSection() {
@@ -19,7 +15,7 @@ export function VibeSection() {
         <div className="max-w-4xl mx-auto">
           <div className="mb-12 md:mb-16">
             <h2 
-              className="font-display text-3xl md:text-5xl text-white tracking-tight mb-6"
+              className="font-display text-3xl md:text-5xl text-white tracking-tight mb-6 zle-text-3d"
               data-testid="text-vibe-title"
             >
               ZLE VIBE
@@ -35,14 +31,13 @@ export function VibeSection() {
             {vibePhotos.map((photo) => (
               <div
                 key={photo.id}
-                className="aspect-square overflow-hidden bg-white/5"
+                className="aspect-square overflow-hidden zle-photo-frame"
                 data-testid={`image-vibe-${photo.id}`}
               >
                 <img
                   src={photo.src}
                   alt={photo.alt}
-                  className="w-full h-full object-cover grayscale hover:scale-105 transition-transform duration-500"
-                  style={{ filter: "grayscale(100%) contrast(1.1)" }}
+                  className="w-full h-full object-cover zle-bw-photo hover:scale-105 transition-transform duration-500"
                   loading="lazy"
                 />
               </div>
@@ -54,7 +49,7 @@ export function VibeSection() {
               <Button 
                 variant="outline"
                 size="lg"
-                className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all px-8 group"
+                className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all px-8 group zle-button-3d"
                 data-testid="button-vibe-story"
               >
                 NAŠE STORY
@@ -65,7 +60,7 @@ export function VibeSection() {
               <Button 
                 variant="outline"
                 size="lg"
-                className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all px-8 group"
+                className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all px-8 group zle-button-3d"
                 data-testid="button-vibe-crew"
               >
                 POZNEJ CREW

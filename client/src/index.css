@@ -286,3 +286,124 @@
     inset: -1px;
   }
 }
+
+/* ========================================
+   ZLE BRAND STYLING - Underground Aesthetic
+   ======================================== */
+
+/* 3D Text Shadow Effects */
+.zle-text-3d {
+  text-shadow: 
+    2px 2px 0 rgba(0, 0, 0, 0.4),
+    4px 4px 0 rgba(0, 0, 0, 0.2),
+    6px 6px 8px rgba(0, 0, 0, 0.3);
+}
+
+.zle-text-3d-subtle {
+  text-shadow: 
+    1px 1px 0 rgba(0, 0, 0, 0.3),
+    2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.zle-text-3d-hero {
+  text-shadow: 
+    3px 3px 0 rgba(0, 0, 0, 0.5),
+    6px 6px 0 rgba(0, 0, 0, 0.3),
+    9px 9px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* ZLE Content Blocks */
+.zle-content-block {
+  background-color: rgba(10, 10, 10, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+/* ZLE Button 3D Effects */
+.zle-button-3d {
+  box-shadow: 
+    0 4px 0 rgba(0, 0, 0, 0.4),
+    0 6px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  transform: translateY(0);
+}
+
+.zle-button-3d:hover {
+  box-shadow: 
+    0 6px 0 rgba(0, 0, 0, 0.4),
+    0 10px 20px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+.zle-button-3d:active {
+  box-shadow: 
+    0 2px 0 rgba(0, 0, 0, 0.4),
+    0 4px 8px rgba(0, 0, 0, 0.3);
+  transform: translateY(2px);
+}
+
+/* ZLE Card Styling */
+.zle-card {
+  background-color: rgba(15, 15, 15, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.zle-card:hover {
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ZLE Photo Frame */
+.zle-photo-frame {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: 2px;
+  transition: all 0.4s ease;
+}
+
+.zle-photo-frame:hover {
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+
+/* ZLE Grain/Noise Texture */
+.bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* ZLE Section Styling */
+.zle-section {
+  position: relative;
+}
+
+.zle-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+}
+
+/* B&W Photo Filter */
+.zle-bw-photo {
+  filter: grayscale(100%) contrast(1.1);
+  transition: filter 0.4s ease;
+}
+
+.zle-bw-photo:hover {
+  filter: grayscale(100%) contrast(1.2) brightness(1.1);
+}

@@ -8,26 +8,33 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
 
   return (
     <>
       <div 
-        className={`group cursor-pointer ${isSoldOut ? "opacity-60" : ""}`}
+        className={`group cursor-pointer zle-card p-3 ${isSoldOut ? "opacity-60" : ""}`}
         onClick={() => setIsModalOpen(true)}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         data-testid={`card-product-${product.id}`}
       >
-        <div className="relative aspect-square bg-white mb-4 overflow-hidden">
+        <div className="relative aspect-square mb-4 overflow-hidden rounded-sm zle-photo-frame">
           <img
             src={product.image}
             alt={product.name}
-            className={`w-full h-full object-cover transition-transform duration-500 ${
-              isSoldOut ? "" : "group-hover:scale-105"
+            className={`w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
+              isSoldOut ? "" : isHovered ? "scale-105 brightness-110" : ""
             }`}
             loading="lazy"
           />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
+          <div 
+            className={`absolute inset-0 transition-opacity duration-300 ${
+              isHovered ? "opacity-0" : "bg-black/10 opacity-100"
+            }`}
+          />
           
           {isSoldOut && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
@@ -39,7 +46,7 @@ export function ProductCard({ product }: ProductCardProps) {
           
           {isLowStock && (
             <div className="absolute top-2 right-2">
-              <span className="font-heading text-xs tracking-wider text-black bg-white px-2 py-1">
+              <span className="font-heading text-xs tracking-wider text-black bg-white px-2 py-1 shadow-lg">
                 POSLEDNÍ KUSY
               </span>
             </div>
@@ -48,7 +55,7 @@ export function ProductCard({ product }: ProductCardProps) {
         
         <div className="space-y-2">
           <h3 
-            className="font-heading text-sm md:text-base font-bold text-white tracking-wider"
+            className="font-heading text-sm md:text-base font-bold text-white tracking-wider zle-text-3d-subtle"
             data-testid={`text-product-name-${product.id}`}
           >
             {product.name}
@@ -57,13 +64,13 @@ export function ProductCard({ product }: ProductCardProps) {
             className="font-sans text-lg md:text-xl font-semibold text-white"
             data-testid={`text-product-price-${product.id}`}
           >
-            {product.price} Kc
+            {product.price} Kč
           </p>
           <div className="flex flex-wrap gap-1">
             {product.sizes.map((size) => (
               <span
                 key={size}
-                className="text-xs text-white/50 border border-white/20 px-2 py-0.5"
+                className="text-xs text-white/50 border border-white/20 px-2 py-0.5 rounded-sm"
               >
                 {size}
               </span>

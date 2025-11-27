@@ -22,10 +22,10 @@ export function StoryTimeline() {
                 index % 2 === 0 ? "md:text-right md:pr-12" : "md:pl-12"
               }`}
             >
-              <span className="font-display text-4xl md:text-5xl text-white/30 block mb-2">
+              <span className="font-display text-4xl md:text-5xl text-white/30 block mb-2 zle-text-3d-subtle">
                 {item.year}
               </span>
-              <h3 className="font-display text-xl md:text-2xl text-white tracking-tight mb-3">
+              <h3 className="font-display text-xl md:text-2xl text-white tracking-tight mb-3 zle-text-3d-subtle">
                 {item.title}
               </h3>
               <p className="font-sans text-white/70 text-sm md:text-base leading-relaxed max-w-sm">
@@ -35,15 +35,14 @@ export function StoryTimeline() {
 
             <div className="flex-1 pl-12 md:pl-0">
               <div
-                className={`aspect-[4/3] overflow-hidden bg-white/5 max-w-md ${
+                className={`aspect-[4/3] overflow-hidden zle-photo-frame max-w-md ${
                   index % 2 === 0 ? "md:ml-12" : "md:mr-12"
                 }`}
               >
                 <img
                   src={item.image}
                   alt={item.title}
-                  className="w-full h-full object-cover grayscale hover:scale-105 transition-transform duration-500"
-                  style={{ filter: "grayscale(100%) contrast(1.1)" }}
+                  className="w-full h-full object-cover zle-bw-photo hover:scale-105 transition-transform duration-500"
                   loading="lazy"
                 />
               </div>

@@ -44,7 +44,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link href="/" className="relative z-50">
             <span 
-              className="font-display text-2xl md:text-3xl text-white tracking-wider"
+              className="font-display text-2xl md:text-3xl text-white tracking-wider zle-text-3d"
               data-testid="link-logo"
             >
               ZLE

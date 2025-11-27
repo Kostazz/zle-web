@@ -7,8 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function ProductSkeleton() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="aspect-square bg-white/10" />
+    <div className="space-y-4 zle-card p-3">
+      <Skeleton className="aspect-square bg-white/10 rounded-sm" />
       <Skeleton className="h-4 w-3/4 bg-white/10" />
       <Skeleton className="h-5 w-1/2 bg-white/10" />
     </div>
@@ -25,7 +25,7 @@ export function FeaturedProducts() {
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12">
           <div>
             <h2 
-              className="font-display text-3xl md:text-5xl text-white tracking-tight mb-2"
+              className="font-display text-3xl md:text-5xl text-white tracking-tight mb-2 zle-text-3d"
               data-testid="text-featured-title"
             >
               MERCH
@@ -37,7 +37,7 @@ export function FeaturedProducts() {
           <Link href="/shop">
             <Button 
               variant="outline"
-              className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all group"
+              className="font-heading text-sm tracking-wider border-white/30 text-white hover:bg-white hover:text-black transition-all group zle-button-3d"
               data-testid="button-featured-all"
             >
               CELÝ SHOP
