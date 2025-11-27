@@ -1,171 +1,147 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type Order, type InsertOrder } from "@shared/schema";
+import { 
+  type User, type InsertUser, 
+  type Product, type InsertProduct, 
+  type Order, type InsertOrder,
+  type Address, type InsertAddress,
+  users, products, orders, addresses 
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   
   getProducts(): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductsByCategory(category: string): Promise<Product[]>;
+  createProduct(product: Product): Promise<Product>;
+  updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<boolean>;
+  updateStock(id: string, quantity: number): Promise<Product | undefined>;
   
   getOrders(): Promise<Order[]>;
   getOrder(id: string): Promise<Order | undefined>;
+  getOrdersByUser(userId: string): Promise<Order[]>;
   createOrder(order: InsertOrder): Promise<Order>;
+  updateOrder(id: string, updates: Partial<Order>): Promise<Order | undefined>;
+  
+  getAddresses(userId: string): Promise<Address[]>;
+  getAddress(id: string): Promise<Address | undefined>;
+  createAddress(address: InsertAddress): Promise<Address>;
+  updateAddress(id: string, updates: Partial<Address>): Promise<Address | undefined>;
+  deleteAddress(id: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private products: Map<string, Product>;
-  private orders: Map<string, Order>;
-
-  constructor() {
-    this.users = new Map();
-    this.products = new Map();
-    this.orders = new Map();
-    
-    this.initializeProducts();
-  }
-
-  private initializeProducts() {
-    const initialProducts: Product[] = [
-      {
-        id: "zle-hoodie-alpha",
-        name: "ZLE HOODIE ALPHA",
-        price: 1290,
-        sizes: ["S", "M", "L", "XL", "XXL"],
-        image: "/api/images/hoodie",
-        images: null,
-        category: "hoodie",
-        description: "Černá hoodie s bílým ZLE logem. Raw print. 100% bavlna, heavy weight.",
-      },
-      {
-        id: "zle-hoodie-crew",
-        name: "ZLE CREW HOODIE",
-        price: 1390,
-        sizes: ["S", "M", "L", "XL"],
-        image: "/api/images/hoodie",
-        images: null,
-        category: "hoodie",
-        description: "Limitovaná crew edice. Bílé logo + crew list na zádech. Premium quality.",
-      },
-      {
-        id: "zle-tee-classic",
-        name: "ZLE TEE CLASSIC",
-        price: 590,
-        sizes: ["S", "M", "L", "XL", "XXL"],
-        image: "/api/images/tee",
-        images: null,
-        category: "tee",
-        description: "Klasické černé tričko s bílým ZLE logem. 100% bavlna.",
-      },
-      {
-        id: "zle-tee-underground",
-        name: "ZLE UNDERGROUND TEE",
-        price: 690,
-        sizes: ["S", "M", "L", "XL"],
-        image: "/api/images/tee",
-        images: null,
-        category: "tee",
-        description: "Underground edice s velkým grafickým potiskem. Street vibe.",
-      },
-      {
-        id: "zle-cap-og",
-        name: "ZLE CAP OG",
-        price: 490,
-        sizes: ["ONE SIZE"],
-        image: "/api/images/cap",
-        images: null,
-        category: "cap",
-        description: "Černá kšiltovka s vyšitým ZLE logem. Nastavitelná velikost.",
-      },
-      {
-        id: "zle-crewneck-heavy",
-        name: "ZLE CREWNECK HEAVY",
-        price: 1090,
-        sizes: ["S", "M", "L", "XL"],
-        image: "/api/images/crewneck",
-        images: null,
-        category: "crewneck",
-        description: "Heavy weight crewneck. Minimalistický design. Raw print.",
-      },
-      {
-        id: "zle-beanie-winter",
-        name: "ZLE BEANIE",
-        price: 390,
-        sizes: ["ONE SIZE"],
-        image: "/api/images/beanie",
-        images: null,
-        category: "beanie",
-        description: "Černá beanie s vyšitým ZLE logem. Acryl/vlna mix.",
-      },
-      {
-        id: "zle-tee-fire",
-        name: "ZLE FIRE TEE",
-        price: 650,
-        sizes: ["S", "M", "L", "XL", "XXL"],
-        image: "/api/images/tee",
-        images: null,
-        category: "tee",
-        description: "Limitovaná edice s retro fire logem. Sběratelský kus.",
-      },
-    ];
-
-    for (const product of initialProducts) {
-      this.products.set(product.id, product);
-    }
-  }
-
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return user || undefined;
+  }
+
   async getProducts(): Promise<Product[]> {
-    return Array.from(this.products.values());
+    return db.select().from(products).where(eq(products.isActive, true));
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
-    return this.products.get(id);
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product || undefined;
   }
 
   async getProductsByCategory(category: string): Promise<Product[]> {
-    return Array.from(this.products.values()).filter(
-      (product) => product.category === category
-    );
+    return db.select().from(products)
+      .where(eq(products.category, category));
+  }
+
+  async createProduct(product: Product): Promise<Product> {
+    const [created] = await db.insert(products).values(product).returning();
+    return created;
+  }
+
+  async updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined> {
+    const [product] = await db.update(products).set(updates).where(eq(products.id, id)).returning();
+    return product || undefined;
+  }
+
+  async deleteProduct(id: string): Promise<boolean> {
+    const [product] = await db.update(products).set({ isActive: false }).where(eq(products.id, id)).returning();
+    return !!product;
+  }
+
+  async updateStock(id: string, quantity: number): Promise<Product | undefined> {
+    const product = await this.getProduct(id);
+    if (!product) return undefined;
+    
+    const newStock = Math.max(0, product.stock - quantity);
+    return this.updateProduct(id, { stock: newStock });
   }
 
   async getOrders(): Promise<Order[]> {
-    return Array.from(this.orders.values());
+    return db.select().from(orders).orderBy(desc(orders.createdAt));
   }
 
   async getOrder(id: string): Promise<Order | undefined> {
-    return this.orders.get(id);
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    return order || undefined;
+  }
+
+  async getOrdersByUser(userId: string): Promise<Order[]> {
+    return db.select().from(orders)
+      .where(eq(orders.userId, userId))
+      .orderBy(desc(orders.createdAt));
   }
 
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
-    const id = randomUUID();
-    const order: Order = { 
-      ...insertOrder, 
-      id,
-      status: "pending",
-    };
-    this.orders.set(id, order);
+    const [order] = await db.insert(orders).values(insertOrder).returning();
     return order;
+  }
+
+  async updateOrder(id: string, updates: Partial<Order>): Promise<Order | undefined> {
+    const [order] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
+    return order || undefined;
+  }
+
+  async getAddresses(userId: string): Promise<Address[]> {
+    return db.select().from(addresses).where(eq(addresses.userId, userId));
+  }
+
+  async getAddress(id: string): Promise<Address | undefined> {
+    const [address] = await db.select().from(addresses).where(eq(addresses.id, id));
+    return address || undefined;
+  }
+
+  async createAddress(insertAddress: InsertAddress): Promise<Address> {
+    const [address] = await db.insert(addresses).values(insertAddress).returning();
+    return address;
+  }
+
+  async updateAddress(id: string, updates: Partial<Address>): Promise<Address | undefined> {
+    const [address] = await db.update(addresses).set(updates).where(eq(addresses.id, id)).returning();
+    return address || undefined;
+  }
+
+  async deleteAddress(id: string): Promise<boolean> {
+    const [address] = await db.delete(addresses).where(eq(addresses.id, id)).returning();
+    return !!address;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
