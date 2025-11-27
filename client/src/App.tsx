@@ -14,6 +14,7 @@ import CheckoutSuccess from "@/pages/checkout/Success";
 import CheckoutCancel from "@/pages/checkout/Cancel";
 import Orders from "@/pages/account/Orders";
 import Addresses from "@/pages/account/Addresses";
+import AdminDashboard from "@/pages/admin/Dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/checkout/cancel" component={CheckoutCancel} />
       <Route path="/account/orders" component={Orders} />
       <Route path="/account/addresses" component={Addresses} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

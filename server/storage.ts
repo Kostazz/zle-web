@@ -12,14 +12,17 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
   
   getProducts(): Promise<Product[]>;
+  getAllProducts(): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductsByCategory(category: string): Promise<Product[]>;
   createProduct(product: Product): Promise<Product>;
   updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined>;
   deleteProduct(id: string): Promise<boolean>;
   updateStock(id: string, quantity: number): Promise<Product | undefined>;
+  setStock(id: string, stock: number): Promise<Product | undefined>;
   
   getOrders(): Promise<Order[]>;
   getOrder(id: string): Promise<Order | undefined>;
@@ -60,8 +63,16 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
   async getProducts(): Promise<Product[]> {
     return db.select().from(products).where(eq(products.isActive, true));
+  }
+
+  async getAllProducts(): Promise<Product[]> {
+    return db.select().from(products);
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
@@ -95,6 +106,10 @@ export class DatabaseStorage implements IStorage {
     
     const newStock = Math.max(0, product.stock - quantity);
     return this.updateProduct(id, { stock: newStock });
+  }
+
+  async setStock(id: string, stock: number): Promise<Product | undefined> {
+    return this.updateProduct(id, { stock: Math.max(0, stock) });
   }
 
   async getOrders(): Promise<Order[]> {

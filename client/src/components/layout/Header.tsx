@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ShoppingBag, User, LogOut, Package, MapPin } from "lucide-react";
+import { Menu, X, ShoppingBag, User, LogOut, Package, MapPin, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +127,21 @@ export function Header() {
                         Adresy
                       </Link>
                     </DropdownMenuItem>
+                    {user?.isAdmin && (
+                      <>
+                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuItem asChild>
+                          <Link 
+                            href="/admin" 
+                            className="flex items-center gap-2 text-white hover:text-white cursor-pointer"
+                            data-testid="link-admin"
+                          >
+                            <Shield className="h-4 w-4" />
+                            Admin Dashboard
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuSeparator className="bg-white/10" />
                     <DropdownMenuItem asChild>
                       <a 
@@ -221,6 +236,17 @@ export function Header() {
                 >
                   OBJEDNAVKY
                 </Link>
+                {user?.isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="font-display text-2xl tracking-wider text-white/60 hover:text-white transition-colors flex items-center gap-2"
+                    onClick={() => setIsMenuOpen(false)}
+                    data-testid="link-mobile-admin"
+                  >
+                    <Shield className="h-5 w-5" />
+                    ADMIN
+                  </Link>
+                )}
                 <a
                   href="/api/logout"
                   className="font-display text-2xl tracking-wider text-white/60 hover:text-white transition-colors"
