@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertOrderSchema, type CartItem } from "@shared/schema";
 import { z } from "zod";
 
@@ -8,6 +9,19 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  
+  await setupAuth(app);
+
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
   
   app.get("/api/products", async (req, res) => {
     try {
@@ -39,7 +53,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/orders", async (req, res) => {
+  app.post("/api/orders", async (req: any, res) => {
     try {
       const orderData = insertOrderSchema.parse(req.body);
       
@@ -63,7 +77,11 @@ export async function registerRoutes(
         await storage.updateStock(item.productId, item.quantity);
       }
       
-      const order = await storage.createOrder(orderData);
+      const userId = req.user?.claims?.sub;
+      const order = await storage.createOrder({
+        ...orderData,
+        userId: userId || null,
+      });
       res.status(201).json(order);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -110,6 +128,51 @@ export async function registerRoutes(
       res.json(order);
     } catch (error) {
       res.status(500).json({ error: "Failed to update order" });
+    }
+  });
+
+  app.get("/api/user/orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const orders = await storage.getOrdersByUser(userId);
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch orders" });
+    }
+  });
+
+  app.get("/api/user/addresses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const addresses = await storage.getAddresses(userId);
+      res.json(addresses);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+
+  app.post("/api/user/addresses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const address = await storage.createAddress({
+        ...req.body,
+        userId,
+      });
+      res.status(201).json(address);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create address" });
+    }
+  });
+
+  app.delete("/api/user/addresses/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const success = await storage.deleteAddress(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Address not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete address" });
     }
   });
 
