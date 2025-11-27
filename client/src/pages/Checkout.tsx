@@ -6,20 +6,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
-import { useCreateOrder } from "@/hooks/use-orders";
-import { ArrowLeft, Check, ShoppingBag, Loader2 } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, CreditCard } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Checkout() {
   const { items, total, clearCart } = useCart();
   const { toast } = useToast();
-  const createOrderMutation = useCreateOrder();
-  const [isComplete, setIsComplete] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     address: "",
     city: "",
     zip: "",
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (data: {
+      items: typeof items;
+      customerName: string;
+      customerEmail: string;
+      customerAddress: string;
+      customerCity: string;
+      customerZip: string;
+    }) => {
+      const response = await apiRequest("POST", "/api/checkout/create-session", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        clearCart();
+        window.location.href = data.url;
+      } else {
+        toast({
+          title: "Chyba",
+          description: "Nepodařilo se vytvořit platební session.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Chyba",
+        description: error.message || "Nepodařilo se zpracovat objednávku. Zkus to znovu.",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,37 +71,17 @@ export default function Checkout() {
       return;
     }
 
-    createOrderMutation.mutate(
-      {
-        customerName: formData.name,
-        customerEmail: formData.email,
-        customerAddress: formData.address,
-        customerCity: formData.city,
-        customerZip: formData.zip,
-        items: JSON.stringify(items),
-        total,
-      },
-      {
-        onSuccess: () => {
-          setIsComplete(true);
-          clearCart();
-          toast({
-            title: "Objednávka odeslána",
-            description: "Děkujeme! Brzy se ti ozveme.",
-          });
-        },
-        onError: () => {
-          toast({
-            title: "Chyba",
-            description: "Nepodařilo se odeslat objednávku. Zkus to znovu.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
+    checkoutMutation.mutate({
+      items,
+      customerName: formData.name,
+      customerEmail: formData.email,
+      customerAddress: formData.address,
+      customerCity: formData.city,
+      customerZip: formData.zip,
+    });
   };
 
-  if (items.length === 0 && !isComplete) {
+  if (items.length === 0) {
     return (
       <Layout>
         <section className="py-16 md:py-24">
@@ -90,39 +102,6 @@ export default function Checkout() {
               >
                 <Link href="/shop" data-testid="link-checkout-to-shop">
                   JÍT DO SHOPU
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
-  if (isComplete) {
-    return (
-      <Layout>
-        <section className="py-16 md:py-24">
-          <div className="container mx-auto px-4">
-            <div className="max-w-md mx-auto text-center">
-              <div className="w-20 h-20 mb-6 rounded-full bg-white flex items-center justify-center mx-auto">
-                <Check className="h-10 w-10 text-black" />
-              </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                DÍKY ZA OBJEDNÁVKU
-              </h1>
-              <p className="font-sans text-white/60 mb-2">
-                Tvoje objednávka byla úspěšně odeslána.
-              </p>
-              <p className="font-sans text-white/60 mb-8">
-                Ozveme se ti na {formData.email} s potvrzením.
-              </p>
-              <Button
-                asChild
-                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-              >
-                <Link href="/" data-testid="link-checkout-to-home">
-                  ZPĚT NA HLAVNÍ STRÁNKU
                 </Link>
               </Button>
             </div>
@@ -240,19 +219,26 @@ export default function Checkout() {
 
                   <Button
                     type="submit"
-                    disabled={createOrderMutation.isPending}
+                    disabled={checkoutMutation.isPending}
                     className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 mt-8"
                     data-testid="button-submit-order"
                   >
-                    {createOrderMutation.isPending ? (
+                    {checkoutMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ODESÍLÁM...
+                        PŘESMĚROVÁVÁM NA PLATBU...
                       </>
                     ) : (
-                      "ODESLAT OBJEDNÁVKU"
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        POKRAČOVAT K PLATBĚ
+                      </>
                     )}
                   </Button>
+
+                  <p className="font-sans text-xs text-white/40 text-center mt-4">
+                    Budeš přesměrován na zabezpečenou platební bránu Stripe
+                  </p>
                 </form>
               </div>
 
@@ -284,7 +270,7 @@ export default function Checkout() {
                           </p>
                         </div>
                         <span className="font-sans text-sm font-bold text-white">
-                          {item.price * item.quantity} Kc
+                          {item.price * item.quantity} Kč
                         </span>
                       </div>
                     ))}
@@ -297,16 +283,21 @@ export default function Checkout() {
                         className="font-sans text-2xl font-bold text-white"
                         data-testid="text-checkout-total"
                       >
-                        {total} Kc
+                        {total} Kč
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <p className="font-sans text-xs text-white/40 mt-4 leading-relaxed">
-                  Po odeslani objednavky ti posleme email s platebnimi udaji. 
-                  Zbozi odesilame do 3 pracovnich dnu od prijeti platby.
-                </p>
+                <div className="mt-6 p-4 border border-white/10 bg-white/5">
+                  <h3 className="font-heading text-xs text-white/60 tracking-wider mb-2">
+                    BEZPEČNÁ PLATBA
+                  </h3>
+                  <p className="font-sans text-xs text-white/40 leading-relaxed">
+                    Platba je zpracována přes Stripe - světovou jedničku v online platbách. 
+                    Tvoje platební údaje nikdy neukládáme.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

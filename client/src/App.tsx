@@ -10,6 +10,8 @@ import Story from "@/pages/Story";
 import Crew from "@/pages/Crew";
 import Contact from "@/pages/Contact";
 import Checkout from "@/pages/Checkout";
+import CheckoutSuccess from "@/pages/checkout/Success";
+import CheckoutCancel from "@/pages/checkout/Cancel";
 import Orders from "@/pages/account/Orders";
 import Addresses from "@/pages/account/Addresses";
 import NotFound from "@/pages/not-found";
@@ -23,6 +25,8 @@ function Router() {
       <Route path="/crew" component={Crew} />
       <Route path="/contact" component={Contact} />
       <Route path="/checkout" component={Checkout} />
+      <Route path="/checkout/success" component={CheckoutSuccess} />
+      <Route path="/checkout/cancel" component={CheckoutCancel} />
       <Route path="/account/orders" component={Orders} />
       <Route path="/account/addresses" component={Addresses} />
       <Route component={NotFound} />

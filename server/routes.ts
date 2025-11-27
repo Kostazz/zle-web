@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertOrderSchema, type CartItem } from "@shared/schema";
 import { z } from "zod";
+import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -173,6 +174,176 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete address" });
+    }
+  });
+
+  // Stripe checkout routes
+  app.get("/api/stripe/config", async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (error) {
+      console.error("Error getting Stripe config:", error);
+      res.status(500).json({ error: "Stripe not configured" });
+    }
+  });
+
+  // Create Stripe checkout session for one-time purchase
+  app.post("/api/checkout/create-session", async (req: any, res) => {
+    try {
+      const { items, customerEmail, customerName, customerAddress, customerCity, customerZip } = req.body;
+
+      if (!items || items.length === 0) {
+        return res.status(400).json({ error: "No items in cart" });
+      }
+
+      // Validate stock before creating session
+      const cartItems: CartItem[] = items;
+      for (const item of cartItems) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return res.status(400).json({ 
+            error: `Produkt ${item.name} již není dostupný` 
+          });
+        }
+        if (product.stock < item.quantity) {
+          return res.status(400).json({ 
+            error: `Nedostatečné množství produktu ${item.name}. Dostupné: ${product.stock}` 
+          });
+        }
+      }
+
+      // Calculate total
+      const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+      // Create order in pending state
+      const userId = req.user?.claims?.sub || null;
+      const order = await storage.createOrder({
+        userId,
+        customerName,
+        customerEmail,
+        customerAddress,
+        customerCity,
+        customerZip,
+        items: JSON.stringify(cartItems),
+        total,
+      });
+
+      // Create Stripe checkout session
+      const stripe = await getUncachableStripeClient();
+      
+      // Build line items for Stripe
+      const lineItems = cartItems.map(item => ({
+        price_data: {
+          currency: 'czk',
+          product_data: {
+            name: item.name,
+            description: `Velikost: ${item.size}`,
+            images: item.image ? [item.image.startsWith('http') ? item.image : `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}${item.image}`] : undefined,
+          },
+          unit_amount: item.price * 100, // Convert to cents
+        },
+        quantity: item.quantity,
+      }));
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: lineItems,
+        mode: 'payment',
+        success_url: `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}/checkout/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`,
+        cancel_url: `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}/checkout/cancel?order_id=${order.id}`,
+        customer_email: customerEmail,
+        metadata: {
+          orderId: order.id,
+        },
+        payment_intent_data: {
+          metadata: {
+            orderId: order.id,
+          },
+        },
+        shipping_address_collection: {
+          allowed_countries: ['CZ', 'SK'],
+        },
+      });
+
+      res.json({ 
+        sessionId: session.id,
+        url: session.url,
+        orderId: order.id,
+      });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // Verify payment success
+  app.get("/api/checkout/verify/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const stripe = await getUncachableStripeClient();
+      
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const orderId = session.metadata?.orderId;
+      
+      if (session.payment_status === 'paid' && orderId) {
+        // Deduct stock for paid order
+        const order = await storage.getOrder(orderId);
+        if (order && order.paymentStatus !== 'paid') {
+          const items: CartItem[] = JSON.parse(order.items);
+          for (const item of items) {
+            await storage.updateStock(item.productId, item.quantity);
+          }
+          
+          await storage.updateOrder(orderId, {
+            paymentStatus: 'paid',
+            paymentIntentId: session.payment_intent as string,
+            status: 'confirmed',
+          });
+          console.log(`Order ${orderId} payment verified and confirmed`);
+        }
+        
+        res.json({ 
+          success: true, 
+          orderId,
+          paymentStatus: session.payment_status,
+        });
+      } else {
+        res.json({ 
+          success: false, 
+          orderId,
+          paymentStatus: session.payment_status,
+        });
+      }
+    } catch (error) {
+      console.error("Error verifying payment:", error);
+      res.status(500).json({ error: "Failed to verify payment" });
+    }
+  });
+
+  // Cancel order
+  app.post("/api/checkout/cancel/:orderId", async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const order = await storage.getOrder(orderId);
+      
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      if (order.paymentStatus === 'paid') {
+        return res.status(400).json({ error: "Cannot cancel paid order" });
+      }
+      
+      await storage.updateOrder(orderId, {
+        status: 'cancelled',
+        paymentStatus: 'cancelled',
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error cancelling order:", error);
+      res.status(500).json({ error: "Failed to cancel order" });
     }
   });
 
