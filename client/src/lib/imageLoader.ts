@@ -1,4 +1,4 @@
-export const logoProImages = [
+export const allLogos = [
   "/zle-logo/pro/zle-logo-3d.png",
   "/zle-logo/pro/zle-logo-chrome.png",
   "/zle-logo/pro/zle-logo-clean.png",
@@ -7,23 +7,8 @@ export const logoProImages = [
   "/zle-logo/pro/zle-logo-neon.png",
 ];
 
-export const logoVariants = [
-  "/zle-logo/zle-classic-clean.png",
-  "/zle-logo/zle-premium-soft3d.png",
-  "/zle-logo/zle-street-matte.png",
-  "/zle-logo/zle-original.png",
-];
-
-export function getLogoProImages(): string[] {
-  return logoProImages;
-}
-
-export function getLogoVariants(): string[] {
-  return logoVariants;
-}
-
 export function getAllLogos(): string[] {
-  return [...logoProImages, ...logoVariants];
+  return allLogos;
 }
 
 export function shuffleWithSeed(array: string[], seed: number): string[] {
@@ -37,25 +22,15 @@ export function shuffleWithSeed(array: string[], seed: number): string[] {
 }
 
 export function getTodaysLogo(): string {
-  const allLogos = getAllLogos();
+  const logos = getAllLogos();
   
-  if (allLogos.length === 0) {
-    return "/zle-logo/zle-premium-soft3d.png";
+  if (logos.length === 0) {
+    return "/zle-logo/pro/zle-logo-raw.png";
   }
   
   const today = new Date();
-  const dayIndex = today.getDate() % allLogos.length;
-  return allLogos[dayIndex];
-}
-
-export function getTodaysProLogo(): string {
-  if (logoProImages.length === 0) {
-    return "/zle-logo/zle-premium-soft3d.png";
-  }
-  
-  const today = new Date();
-  const dayIndex = today.getDate() % logoProImages.length;
-  return logoProImages[dayIndex];
+  const dayIndex = today.getDate() % logos.length;
+  return logos[dayIndex];
 }
 
 export function getDailyShuffledPhotos(photos: string[]): string[] {
