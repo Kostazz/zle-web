@@ -433,3 +433,19 @@
     saturate(1.15)
     drop-shadow(0 0 16px rgba(255, 255, 255, 0.15));
 }
+
+/* Hero Logo Override - no border, no hover brightness change */
+.hero-logo-inline.zle-logo-polish {
+  background: transparent;
+  border: none;
+  height: 1.4em;
+  display: inline-block;
+  vertical-align: baseline;
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.35));
+}
+
+.hero-logo-inline.zle-logo-polish:hover {
+  background: transparent;
+  border: none;
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.35));
+}
