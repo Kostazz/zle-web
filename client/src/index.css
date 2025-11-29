@@ -407,3 +407,22 @@
 .zle-bw-photo:hover {
   filter: grayscale(100%) contrast(1.2) brightness(1.1);
 }
+
+/* ZLE Logo Polish Effect */
+.zle-logo-polish {
+  filter:
+    brightness(1.05)
+    contrast(1.15)
+    saturate(1.1)
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.05));
+  image-rendering: auto;
+  transition: all 0.4s ease;
+}
+
+.zle-logo-polish:hover {
+  filter:
+    brightness(1.15)
+    contrast(1.25)
+    saturate(1.15)
+    drop-shadow(0 0 16px rgba(255, 255, 255, 0.15));
+}

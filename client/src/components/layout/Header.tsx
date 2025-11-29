@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
+import { ZleLogo } from "@/components/ZleLogo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,13 +43,8 @@ export function Header() {
     <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
-          <Link href="/" className="relative z-50">
-            <span 
-              className="font-display text-2xl md:text-3xl text-white tracking-wider zle-text-3d"
-              data-testid="link-logo"
-            >
-              ZLE
-            </span>
+          <Link href="/" className="relative z-50" data-testid="link-logo">
+            <ZleLogo size="sm" />
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
