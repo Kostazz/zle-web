@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { ZleLogo } from "@/components/ZleLogo";
+import { useTodaysLogo } from "@/lib/logoContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +28,7 @@ export function Header() {
   const [location] = useLocation();
   const { itemCount, setIsOpen } = useCart();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const logoSrc = useTodaysLogo();
 
   const getInitials = () => {
     if (user?.firstName && user?.lastName) {
@@ -44,7 +45,14 @@ export function Header() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link href="/" className="relative z-50" data-testid="link-logo">
-            <ZleLogo size="sm" />
+            {logoSrc && (
+              <img
+                src={logoSrc}
+                alt="ZLE logo"
+                className="zle-logo-polish h-8 md:h-10"
+                data-testid="img-zle-logo"
+              />
+            )}
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">

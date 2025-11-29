@@ -2,18 +2,31 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { PhotoGrid } from "./PhotoGrid";
 import { ArrowRight } from "lucide-react";
+import { useTodaysLogo } from "@/lib/logoContext";
 
 export function Hero() {
+  const logoSrc = useTodaysLogo();
+
   return (
     <section className="min-h-screen flex flex-col justify-center py-16 md:py-24">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12 md:mb-16">
           <h1 
-            className="font-display text-5xl sm:text-6xl md:text-8xl lg:text-9xl text-white tracking-tight mb-6 opacity-0 animate-fade-in zle-text-3d-hero"
+            className="font-display text-5xl sm:text-6xl md:text-8xl lg:text-9xl text-white tracking-tight mb-6 opacity-0 animate-fade-in zle-text-3d-hero flex items-center justify-center gap-2 md:gap-4"
             style={{ animationDelay: "0.2s" }}
             data-testid="text-hero-title"
           >
-            JEĎ TO ZLE
+            <span>JEĎ TO</span>
+            {logoSrc ? (
+              <img
+                src={logoSrc}
+                alt="ZLE"
+                className="zle-logo-polish inline-block h-[1em] align-middle"
+                data-testid="img-hero-logo"
+              />
+            ) : (
+              <span>ZLE</span>
+            )}
           </h1>
           <p 
             className="font-heading text-lg md:text-xl text-white/70 tracking-wide max-w-xl mx-auto opacity-0 animate-fade-in zle-text-3d-subtle"

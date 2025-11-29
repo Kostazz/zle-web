@@ -1,0 +1,135 @@
+🔧 MASTER INSTRUKČNÍ PŘÍKAZ – OPRAVA LOGA + ZLE ROTÁTOR (VERZE BEZ KÓDU)
+
+AI, proveď prosím přesně tyto kroky.
+Neprováděj žádné změny mimo uvedené body.
+Neměň layout, neměň texty, neměň strukturu JSX, neměň routování, neměň CSS třídy mimo polish efekt.
+
+ÚKOLY:
+
+1️⃣ Spravit logo vlevo v navbaru – musí používat stejné „logo dne“ jako ostatní části webu.
+2️⃣ Zajistit, aby text „JEĎ TO ZLE“ používal stejné rotující logo místo části „ZLE“.
+3️⃣ Zachovat stávající rotátor log, jen zajistit plné propojení v celém UI.
+4️⃣ Možné technické detaily jako import.meta.glob nech na sobě – drž se Vite způsobu.
+
+🔍 DETAILNÍ INSTRUKCE PRO AI:
+1) Vytvoř 1 centrální funkci „logo dne“
+
+Místo toho, aby si každá komponenta řešila logo sama, vytvoř v projektu jednu funkci, která:
+
+dynamicky načte všechna loga ze složky public/zle-logo/pro
+
+deterministicky vybere 1 logo podle data (den v měsíci % počet log)
+
+Tuhle funkci smí AI uložit libovolně (např. src/logoRotation.ts).
+
+Výstup funkce musí být:
+string URL loga — nebo null, pokud složka bude prázdná.
+
+2) Najdi kořenovou komponentu aplikace
+
+Typicky App.jsx, App.tsx, nebo místo, kde se skládají Navbar, Hero, Story, atd.
+
+Tam:
+
+zavolej funkci „logo dne“
+
+výsledek ulož do proměnné (např. const logoSrc = getTodaysLogo())
+
+Potom propaguj logoSrc jako props do těch komponent, které logo zobrazují:
+
+Navbar
+
+Hero
+
+případně „Logo“ komponenta, pokud existuje samostatně
+
+3) Oprava NAVBARU (logo vlevo se nezobrazuje)
+
+Otevři komponentu navbaru.
+
+Zkontroluj, jestli nepoužívá:
+
+prázdný src=""
+
+statický import typu import logo from "..."
+
+nebo něco jako "/logo.png"
+
+To vše SMAŽ.
+
+Přidej tam props:
+logoSrc
+
+A zajisti, že <img> uvnitř navbaru má:
+
+src={logoSrc}
+
+třídu .zle-logo-polish
+
+a pokud je logoSrc === null, nerenederuj obrázek vůbec.
+
+Tím se logo vlevo začne zobrazovat.
+
+4) Oprava „JEĎ TO ZLE“ v hero sekci
+
+Najdi komponentu, kde se renderuje text JEĎ TO ZLE.
+
+Najdi část „ZLE“.
+
+Tu nahraď podmíněným vložením obrázku:
+
+pokud je logoSrc !== null, místo textu „ZLE“ vlož <img> s polish efektem
+
+pokud je logoSrc === null, zachovej text „ZLE“
+
+Layout NESMÍ AI jakkoli měnit.
+
+Jen nahradí text „ZLE“ obrázkem o stejné výšce (např. pomocí inline-block + height:1em).
+
+5) Zachovej stávající „polish“ styl
+
+AI nesmí mazat ani měnit ostatní CSS.
+
+Jen zajistit, že všechny <img> loga mají třídu .zle-logo-polish.
+
+6) Nenahrávej nové komponenty, nic nepřejmenovávej
+
+Cokoliv v projektu nyní existuje, musí zůstat.
+
+AI smí pouze doplnit props, vytvořit funkci, a nahradit zdroj loga.
+
+7) Nepřidávej žádné nové obrázky
+
+Používej jen to, co je ve složce public/zle-logo/pro.
+
+8) Nepřidávej žádné další funkce nebo změny mimo oblast loga
+
+Nezasahovat do:
+
+galerie
+
+fotek
+
+sekcí
+
+layoutu
+
+routingů
+
+textů
+
+animací
+
+UI logiky
+
+✔️ VÝSLEDEK MUSÍ BÝT:
+
+Logo vlevo v navbaru se zobrazuje vždy = je stejné jako logo dne.
+
+Nápis „JEĎ TO ZLE“ používá stejné logo dne místo textu ZLE.
+
+Rotace log není změněna, jen centralizována.
+
+Všechny loga mají polish efekt.
+
+Nic jiného se v aplikaci NEZMĚNILO.
