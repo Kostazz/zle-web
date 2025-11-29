@@ -2,9 +2,8 @@ export const allLogos = [
   "/zle-logo/pro/zle-logo-3d.png",
   "/zle-logo/pro/zle-logo-chrome.png",
   "/zle-logo/pro/zle-logo-clean.png",
-  "/zle-logo/pro/zle-logo-raw.png",
   "/zle-logo/pro/zle-logo-invert.png",
-  "/zle-logo/pro/zle-logo-neon.png",
+  "/zle-logo/pro/zle-logo-raw.png",
 ];
 
 export function getAllLogos(): string[] {

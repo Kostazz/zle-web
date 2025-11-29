@@ -1,0 +1,90 @@
+🔧 MASTER FIX PROMPT – ZLE LOGA (VERZE 2.0 – AUDITOVANÁ A SAFE)
+
+AI, proveď přesně následující kroky a NIC JINÉHO.
+Dodrž každý bod doslova.
+Tento úkol je přesně vymezený.
+
+🟥 CO NESMÍŠ:
+
+❌ Nesmíš měnit žádný layout JSX (HTML struktura musí zůstat identická).
+
+❌ Nesmíš měnit texty (např. „JEĎ TO ZLE“ musí zůstat beze změny kromě vložení obrázku místo ZLE).
+
+❌ Nesmíš měnit Tailwind třídy ani existující CSS.
+
+❌ Nesmíš přidávat nové styly kromě .hero-logo-inline.
+
+❌ Nesmíš měnit logiku rotace loga (hook, context, provider).
+
+❌ Nesmíš přidávat žádné nové obrázky nebo cesty do pole loga.
+
+❌ Nesmíš upravovat jiné části aplikace (gallery, crew, shop, story, routing, API).
+
+❌ Nesmíš mazat žádné komponenty.
+
+🟩 CO SMÍŠ (a musíš) udělat:
+1. Opravit pole logos[]
+
+Otevři soubor s rotátorem log (kde je pole logos[]).
+
+Podívej se do složky client/public/zle-logo/pro.
+
+Pole logos[] uprav tak, aby obsahovalo POUZE soubory, které v této složce fyzicky existují.
+
+Nic nepřidávej navíc, nic nevynechávej.
+
+Tím se opraví rozbitý obrázek (404).
+
+2. Zvětšit logo v nápisu „JEĎ TO ZLE“ bez změny textu
+
+Najdi místo v hero sekci, kde je text „JEĎ TO ZLE“.
+
+Nahraď pouze část „ZLE“ obrázkem loga dne (logoSrc).
+
+Obalte <img> do wrapperu s třídou:
+
+class="hero-logo-inline zle-logo-polish"
+
+
+V CSS přidej pouze toto (nic jiného!):
+
+.hero-logo-inline {
+  height: 1.4em;
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+
+Nic jiného neupravuj.
+
+Tím se logo zvětší přesně tak, aby dominovalo vedle „JEĎ TO“.
+
+3. Opravit černý rámeček kolem loga
+
+Zkontroluj <img> v hero i navbaru.
+
+Zajisti, že:
+
+nemají žádný border,
+
+žádný background-color,
+
+žádné wrappery nemají Tailwind bg-* nebo border.
+
+Pokud černý rámeček pochází z obrázku samotného, neřeš to (je součást designu).
+
+Pokud pochází z CSS, odstraň pouze daný border/background.
+
+🟢 FINÁLNÍ STAV MUSÍ BÝT:
+
+✔️ Navbar logo se zobrazuje správně (identické jako logo dne).
+
+✔️ Hero „JEĎ TO ZLE“ má velké logo místo textu ZLE.
+
+✔️ Žádný černý rám není z CSS.
+
+✔️ Pole logos[] odpovídá 1:1 obsahu složky zle-logo/pro.
+
+✔️ Všechna loga mají polish efekt, ale barvy zůstávají původní.
+
+✔️ Žádné jiné části aplikace nejsou jakkoliv dotčeny.

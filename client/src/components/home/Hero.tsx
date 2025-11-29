@@ -21,7 +21,7 @@ export function Hero() {
               <img
                 src={logoSrc}
                 alt="ZLE"
-                className="zle-logo-polish inline-block h-[1em] align-middle"
+                className="hero-logo-inline zle-logo-polish"
                 data-testid="img-hero-logo"
               />
             ) : (

@@ -408,6 +408,13 @@
   filter: grayscale(100%) contrast(1.2) brightness(1.1);
 }
 
+/* Hero Logo Inline */
+.hero-logo-inline {
+  height: 1.4em;
+  display: inline-block;
+  vertical-align: baseline;
+}
+
 /* ZLE Logo Polish Effect */
 .zle-logo-polish {
   filter:
