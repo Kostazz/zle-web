@@ -22,6 +22,7 @@ import LegalPrivacy from "@/pages/legal/privacy";
 import LegalCookies from "@/pages/legal/cookies";
 import LegalReturns from "@/pages/legal/returns";
 import LegalContact from "@/pages/legal/contact";
+import ServerError from "@/pages/errors/ServerError";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -44,6 +45,7 @@ function Router() {
       <Route path="/legal/cookies" component={LegalCookies} />
       <Route path="/legal/returns" component={LegalReturns} />
       <Route path="/legal/contact" component={LegalContact} />
+      <Route path="/500" component={ServerError} />
       <Route component={NotFound} />
     </Switch>
   );
