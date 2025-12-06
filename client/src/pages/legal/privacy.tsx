@@ -8,94 +8,96 @@ export default function LegalPrivacy() {
       <main className="max-w-2xl mx-auto pt-20 pb-32 px-4 text-neutral-200 text-sm leading-relaxed">
         <Link href="/legal" className="inline-flex items-center gap-2 text-white/60 hover:text-white text-sm mb-8 transition-colors" data-testid="link-back-legal">
           <ArrowLeft className="h-4 w-4" />
-          Zpet na Legal
+          Zpět na Legal
         </Link>
         
-        <h1 className="text-3xl font-bold mb-6" data-testid="text-privacy-title">Ochrana osobnich udaju (GDPR)</h1>
+        <h1 className="text-3xl font-bold mb-6" data-testid="text-privacy-title">Ochrana osobních údajů (GDPR)</h1>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">1. Spravce osobnich udaju</h2>
+          <h2 className="font-semibold mb-2">1. Správce osobních údajů</h2>
           <p>
-            Spravcem osobnich udaju je:
+            Správcem osobních údajů je:
             <br />
-            Jmeno / nazev: ________________________________ <br />
+            {/* TODO: doplň údaje */}
+            Jméno / název: ________________________________ <br />
             Kontakt (e-mail): ________________________________
           </p>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">2. Rozsah zpracovavanych udaju</h2>
-          <p>Zpracovavame zejmena tyto kategorie udaju:</p>
+          <h2 className="font-semibold mb-2">2. Rozsah zpracovávaných údajů</h2>
+          <p>Zpracováváme zejména tyto kategorie údajů:</p>
           <ul className="list-disc list-inside mt-2">
-            <li>identifikacni udaje (jmeno, prijmeni)</li>
-            <li>kontaktni udaje (e-mail, telefon, dorucovaci adresa)</li>
-            <li>udaje o objednavkach a platbach</li>
-            <li>technicke udaje z cookies (IP adresa, typ zarizeni, zakladni analytika)</li>
+            <li>identifikační údaje (jméno, příjmení)</li>
+            <li>kontaktní údaje (e-mail, telefon, doručovací adresa)</li>
+            <li>údaje o objednávkách a platbách</li>
+            <li>technické údaje z cookies (IP adresa, typ zařízení, základní analytika)</li>
           </ul>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">3. Ucely zpracovani</h2>
-          <p>Osobni udaje zpracovavame za ucelem:</p>
+          <h2 className="font-semibold mb-2">3. Účely zpracování</h2>
+          <p>Osobní údaje zpracováváme za účelem:</p>
           <ul className="list-disc list-inside mt-2">
-            <li>vyrizeni objednavek a doruceni zbozi</li>
-            <li>komunikace se zakazniky (dotazy, podpora, reklamace)</li>
-            <li>plneni pravnich povinnosti (danove, ucetni predpisy)</li>
-            <li>zakladni analytiky a ochrany webu (opravneny zajem)</li>
+            <li>vyřízení objednávek a doručení zboží</li>
+            <li>komunikace se zákazníky (dotazy, podpora, reklamace)</li>
+            <li>plnění právních povinností (daňové, účetní předpisy)</li>
+            <li>základní analytiky a ochrany webu (oprávněný zájem)</li>
           </ul>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">4. Pravni zaklad zpracovani</h2>
+          <h2 className="font-semibold mb-2">4. Právní základ zpracování</h2>
           <p>
-            Zpracovani osobnich udaju probiha na zaklade:
+            Zpracování osobních údajů probíhá na základě:
           </p>
           <ul className="list-disc list-inside mt-2">
-            <li>plneni smlouvy (objednavka zbozi)</li>
-            <li>splneni pravni povinnosti (vedeni ucetnictvi apod.)</li>
-            <li>opravneneho zajmu spravce (bezpecnost, analytika)</li>
-            <li>souhlasu subjektu udaju (napr. newsletter – pokud bude pouzit)</li>
+            <li>plnění smlouvy (objednávka zboží)</li>
+            <li>splnění právní povinnosti (vedení účetnictví apod.)</li>
+            <li>oprávněného zájmu správce (bezpečnost, analytika)</li>
+            <li>souhlasu subjektu údajů (např. newsletter – pokud bude použit)</li>
           </ul>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">5. Doba uchovani udaju</h2>
+          <h2 className="font-semibold mb-2">5. Doba uchování údajů</h2>
           <p>
-            Udaje uchovavame po dobu nezbytnou k plneni uvedenych ucelu a v souladu s pravnimi predpisy (napr. ucetni doklady po dobu stanovenou zakonem).
+            Údaje uchováváme po dobu nezbytnou k plnění uvedených účelů a v souladu s právními předpisy (např. účetní doklady po dobu stanovenou zákonem).
           </p>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">6. Prijemci osobnich udaju</h2>
-          <p>Osobni udaje mohou byt zpristupneny:</p>
+          <h2 className="font-semibold mb-2">6. Příjemci osobních údajů</h2>
+          <p>Osobní údaje mohou být zpřístupněny:</p>
           <ul className="list-disc list-inside mt-2">
-            <li>dopravcum (pro doruceni zbozi)</li>
-            <li>poskytovateli webhostingu / technickeho reseni</li>
-            <li>pripadne ucetnimu nebo danovemu poradci</li>
+            <li>dopravcům (pro doručení zboží)</li>
+            <li>poskytovateli webhostingu / technického řešení</li>
+            <li>případně účetnímu nebo daňovému poradci</li>
           </ul>
           <p className="mt-2">
-            Vzdy pouze v nezbytnem rozsahu pro splneni daneho ucelu.
+            Vždy pouze v nezbytném rozsahu pro splnění daného účelu.
           </p>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">7. Prava subjektu udaju</h2>
-          <p>Mate zejmena tato prava:</p>
+          <h2 className="font-semibold mb-2">7. Práva subjektů údajů</h2>
+          <p>Máte zejména tato práva:</p>
           <ul className="list-disc list-inside mt-2">
-            <li>pravo na pristup k osobnim udajum</li>
-            <li>pravo na opravu nebo doplneni udaju</li>
-            <li>pravo na vymaz (pokud to nebrani zakonnym povinnostem)</li>
-            <li>pravo na omezeni zpracovani</li>
-            <li>pravo vznest namitku proti zpracovani</li>
-            <li>pravo podat stiznost u Uradu pro ochranu osobnich udaju</li>
+            <li>právo na přístup k osobním údajům</li>
+            <li>právo na opravu nebo doplnění údajů</li>
+            <li>právo na výmaz (pokud to nebrání zákonným povinnostem)</li>
+            <li>právo na omezení zpracování</li>
+            <li>právo vznést námitku proti zpracování</li>
+            <li>právo podat stížnost u Úřadu pro ochranu osobních údajů</li>
           </ul>
         </section>
 
         <section>
           <h2 className="font-semibold mb-2">8. Kontakt pro GDPR</h2>
           <p>
-            Pro uplatneni prav nebo dotazy k ochrane osobnich udaju nas kontaktujte na:
+            Pro uplatnění práv nebo dotazy k ochraně osobních údajů nás kontaktujte na:
             <br />
+            {/* TODO: doplň GDPR kontakt */}
             E-mail: ________________________________
           </p>
         </section>

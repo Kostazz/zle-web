@@ -14,18 +14,18 @@ export default function LegalHub() {
         <h1 className="text-3xl font-bold mb-6" data-testid="text-legal-title">ZLE Legal Hub</h1>
 
         <p className="mb-6 text-neutral-400 text-sm leading-relaxed">
-          Kompletni pravni dokumentace znacky ZLE. Vsechno prehledne, nerusivne a profesionalne na jednom miste.
+          Kompletní právní dokumentace značky ZLE. Všechno přehledně, nerušivě a profesionálně na jednom místě.
         </p>
 
         <ul className="space-y-3 text-sm text-neutral-300">
           <li>
             <Link href="/legal/terms" className="hover:text-white underline underline-offset-4" data-testid="link-legal-terms">
-              Obchodni podminky
+              Obchodní podmínky
             </Link>
           </li>
           <li>
             <Link href="/legal/privacy" className="hover:text-white underline underline-offset-4" data-testid="link-legal-privacy">
-              Ochrana osobnich udaju (GDPR)
+              Ochrana osobních údajů (GDPR)
             </Link>
           </li>
           <li>
@@ -35,12 +35,12 @@ export default function LegalHub() {
           </li>
           <li>
             <Link href="/legal/returns" className="hover:text-white underline underline-offset-4" data-testid="link-legal-returns">
-              Reklamacni rad
+              Reklamační řád
             </Link>
           </li>
           <li>
             <Link href="/legal/contact" className="hover:text-white underline underline-offset-4" data-testid="link-legal-contact">
-              Kontakt pro pravni dotazy
+              Kontakt pro právní dotazy
             </Link>
           </li>
         </ul>

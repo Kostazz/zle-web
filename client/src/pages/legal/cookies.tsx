@@ -8,27 +8,27 @@ export default function LegalCookies() {
       <main className="max-w-2xl mx-auto pt-20 pb-32 px-4 text-neutral-200 text-sm leading-relaxed">
         <Link href="/legal" className="inline-flex items-center gap-2 text-white/60 hover:text-white text-sm mb-8 transition-colors" data-testid="link-back-legal">
           <ArrowLeft className="h-4 w-4" />
-          Zpet na Legal
+          Zpět na Legal
         </Link>
         
-        <h1 className="text-3xl font-bold mb-6" data-testid="text-cookies-title">Cookies – zasady pouzivani</h1>
+        <h1 className="text-3xl font-bold mb-6" data-testid="text-cookies-title">Cookies – zásady používání</h1>
 
         <section className="mb-6">
           <h2 className="font-semibold mb-2">1. Co jsou cookies</h2>
           <p>
-            Cookies jsou male textove soubory ukladane ve vasem prohlizeci pri navsteve webu. 
-            Pomahaji zajistit zakladni funkce webu a zlepsit uzivatelsky zazitek.
+            Cookies jsou malé textové soubory ukládané ve vašem prohlížeči při návštěvě webu. 
+            Pomáhají zajistit základní funkce webu a zlepšit uživatelský zážitek.
           </p>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">2. Jake cookies pouzivame</h2>
+          <h2 className="font-semibold mb-2">2. Jaké cookies používáme</h2>
           <ul className="list-disc list-inside mt-2">
             <li>
-              <span className="font-semibold">Nezbytne cookies</span> – nutne pro spravne fungovani webu (nelze je vypnout v nasich systemech).
+              <span className="font-semibold">Nezbytné cookies</span> – nutné pro správné fungování webu (nelze je vypnout v našich systémech).
             </li>
             <li>
-              <span className="font-semibold">Analyticke cookies</span> – anonymni statistiky navstevnosti a chovani uzivatelu na webu.
+              <span className="font-semibold">Analytické cookies</span> – anonymní statistiky návštěvnosti a chování uživatelů na webu.
             </li>
           </ul>
         </section>
@@ -36,15 +36,15 @@ export default function LegalCookies() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">3. Jak cookies spravovat</h2>
           <p>
-            Pouzivani cookies muzete upravit v nastaveni sveho prohlizece. 
-            Muzete je omezit nebo zcela zakazat. V takovem pripade vsak nektere casti webu nemusi fungovat spravne.
+            Používání cookies můžete upravit v nastavení svého prohlížeče. 
+            Můžete je omezit nebo zcela zakázat. V takovém případě však některé části webu nemusí fungovat správně.
           </p>
         </section>
 
         <section>
-          <h2 className="font-semibold mb-2">4. Dalsi informace</h2>
+          <h2 className="font-semibold mb-2">4. Další informace</h2>
           <p>
-            Dalsi informace o tom, jak nakladame s udaji, naleznete v dokumentu „Ochrana osobnich udaju (GDPR)".
+            Další informace o tom, jak nakládáme s údaji, naleznete v dokumentu „Ochrana osobních údajů (GDPR)".
           </p>
         </section>
       </main>
