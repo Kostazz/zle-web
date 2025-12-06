@@ -1,0 +1,16 @@
+{
+  "name": "ZLE",
+  "short_name": "ZLE",
+  "description": "ZLE — live raw, ride hard. Underground skate/street brand.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/zle-favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}
