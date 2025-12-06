@@ -42,7 +42,7 @@ export function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">
-      <div className="container mx-auto px-5 md:px-10">
+      <div className="container mx-auto pl-4 pr-7 md:pl-8 md:pr-12">
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link href="/" className="relative z-50" data-testid="link-logo">
             {logoSrc && (
