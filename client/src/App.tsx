@@ -16,6 +16,12 @@ import CheckoutCancel from "@/pages/checkout/Cancel";
 import Orders from "@/pages/account/Orders";
 import Addresses from "@/pages/account/Addresses";
 import AdminDashboard from "@/pages/admin/Dashboard";
+import LegalHub from "@/pages/legal";
+import LegalTerms from "@/pages/legal/terms";
+import LegalPrivacy from "@/pages/legal/privacy";
+import LegalCookies from "@/pages/legal/cookies";
+import LegalReturns from "@/pages/legal/returns";
+import LegalContact from "@/pages/legal/contact";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,6 +38,12 @@ function Router() {
       <Route path="/account/orders" component={Orders} />
       <Route path="/account/addresses" component={Addresses} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/legal" component={LegalHub} />
+      <Route path="/legal/terms" component={LegalTerms} />
+      <Route path="/legal/privacy" component={LegalPrivacy} />
+      <Route path="/legal/cookies" component={LegalCookies} />
+      <Route path="/legal/returns" component={LegalReturns} />
+      <Route path="/legal/contact" component={LegalContact} />
       <Route component={NotFound} />
     </Switch>
   );

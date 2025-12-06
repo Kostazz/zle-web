@@ -33,6 +33,9 @@ export function Footer() {
               <Link href="/contact" className="text-white/60 hover:text-white text-sm transition-colors" data-testid="link-footer-contact">
                 KONTAKT
               </Link>
+              <Link href="/legal" className="text-white/60 hover:text-white text-sm transition-colors" data-testid="link-footer-legal">
+                LEGAL
+              </Link>
             </nav>
           </div>
 
