@@ -10,12 +10,14 @@ export default function ZleLogo({ className = "" }: ZleLogoProps) {
   if (!logoSrc) return null;
 
   return (
-    <img
-      src={logoSrc}
-      alt="ZLE – Live Style Culture Brand"
-      className={`zle-logo-polish h-8 md:h-10 w-auto object-contain ${className}`.trim()}
-      loading="lazy"
-      data-testid="img-zle-logo"
-    />
+    <div className="relative flex items-center">
+      <img
+        src={logoSrc}
+        alt="ZLE – Live Style Culture Brand"
+        className={`zle-logo-safe zle-logo-polish max-h-10 md:max-h-14 w-auto object-contain object-center ${className}`.trim()}
+        loading="lazy"
+        data-testid="img-zle-logo"
+      />
+    </div>
   );
 }

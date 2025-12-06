@@ -1,0 +1,80 @@
+We need to upgrade the ZleLogo component so that:
+
+1) Logos that already have correct proportions (most of our square/correct PNGs) remain UNCHANGED.
+2) Only logos with unusual proportions, extra whitespace, different aspect ratios, or embedded backgrounds get normalized.
+3) The navbar layout must NOT change.
+4) This must be done safely, without guessing or destructive overrides.
+
+Implement the following:
+
+────────────────────────────────────────
+A) AUTO-NORMALIZED LOGO BOX
+────────────────────────────────────────
+
+Inside ZleLogo, wrap the <img> in a <div> that controls proportions:
+
+<div className="relative flex items-center">
+  <img ... />
+</div>
+
+Add these Tailwind utilities to the <img>:
+
+- max-h-10 (on mobile)
+- md:max-h-14 (on desktop)
+- w-auto
+- object-contain
+- object-center
+
+IMPORTANT:
+Do NOT force width or height.
+These utilities should act as "upper limits", not fixed dimensions.
+
+This means:
+
+- Correct logos remain fully natural.
+- Oversized / odd-proportion logos automatically shrink into the normalized box.
+
+────────────────────────────────────────
+B) AUTO-TRIM WHITESPACE USING CSS
+────────────────────────────────────────
+
+Add a CSS class:
+
+.zle-logo-safe {
+  display: block;
+  max-height: 100%;
+  width: auto;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+
+Critically:
+Do NOT set explicit height/width.
+Do NOT modify padding/margins.
+
+────────────────────────────────────────
+C) Use both: Tailwind limits + safe class
+────────────────────────────────────────
+
+Combine:
+
+className="zle-logo-safe max-h-10 md:max-h-14 w-auto object-contain object-center"
+
+This ensures:
+
+- Logos that already fit → unchanged.
+- Logos too big/tall/wide → normalized inside our safe box.
+- Logos with extra whitespace → visually auto-centered.
+- Navbar spacing → untouched.
+
+────────────────────────────────────────
+D) Verify
+
+Check:
+- Correct logos (same aspect ratio as before) show NO visual change.
+- Only odd-sized logos get adjusted downwards.
+- No layout changes in the navbar.
+- No TypeScript/JSX issues.
+
+Return the final ZleLogo path + className.

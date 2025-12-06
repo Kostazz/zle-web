@@ -415,6 +415,16 @@
   vertical-align: baseline;
 }
 
+/* ZLE Logo Safe Box - Auto-normalize odd proportions */
+.zle-logo-safe {
+  display: block;
+  max-height: 100%;
+  width: auto;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+
 /* ZLE Logo Polish Effect */
 .zle-logo-polish {
   filter:
