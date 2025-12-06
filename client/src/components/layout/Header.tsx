@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ShoppingBag, User, LogOut, Package, MapPin, Shield } from "lucide-react";
+import { Menu, X, ShoppingBag, LogOut, Package, MapPin, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { Badge } from "@/components/ui/badge";
