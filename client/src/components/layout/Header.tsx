@@ -49,7 +49,7 @@ export function Header() {
               <img
                 src={logoSrc}
                 alt="ZLE logo"
-                className="zle-logo-polish h-8 md:h-10 ml-3 md:ml-0"
+                className="zle-logo-polish h-8 md:h-10 ml-5 md:ml-0"
                 data-testid="img-zle-logo"
               />
             )}
