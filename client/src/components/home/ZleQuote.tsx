@@ -44,23 +44,14 @@ export function ZleQuote() {
                 : "opacity-0 translate-y-4"
             }`}
           >
-            <h3 
-              className="text-white text-2xl md:text-4xl font-bold tracking-wide mb-4 uppercase"
-              style={{
-                textShadow: "0 0 30px rgba(255, 255, 255, 0.2), 2px 2px 0 rgba(0, 0, 0, 0.8)",
-              }}
-              data-testid="text-daily-title"
-            >
-              {quote.title}
-            </h3>
             <p 
-              className="text-white/80 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto"
+              className="text-white text-xl md:text-3xl font-medium leading-relaxed max-w-3xl mx-auto"
               style={{
-                textShadow: "0 0 15px rgba(255, 255, 255, 0.1)",
+                textShadow: "0 0 20px rgba(255, 255, 255, 0.15), 1px 1px 0 rgba(0, 0, 0, 0.6)",
               }}
-              data-testid="text-daily-quote"
+              data-testid="text-daily-line"
             >
-              {quote.message}
+              {quote.dailyLine}
             </p>
           </div>
           
