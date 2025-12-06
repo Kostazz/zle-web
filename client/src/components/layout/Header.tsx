@@ -42,14 +42,14 @@ export function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-5 md:px-10">
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link href="/" className="relative z-50" data-testid="link-logo">
             {logoSrc && (
               <img
                 src={logoSrc}
                 alt="ZLE logo"
-                className="zle-logo-polish h-8 md:h-10 ml-5 md:ml-0"
+                className="zle-logo-polish h-8 md:h-10"
                 data-testid="img-zle-logo"
               />
             )}
