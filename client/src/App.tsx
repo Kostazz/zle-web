@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart-context";
 import { LogoProvider } from "@/lib/logoContext";
+import { ScrollToTop } from "@/components/layout/ScrollToTop";
 import Home from "@/pages/Home";
 import Shop from "@/pages/Shop";
 import Story from "@/pages/Story";
@@ -57,6 +58,7 @@ function App() {
       <TooltipProvider>
         <LogoProvider>
           <CartProvider>
+            <ScrollToTop />
             <Toaster />
             <Router />
           </CartProvider>
