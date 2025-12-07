@@ -1,3 +1,5 @@
+import { getPragueDateSeed, getPragueDateString } from "@/lib/pragueDate";
+
 export const quoteTitles = [
   "SVĚT JE ZLE A MY TO VIDÍME",
   "FAKE LIDI VŠUDE KOLEM KAŽDEJ DEN",
@@ -189,8 +191,7 @@ function seededRandom(seed: number, max: number, offset: number = 0): number {
 }
 
 export function generateDailyLine(): ZleQuoteData {
-  const today = new Date();
-  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const seed = getPragueDateSeed();
   
   const titleIndex = seededRandom(seed, quoteTitles.length, 1);
   const messageIndex = seededRandom(seed, quoteMessages.length, 2);
@@ -209,14 +210,14 @@ export function generateDailyQuote(): string {
 }
 
 export function getTodayQuote(): ZleQuoteData {
-  const today = new Date().toDateString();
-  const storageKey = "zleQuoteV3";
+  const pragueToday = getPragueDateString();
+  const storageKey = "zleQuoteV4";
   const storedData = localStorage.getItem(storageKey);
   
   if (storedData) {
     try {
       const { date, quote } = JSON.parse(storedData);
-      if (date === today && quote.title && quote.message && quote.dailyLine) {
+      if (date === pragueToday && quote.title && quote.message && quote.dailyLine) {
         return quote;
       }
     } catch {
@@ -224,7 +225,7 @@ export function getTodayQuote(): ZleQuoteData {
   }
   
   const newQuote = generateDailyLine();
-  localStorage.setItem(storageKey, JSON.stringify({ date: today, quote: newQuote }));
+  localStorage.setItem(storageKey, JSON.stringify({ date: pragueToday, quote: newQuote }));
   return newQuote;
 }
 
@@ -234,8 +235,7 @@ export function getTodayDailyLine(): string {
 }
 
 export function getSimpleQuote(): string {
-  const today = new Date();
-  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const seed = getPragueDateSeed();
   
   const type = seededRandom(seed, 3, 10);
   

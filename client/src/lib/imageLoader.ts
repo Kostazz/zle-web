@@ -1,3 +1,5 @@
+import { getPragueDayOfMonth, getPragueDateSeed } from "./pragueDate";
+
 export const allLogos = [
   "/zle/logo/36656331-57eb-4f01-951a-5a5abf884a6c.jpg",
   "/zle/logo/39840c8a-5ec0-48e5-b9c6-add35e0505f2.jpg",
@@ -29,14 +31,12 @@ export function getTodaysLogo(): string {
     return "/zle/logo/36656331-57eb-4f01-951a-5a5abf884a6c.jpg";
   }
   
-  const today = new Date();
-  const dayIndex = today.getDate() % logos.length;
+  const dayIndex = getPragueDayOfMonth() % logos.length;
   return logos[dayIndex];
 }
 
 export function getDailyShuffledPhotos(photos: string[]): string[] {
-  const today = new Date();
-  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const seed = getPragueDateSeed();
   return shuffleWithSeed(photos, seed);
 }
 
