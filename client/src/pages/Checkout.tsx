@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin, Coins } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
 import type { PaymentMethod } from "@shared/schema";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
@@ -141,9 +142,21 @@ export default function Checkout() {
 
     console.log("NEW ZLE ORDER", orderData);
 
-    const existingOrders = JSON.parse(localStorage.getItem("zle-orders") || "[]");
-    existingOrders.push({ ...orderData, id: crypto.randomUUID() });
-    localStorage.setItem("zle-orders", JSON.stringify(existingOrders));
+    const newOrder: ZleOrder = {
+      id: crypto.randomUUID(),
+      createdAt: orderData.createdAt,
+      amount: total,
+      currency: "CZK",
+      paymentMethod,
+      paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
+      items,
+      customerEmail: formData.email,
+      customerName: formData.name,
+      customerAddress: formData.address,
+      customerCity: formData.city,
+      customerZip: formData.zip,
+    };
+    appendOrder(newOrder);
 
     if (paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay") {
       checkoutMutation.mutate({

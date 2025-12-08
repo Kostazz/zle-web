@@ -76,6 +76,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  // Static HTML, safe by design – no user input. CSS generated from internal config.
   return (
     <style
       dangerouslySetInnerHTML={{

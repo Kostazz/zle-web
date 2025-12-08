@@ -1,0 +1,358 @@
+ZLE SECURITY HARDENING PACK v1.0
+
+(copy-paste pro Replit Agenta)
+
+We are hardening security for the ZLE React/Tailwind shop.
+
+GOAL:
+
+Add frontend security best practices without breaking any existing behavior.
+
+Keep this as a frontend-only MVP (no new backend, no auth provider).
+
+Make it easy to extend later when a real backend is added.
+
+
+The project:
+
+React + TypeScript (client/src/…)
+
+Router (wouter or similar)
+
+Checkout flow with card/Stripe, bank transfer, and crypto payments
+
+Orders stored in localStorage["zle-orders"]
+
+Admin page /admin/orders may already exist or will be added later
+
+
+GENERAL RULES:
+
+✅ Prefer additive, minimal changes.
+
+✅ If something already exists, extend it, don’t delete or rewrite.
+
+❌ Do NOT change design, layout, or copy.
+
+❌ Do NOT remove any existing routes or payment methods.
+
+❌ Do NOT introduce new npm dependencies unless absolutely necessary (and only lightweight ones).
+
+
+──────────────────────────────────────── STEP 1 – SECURITY AUDIT (READ-ONLY) ────────────────────────────────────────
+
+1. Scan the codebase under client/src for risky patterns:
+
+dangerouslySetInnerHTML
+
+eval(, new Function(
+
+Direct insertion of untrusted values into href, src, or style.
+
+Any manual DOM access document.* that injects HTML.
+
+
+
+2. Summarize:
+
+List each risky usage (if any) with file + line.
+
+If nothing is found, explicitly state that no high-risk React patterns were detected.
+
+
+
+
+DO NOT change anything in this step yet.
+
+──────────────────────────────────────── STEP 2 – SANITIZE RENDERED HTML (IF NEEDED) ────────────────────────────────────────
+
+Only if you find dangerouslySetInnerHTML or similar:
+
+1. If the HTML content is fully static (hard-coded string, not user input):
+
+Leave it as is but add a brief comment above it: // Static HTML, safe by design – no user input.
+
+
+
+2. If the HTML content includes any user-controlled input:
+
+First try to remove dangerouslySetInnerHTML and render it as normal JSX text.
+
+If that’s not possible, create a small helper function in a new file: client/src/utils/sanitizeHtml.ts that simply strips <script> tags and on*= attributes.
+
+Use this sanitizer before passing HTML to dangerouslySetInnerHTML.
+
+
+
+
+If no risky patterns exist, SKIP this step entirely.
+
+──────────────────────────────────────── STEP 3 – SAFE LOCALSTORAGE ACCESS FOR ORDERS ────────────────────────────────────────
+
+We want to harden how orders are read/written to localStorage, without changing the schema.
+
+1. Find where localStorage["zle-orders"] is written and read. Typical candidates:
+
+Checkout success handler
+
+Admin orders page (if already added)
+
+
+
+2. Create a small utility in: client/src/utils/orderStorage.ts
+
+It should export:
+
+export interface ZleOrder {
+  id: string;
+  createdAt: string;
+  amount: number;
+  currency: string;
+  paymentMethod: string;
+  paymentNetwork?: string;
+  items: any[];
+  customerEmail?: string;
+  customerName?: string;
+}
+
+const STORAGE_KEY = "zle-orders";
+
+export function loadOrders(): ZleOrder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    // Corrupted data – reset
+    window.localStorage.removeItem(STORAGE_KEY);
+    return [];
+  }
+}
+
+export function saveOrders(orders: ZleOrder[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  } catch {
+    // Ignore quota errors in MVP
+  }
+}
+
+export function appendOrder(order: ZleOrder) {
+  const current = loadOrders();
+  current.push(order);
+  saveOrders(current);
+}
+
+
+3. Replace all direct localStorage.getItem("zle-orders"), setItem("zle-orders") and similar with these helpers.
+
+
+4. Ensure:
+
+No runtime errors if localStorage is disabled or corrupted.
+
+SSR/preview builds do not crash (guard on typeof window).
+
+
+
+
+──────────────────────────────────────── STEP 4 – HARDEN PAYMENT METHOD & NETWORK SELECTION ────────────────────────────────────────
+
+We want to guarantee that only whitelisted values are used for payment methods and networks.
+
+1. Locate the TypeScript types/enums/constants that describe:
+
+Payment methods (card/Stripe, bank transfer, crypto)
+
+Crypto networks (BTC, ETH, SOL, USDC, Pi mainnet, etc.)
+
+
+If they don’t exist, create:
+
+export type PaymentMethod =
+  | "card"
+  | "bank-transfer"
+  | "crypto";
+
+export type CryptoNetwork =
+  | "bitcoin"
+  | "ethereum"
+  | "solana"
+  | "usdc-ethereum"
+  | "usdc-solana"
+  | "pi-mainnet";
+
+in client/src/types/payments.ts and reuse everywhere.
+
+
+2. In the checkout code:
+
+Ensure that the selected payment method can only be one of the above values.
+
+For crypto:
+
+Require selecting a CryptoNetwork from a fixed list (no free text).
+
+When logging/creating an order, store only this enum value.
+
+
+
+
+3. Validate:
+
+If an invalid method/network is somehow present (e.g. tampered form), fall back to a safe default or show a validation error, but never crash.
+
+
+
+
+──────────────────────────────────────── STEP 5 – SIMPLE FRONTEND GUARD FOR /admin/orders ────────────────────────────────────────
+
+We understand this is NOT full security (no backend auth), but we want at least a soft lock to keep casual visitors out.
+
+1. Create a simple config in: client/src/config/admin.ts
+
+export const ZLE_ADMIN_KEY = import.meta.env.VITE_ZLE_ADMIN_KEY || "";
+
+(If the project is not using Vite, adapt to the existing env system.)
+
+
+2. In the AdminOrdersPage component:
+
+On mount, check if ZLE_ADMIN_KEY is non-empty.
+
+If it is empty, do NOT block access (MVP dev behavior).
+
+If it is set, require the key in one of these ways (choose ONE and implement it simply):
+
+Option A – Query param:
+
+Read adminKey from the URL query string.
+
+If adminKey !== ZLE_ADMIN_KEY, show a simple message: "Access denied – invalid admin key." and do not render order data.
+
+
+Option B – Prompt once per session (localStorage):
+
+If there is no "zle-admin-authorized" flag in localStorage, show a small modal with a password input for the admin key.
+
+If the input matches ZLE_ADMIN_KEY, set "zle-admin-authorized" = "1" and show the data.
+
+Otherwise show "Access denied – invalid admin key.".
+
+
+Keep the implementation minimal and readable.
+
+
+
+3. Document this in a short comment at the top of the AdminOrdersPage file:
+
+// NOTE: Frontend-only soft protection for /admin/orders.
+// Real security must be implemented on the backend once ZLE has a server.
+
+
+
+IMPORTANT:
+
+Do NOT block access if VITE_ZLE_ADMIN_KEY is not configured – we still want easy local dev.
+
+
+──────────────────────────────────────── STEP 6 – BASIC META SECURITY HEADERS (NON-BREAKING) ────────────────────────────────────────
+
+We can’t control real HTTP headers from React, but we can add some safe meta tags.
+
+1. Open the main HTML file:
+
+Likely client/public/index.html or client/index.html.
+
+
+
+2. Inside <head>, ensure we have:
+
+<!-- Prevent basic clickjacking in old browsers (modern headers will come from hosting later) -->
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+If it already exists, leave it.
+
+
+3. Optionally add a very relaxed CSP that is unlikely to break the app:
+
+<!-- Minimal, relaxed Content Security Policy placeholder.
+     For production hosting, this should be moved to real HTTP headers and tightened. -->
+<meta
+  http-equiv="Content-Security-Policy"
+  content="default-src 'self' https: data: blob:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https:;"
+/>
+
+If there is already a CSP, do NOT add another one. Just keep the existing one.
+
+
+
+4. Do NOT add anything that would block existing Replit/Stripe integrations.
+
+
+
+──────────────────────────────────────── STEP 7 – VERIFY & REPORT ────────────────────────────────────────
+
+After applying all changes:
+
+1. Ensure the app builds and runs.
+
+
+2. Manually verify:
+
+Checkout still works for card/Stripe, bank transfer, and crypto.
+
+Orders still appear in localStorage["zle-orders"] and on /admin/orders.
+
+/admin/orders:
+
+Works as before when VITE_ZLE_ADMIN_KEY is not set.
+
+Requires the correct key when VITE_ZLE_ADMIN_KEY is set.
+
+
+
+
+3. Confirm:
+
+No dangerouslySetInnerHTML with user input remains unsanitized.
+
+All localStorage access uses the new helper.
+
+Payment methods/networks only use whitelisted values.
+
+
+
+4. Return a short summary listing:
+
+New files created.
+
+Existing files modified.
+
+Any risky patterns found and how they were resolved.
+
+How the admin key protection is implemented.
+
+
+
+
+Do not change anything beyond what is described above.
+
+
+---
+
+Když tenhle prompt proběhne, bude mít ZLE shop na frontendu:
+
+bezpečnější práci s localStorage,
+
+ošetřený výběr plateb / sítí,
+
+měkkou ochranu adminu,
+
+základní CSP meta + poznámku pro budoucí hosting,
+
+a audit všech potenciálně nebezpečných konstrukcí.

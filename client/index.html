@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     
+    <!-- Security Headers -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Minimal, relaxed Content Security Policy placeholder.
+         For production hosting, this should be moved to real HTTP headers and tightened. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' https: data: blob:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss:; frame-src 'self' https:;"
+    />
+    
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/zle-favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
