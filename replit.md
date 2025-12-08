@@ -182,3 +182,31 @@ Preferred communication style: Simple, everyday language.
 - Users marked as admin via isAdmin flag in database
 - isAdmin middleware checks user.isAdmin before allowing access
 - Admin dashboard at /admin route protected on both frontend and backend
+
+### Security Hardening (v1.0)
+
+**Security Audit Results**
+- No `eval()` or `new Function()` patterns found
+- No untrusted user input in `dangerouslySetInnerHTML` (only static CSS in chart.tsx)
+- No direct DOM injection of user content
+
+**Safe localStorage Access**
+- `client/src/utils/orderStorage.ts` - Type-safe order storage with error handling
+- Handles corrupted data, SSR safety, and quota errors gracefully
+- Used in Checkout.tsx for order persistence
+
+**Payment Method Validation**
+- `client/src/types/payments.ts` - Whitelisted payment methods and crypto networks
+- Type guards: `isValidPaymentMethod()`, `isValidCryptoNetwork()`
+- Only enum values accepted, no free-text input
+
+**Admin Key Protection (Optional)**
+- `client/src/config/admin.ts` - Frontend soft lock for admin routes
+- Set `VITE_ZLE_ADMIN_KEY` env var to enable protection
+- If not set, access allowed (dev mode behavior)
+- Note: Real security via backend `isAdmin` middleware
+
+**Content Security Policy**
+- Basic CSP meta tag in `client/index.html`
+- Relaxed policy for MVP, should be tightened in production
+- Allows: self, https, data/blob URIs, inline styles/scripts
