@@ -50,6 +50,20 @@ export const insertProductSchema = createInsertSchema(products).omit({
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
+export const paymentMethodEnum = z.enum([
+  "card",
+  "bank",
+  "gpay",
+  "applepay",
+  "usdc",
+  "btc",
+  "eth",
+  "sol",
+  "pi",
+]);
+
+export type PaymentMethod = z.infer<typeof paymentMethodEnum>;
+
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id),
@@ -63,6 +77,8 @@ export const orders = pgTable("orders", {
   status: text("status").notNull().default("pending"),
   paymentStatus: text("payment_status").default("unpaid"),
   paymentIntentId: text("payment_intent_id"),
+  paymentMethod: text("payment_method").default("card"),
+  paymentNetwork: text("payment_network"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

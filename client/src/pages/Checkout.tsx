@@ -4,11 +4,47 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ShoppingBag, Loader2, CreditCard } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin, Coins } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import type { PaymentMethod } from "@shared/schema";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
+  { value: "card", label: "Platba kartou (online)", icon: CreditCard },
+  { value: "bank", label: "Bankovní převod", icon: Landmark },
+  { value: "gpay", label: "Google Pay", icon: Wallet },
+  { value: "applepay", label: "Apple Pay", icon: Wallet },
+  { value: "usdc", label: "USDC (krypto)", icon: Coins },
+  { value: "btc", label: "Bitcoin (BTC)", icon: Bitcoin },
+  { value: "eth", label: "Ethereum (ETH)", icon: Coins },
+  { value: "sol", label: "Solana (SOL)", icon: Coins },
+  { value: "pi", label: "Pi Network (PI)", icon: Coins },
+];
+
+const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
+  usdc: [
+    { value: "ethereum", label: "Ethereum (USDC)" },
+    { value: "solana", label: "Solana (USDC)" },
+  ],
+  btc: [
+    { value: "bitcoin", label: "Bitcoin mainnet" },
+  ],
+  eth: [
+    { value: "ethereum-mainnet", label: "Ethereum mainnet" },
+  ],
+  sol: [
+    { value: "solana-mainnet", label: "Solana mainnet" },
+  ],
+  pi: [
+    { value: "pi-mainnet", label: "Pi Network (Mainnet)" },
+  ],
+};
+
+const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
 
 export default function Checkout() {
   const { items, total, clearCart } = useCart();
@@ -20,6 +56,11 @@ export default function Checkout() {
     city: "",
     zip: "",
   });
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [paymentNetwork, setPaymentNetwork] = useState<string>("");
+
+  const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
+  const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
 
   const checkoutMutation = useMutation({
     mutationFn: async (data: {
@@ -59,6 +100,11 @@ export default function Checkout() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handlePaymentMethodChange = (value: PaymentMethod) => {
+    setPaymentMethod(value);
+    setPaymentNetwork("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -71,14 +117,53 @@ export default function Checkout() {
       return;
     }
 
-    checkoutMutation.mutate({
+    if (isCryptoMethod && !paymentNetwork) {
+      toast({
+        title: "Vyber síť",
+        description: "Pro krypto platbu musíš vybrat síť.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const orderData = {
       items,
       customerName: formData.name,
       customerEmail: formData.email,
       customerAddress: formData.address,
       customerCity: formData.city,
       customerZip: formData.zip,
-    });
+      paymentMethod,
+      paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
+      total,
+      createdAt: new Date().toISOString(),
+    };
+
+    console.log("NEW ZLE ORDER", orderData);
+
+    const existingOrders = JSON.parse(localStorage.getItem("zle-orders") || "[]");
+    existingOrders.push({ ...orderData, id: crypto.randomUUID() });
+    localStorage.setItem("zle-orders", JSON.stringify(existingOrders));
+
+    if (paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay") {
+      checkoutMutation.mutate({
+        items,
+        customerName: formData.name,
+        customerEmail: formData.email,
+        customerAddress: formData.address,
+        customerCity: formData.city,
+        customerZip: formData.zip,
+      });
+    } else {
+      clearCart();
+      toast({
+        title: "Objednávka přijata",
+        description: paymentMethod === "bank" 
+          ? "Platební údaje ti pošleme emailem."
+          : `Krypto platba (${paymentMethod.toUpperCase()}) bude zpracována. Pokyny obdržíš emailem.`,
+      });
+      window.location.href = "/checkout/success";
+    }
   };
 
   if (items.length === 0) {
@@ -217,6 +302,71 @@ export default function Checkout() {
                     </div>
                   </div>
 
+                  <div className="pt-6 border-t border-white/10">
+                    <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">
+                      ZPŮSOB PLATBY *
+                    </h2>
+                    
+                    <RadioGroup
+                      value={paymentMethod}
+                      onValueChange={(value) => handlePaymentMethodChange(value as PaymentMethod)}
+                      className="space-y-3"
+                      data-testid="radio-payment-method"
+                    >
+                      {PAYMENT_METHODS.map((method) => {
+                        const Icon = method.icon;
+                        return (
+                          <div key={method.value} className="flex items-center">
+                            <RadioGroupItem
+                              value={method.value}
+                              id={`payment-${method.value}`}
+                              className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
+                              data-testid={`radio-payment-${method.value}`}
+                            />
+                            <Label
+                              htmlFor={`payment-${method.value}`}
+                              className="flex items-center gap-3 ml-3 cursor-pointer font-sans text-sm text-white/80 hover:text-white transition-colors"
+                            >
+                              <Icon className="h-4 w-4" />
+                              {method.label}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </RadioGroup>
+
+                    {isCryptoMethod && networkOptions.length > 0 && (
+                      <div className="mt-4 ml-6 pl-4 border-l border-white/20">
+                        <Label className="font-heading text-xs text-white/60 tracking-wider block mb-3">
+                          VYBER SÍŤ *
+                        </Label>
+                        <Select
+                          value={paymentNetwork}
+                          onValueChange={setPaymentNetwork}
+                        >
+                          <SelectTrigger 
+                            className="bg-white/5 border-white/20 text-white focus:border-white"
+                            data-testid="select-payment-network"
+                          >
+                            <SelectValue placeholder="Vyber síť..." />
+                          </SelectTrigger>
+                          <SelectContent className="bg-black border-white/20">
+                            {networkOptions.map((network) => (
+                              <SelectItem
+                                key={network.value}
+                                value={network.value}
+                                className="text-white focus:bg-white/10 focus:text-white"
+                                data-testid={`select-network-${network.value}`}
+                              >
+                                {network.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     type="submit"
                     disabled={checkoutMutation.isPending}
@@ -230,14 +380,26 @@ export default function Checkout() {
                       </>
                     ) : (
                       <>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        POKRAČOVAT K PLATBĚ
+                        {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay" ? (
+                          <CreditCard className="mr-2 h-4 w-4" />
+                        ) : paymentMethod === "bank" ? (
+                          <Landmark className="mr-2 h-4 w-4" />
+                        ) : (
+                          <Coins className="mr-2 h-4 w-4" />
+                        )}
+                        {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
+                          ? "POKRAČOVAT K PLATBĚ"
+                          : "ODESLAT OBJEDNÁVKU"}
                       </>
                     )}
                   </Button>
 
                   <p className="font-sans text-xs text-white/40 text-center mt-4">
-                    Budeš přesměrován na zabezpečenou platební bránu Stripe
+                    {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
+                      ? "Budeš přesměrován na zabezpečenou platební bránu Stripe"
+                      : paymentMethod === "bank"
+                      ? "Po odeslání ti pošleme platební údaje emailem"
+                      : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
                   </p>
                 </form>
               </div>
