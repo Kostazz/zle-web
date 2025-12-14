@@ -65,6 +65,13 @@ async function handleCheckoutCompleted(session: any) {
       });
       console.log(`Order ${orderId} payment completed via checkout.session.completed`);
       
+      // Generate payouts for confirmed order (ZLE EU + OPS PACK v1.0)
+      import('./payouts').then(({ generatePayoutsForOrder }) => {
+        generatePayoutsForOrder(orderId).catch(err => 
+          console.error('Failed to generate payouts:', err)
+        );
+      });
+      
       // Send order confirmation email
       if (updatedOrder) {
         sendOrderConfirmationEmail(updatedOrder).catch(err => 
@@ -94,6 +101,13 @@ async function handlePaymentSucceeded(paymentIntent: any) {
         status: 'confirmed',
       });
       console.log(`Order ${orderId} payment confirmed via payment_intent.succeeded`);
+      
+      // Generate payouts for confirmed order (ZLE EU + OPS PACK v1.0)
+      import('./payouts').then(({ generatePayoutsForOrder }) => {
+        generatePayoutsForOrder(orderId).catch(err => 
+          console.error('Failed to generate payouts:', err)
+        );
+      });
     }
   }
 }

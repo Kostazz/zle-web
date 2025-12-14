@@ -1,0 +1,274 @@
+BEFORE ANY CHANGES (HARD SAFETY RULE – MUST FOLLOW):
+
+Before modifying anything:
+- If git is available, create a checkpoint commit of the current state.
+- If git is NOT available, copy the original versions of EVERY file you touch into a /_backup folder at repo root (keep folder structure).
+- Never leave the repository in a broken or non-running state.
+- After all changes, the project MUST build and start successfully.
+If something fails, revert to the backup and apply a minimal fix.
+
+────────────────────────────────────────
+PROJECT CONTEXT
+────────────────────────────────────────
+
+We are working on the ZLE web e-shop (React/Vite client + Express/TypeScript server + Drizzle ORM).
+The project already includes:
+- products, variants, stock handling
+- cart + orders
+- Stripe checkout, verify endpoint, and webhook
+- admin endpoints
+
+Your task is to install **“ZLE EU + OPS PACK v1.0”** in a **SAFE, ADDITIVE-ONLY** way so the project becomes:
+- portable (runs locally from ZIP in VS Code),
+- future-proof for EU compliance,
+- ready for accounting, payouts, and growth.
+
+CRITICAL RULES:
+- Do NOT delete files.
+- Do NOT rename existing routes.
+- Do NOT rewrite existing business logic (checkout, orders, Stripe).
+- Prefer additive changes only (new files, new optional columns, new tables).
+- If something exists, extend gently.
+- If uncertain, do NOT override — add alongside.
+- Never hardcode real secrets.
+- Preserve all existing behavior.
+
+────────────────────────────────────────
+GOALS (DELIVERABLES)
+────────────────────────────────────────
+
+A) Portable local dev:
+   - docker-compose Postgres
+   - .env.example
+   - README instructions
+   → Project runs locally from ZIP without Replit.
+
+B) Production skeleton:
+   - accounting ledger
+   - payout rules (20/40/40 now, growth fund later)
+   - audit log
+   - GDPR anonymization
+   - VAT fields
+   → DB + backend skeleton only, no heavy UI.
+
+C) Zero regressions:
+   - checkout, order creation, Stripe verify/webhook MUST continue working.
+
+D) Clear report:
+   - list files created/modified
+   - exact local run commands
+
+────────────────────────────────────────
+0) AUDIT FIRST (THEN PROCEED AUTOMATICALLY)
+────────────────────────────────────────
+
+1) Detect repo structure (root, /client, /server, /shared).
+2) Confirm Drizzle schema path (likely ./shared/schema.ts) and its usage.
+3) Identify dev/start scripts in root package.json.
+4) Identify where orders are marked paid/confirmed and where stock is decremented.
+5) Print a brief plan (5–10 bullets), then continue automatically.
+
+────────────────────────────────────────
+1) PORTABLE LOCAL ENV + DATABASE
+────────────────────────────────────────
+
+1.1 Create or extend root `.env.example` (DO NOT create real .env):
+- DATABASE_URL=postgres://zle:zle@localhost:5432/zle
+- PORT=5000
+- NODE_ENV=development
+- STRIPE_SECRET_KEY=YOUR_STRIPE_SECRET_KEY
+- STRIPE_WEBHOOK_SECRET=YOUR_STRIPE_WEBHOOK_SECRET
+
+1.2 Create or extend `docker-compose.yml` in root:
+- Postgres 16+
+- service name: zle-db
+- ports: 5432:5432
+- POSTGRES_DB=zle
+- POSTGRES_USER=zle
+- POSTGRES_PASSWORD=zle
+- named volume for persistence
+- basic healthcheck
+
+NOTE:
+Docker may not run inside Replit — still create the file for local ZIP portability.
+For Replit verification, use existing DATABASE_URL if provided by environment.
+
+1.3 Extend root `package.json` scripts (do NOT remove existing):
+- "db:up": "docker compose up -d"
+- "db:down": "docker compose down"
+- "db:reset": "docker compose down -v && docker compose up -d"
+Keep existing scripts intact (dev/build/start/check/db:push).
+
+────────────────────────────────────────
+2) DATABASE DRIVER PORTABILITY (NEON ↔ LOCAL POSTGRES)
+────────────────────────────────────────
+
+In `server/db.ts` implement a SAFE driver switch:
+- If DATABASE_URL contains "localhost" or "127.0.0.1":
+  → use `pg` Pool
+- Otherwise:
+  → use `@neondatabase/serverless`
+
+Rules:
+- Exported `db` must keep the same shape/type.
+- Neon websocket setup only when using Neon.
+- Still throw a clear error if DATABASE_URL is missing.
+
+Dependencies:
+- Add `pg` if missing.
+- Keep existing dependencies.
+
+────────────────────────────────────────
+3) README + NODE VERSION
+────────────────────────────────────────
+
+Create or extend `README.md`:
+- Explicit line: **“Node.js 20 LTS recommended.”**
+- Local development steps:
+  1) docker compose up -d
+  2) copy .env.example → .env (cmd + PowerShell examples)
+  3) npm install
+  4) npm run db:push
+  5) npm run dev
+- Mention client URL and server port.
+
+Optional but recommended:
+- Create `.nvmrc` with value `20`.
+
+────────────────────────────────────────
+4) EU ACCOUNTING + PAYOUT SKELETON (ADD ONLY)
+────────────────────────────────────────
+
+In `shared/schema.ts` ADD (do not modify/remove existing):
+
+A) partners
+- code (unique): ZABR, KOSTA, TOMAS, GROWTH_FUND
+- displayName
+- type ("person" | "fund" | "company")
+- isActive
+- createdAt
+
+B) payout_rules (versioned)
+- id
+- validFrom
+- scope default "order"
+- partnerCode (FK)
+- percent numeric(5,2)
+- priority default 0
+- notes nullable
+- createdAt
+
+C) order_payouts
+- id
+- orderId (FK)
+- partnerCode
+- ruleId nullable
+- amount numeric(12,2)
+- currency
+- status ("pending" | "paid" | "cancelled")
+- createdAt
+- paidAt nullable
+
+D) ledger_entries (immutable)
+- id
+- orderId nullable
+- type ("sale" | "refund" | "payout" | "fee")
+- direction ("in" | "out")
+- amount numeric(12,2)
+- currency
+- meta jsonb nullable
+- createdAt
+
+E) audit_log
+- id
+- actorUserId nullable
+- action
+- entity
+- entityId
+- meta jsonb nullable
+- createdAt
+
+Extend `orders` ADDITIVELY:
+- netTotal numeric(12,2) nullable
+- vatRate numeric(5,2) nullable
+- vatAmount numeric(12,2) nullable
+DO NOT remove or rename existing `total`.
+
+Seeding (idempotent):
+- Ensure partners exist.
+- Insert payout rules ONLY if none exist:
+  - ZABR 20.00
+  - KOSTA 40.00
+  - TOMAS 40.00
+- Ensure GROWTH_FUND partner exists as placeholder.
+
+Payout generator:
+Create `server/payouts.ts` with:
+`generatePayoutsForOrder(orderId)`
+- idempotent
+- creates order_payouts once
+- writes ledger sale entry once
+- never blocks order confirmation (log errors only)
+
+Hook:
+After successful payment confirmation (verify/webhook) and stock update,
+call `generatePayoutsForOrder(order.id)` safely.
+
+────────────────────────────────────────
+5) GDPR TECHNICAL SKELETON (ADD ONLY)
+────────────────────────────────────────
+
+Add:
+- retention constants or table
+
+Admin endpoint:
+POST /api/admin/gdpr/anonymize-user
+- anonymize user + addresses
+- keep orders for accounting
+- write audit_log
+- return summary
+- DO NOT delete orders
+
+────────────────────────────────────────
+6) SECURITY HARDENING (NON-BREAKING)
+────────────────────────────────────────
+
+Add:
+- rate limiting (checkout, verify, webhook, admin writes)
+- helmet with safe defaults
+- CORS restricted in production
+- no PII logging in production
+
+Do NOT redesign auth.
+
+────────────────────────────────────────
+7) DRIZZLE / MIGRATIONS
+────────────────────────────────────────
+
+Ensure drizzle config still points to schema.
+Keep existing db:push.
+If missing, add:
+- "db:push": "drizzle-kit push"
+
+────────────────────────────────────────
+8) VERIFY & REPORT
+────────────────────────────────────────
+
+Verify:
+- server boots with DATABASE_URL
+- checkout + orders + Stripe flows still work
+- payouts generated once (idempotent)
+- no UI regressions
+
+Finally output:
+- list of files created/modified
+- local ZIP run commands:
+  docker compose up -d
+  copy .env.example → .env
+  npm install
+  npm run db:push
+  npm run dev
+- reminder: Node.js 20 LTS recommended
+
+REMEMBER:
+Additive changes only. Preserve existing behavior.

@@ -5,6 +5,9 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { seedPartners } from "./payouts";
 
 const app = express();
 const httpServer = createServer(app);
@@ -108,6 +111,35 @@ app.post(
   }
 );
 
+// Security middleware (ZLE EU + OPS PACK v1.0)
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 100 : 1000,
+  message: { error: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const checkoutLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: isProduction ? 10 : 100,
+  message: { error: 'Too many checkout attempts, please try again later.' },
+});
+
+app.use('/api/stripe/create-checkout-session', checkoutLimiter);
+app.use('/api/checkout', checkoutLimiter);
+app.use('/api/admin', apiLimiter);
+
 // Now apply JSON middleware for all other routes
 app.use(
   express.json({
@@ -148,6 +180,9 @@ app.use((req, res, next) => {
 (async () => {
   // Initialize Stripe before routes
   await initStripe();
+  
+  // Seed partners and payout rules
+  await seedPartners();
   
   await registerRoutes(httpServer, app);
 

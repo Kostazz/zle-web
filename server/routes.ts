@@ -574,5 +574,28 @@ export async function registerRoutes(
     }
   });
 
+  // Admin - GDPR anonymize user (ZLE EU + OPS PACK v1.0)
+  app.post("/api/admin/gdpr/anonymize-user", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      
+      const { anonymizeUser } = await import("./gdpr");
+      const actorId = (req.user as any)?.claims?.sub;
+      const result = await anonymizeUser(userId, actorId);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error anonymizing user:", error);
+      res.status(500).json({ error: "Failed to anonymize user" });
+    }
+  });
+
   return httpServer;
 }

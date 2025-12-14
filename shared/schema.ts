@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index, numeric } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -74,6 +74,9 @@ export const orders = pgTable("orders", {
   customerZip: text("customer_zip").notNull(),
   items: text("items").notNull(),
   total: integer("total").notNull(),
+  netTotal: numeric("net_total", { precision: 12, scale: 2 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
+  vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }),
   status: text("status").notNull().default("pending"),
   paymentStatus: text("payment_status").default("unpaid"),
   paymentIntentId: text("payment_intent_id"),
@@ -158,3 +161,84 @@ export const storyItemSchema = z.object({
 });
 
 export type StoryItem = z.infer<typeof storyItemSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EU ACCOUNTING + PAYOUT TABLES (ZLE EU + OPS PACK v1.0)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const partners = pgTable("partners", {
+  code: varchar("code", { length: 50 }).primaryKey(),
+  displayName: text("display_name").notNull(),
+  type: text("type").notNull().default("person"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = typeof partners.$inferInsert;
+
+export const payoutRules = pgTable("payout_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  validFrom: timestamp("valid_from").defaultNow(),
+  scope: text("scope").notNull().default("order"),
+  partnerCode: varchar("partner_code", { length: 50 }).notNull().references(() => partners.code),
+  percent: numeric("percent", { precision: 5, scale: 2 }).notNull(),
+  priority: integer("priority").default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PayoutRule = typeof payoutRules.$inferSelect;
+export type InsertPayoutRule = typeof payoutRules.$inferInsert;
+
+export const orderPayouts = pgTable("order_payouts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  partnerCode: varchar("partner_code", { length: 50 }).notNull(),
+  ruleId: varchar("rule_id"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("CZK"),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  paidAt: timestamp("paid_at"),
+});
+
+export type OrderPayout = typeof orderPayouts.$inferSelect;
+export type InsertOrderPayout = typeof orderPayouts.$inferInsert;
+
+export const ledgerEntries = pgTable("ledger_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id"),
+  type: text("type").notNull(),
+  direction: text("direction").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("CZK"),
+  meta: jsonb("meta"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
+export type InsertLedgerEntry = typeof ledgerEntries.$inferInsert;
+
+export const auditLog = pgTable("audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorUserId: varchar("actor_user_id"),
+  action: text("action").notNull(),
+  entity: text("entity").notNull(),
+  entityId: varchar("entity_id"),
+  meta: jsonb("meta"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type InsertAuditLogEntry = typeof auditLog.$inferInsert;
+
+export const gdprRetention = pgTable("gdpr_retention", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dataType: text("data_type").notNull(),
+  retentionDays: integer("retention_days").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type GdprRetention = typeof gdprRetention.$inferSelect;
