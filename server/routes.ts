@@ -575,7 +575,7 @@ export async function registerRoutes(
   });
 
   // Admin - GDPR anonymize user (ZLE EU + OPS PACK v1.0)
-  app.post("/api/admin/gdpr/anonymize-user", isAuthenticated, isAdmin, async (req, res) => {
+  app.post("/api/admin/gdpr/anonymize-user", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const { userId } = req.body;
       if (!userId) {
@@ -583,7 +583,7 @@ export async function registerRoutes(
       }
       
       const { anonymizeUser } = await import("./gdpr");
-      const actorId = (req.user as any)?.claims?.sub;
+      const actorId = req.user?.claims?.sub;
       const result = await anonymizeUser(userId, actorId);
       
       if (!result.success) {
