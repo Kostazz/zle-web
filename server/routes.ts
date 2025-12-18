@@ -2,10 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertOrderSchema, type CartItem, products } from "@shared/schema";
+import { insertOrderSchema, type CartItem, products, orders } from "@shared/schema";
 import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { sendShippingUpdateEmail } from "./emailService";
+import { atomicStockDeduction } from "./webhookHandlers";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -61,6 +64,7 @@ export async function registerRoutes(
       
       const items: CartItem[] = JSON.parse(orderData.items);
       
+      // Validate stock availability (no deduction here - happens atomically in webhook after payment)
       for (const item of items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
@@ -75,9 +79,8 @@ export async function registerRoutes(
         }
       }
       
-      for (const item of items) {
-        await storage.updateStock(item.productId, item.quantity);
-      }
+      // NOTE: Stock is NOT deducted here. Deduction happens atomically in webhook 
+      // handler after successful payment (see webhookHandlers.ts atomicStockDeduction)
       
       const userId = req.user?.claims?.sub;
       const order = await storage.createOrder({
@@ -288,20 +291,44 @@ export async function registerRoutes(
       const orderId = session.metadata?.orderId;
       
       if (session.payment_status === 'paid' && orderId) {
-        // Deduct stock for paid order
         const order = await storage.getOrder(orderId);
         if (order && order.paymentStatus !== 'paid') {
-          const items: CartItem[] = JSON.parse(order.items);
-          for (const item of items) {
-            await storage.updateStock(item.productId, item.quantity);
-          }
+          // Check if stock already deducted (by webhook or previous verification call)
+          const [currentOrder] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
           
-          await storage.updateOrder(orderId, {
-            paymentStatus: 'paid',
-            paymentIntentId: session.payment_intent as string,
-            status: 'confirmed',
-          });
-          console.log(`Order ${orderId} payment verified and confirmed`);
+          if (!currentOrder?.stockDeductedAt) {
+            // Webhook hasn't processed yet - perform atomic stock deduction here
+            const items: CartItem[] = JSON.parse(order.items);
+            const stockResult = await atomicStockDeduction(orderId, items);
+            
+            if (!stockResult.success) {
+              // Some stock deductions failed - flag for manual review
+              console.warn(`[verify] Stock deduction issues for order ${orderId}:`, stockResult.failures);
+              await storage.updateOrder(orderId, {
+                paymentStatus: 'paid',
+                paymentIntentId: session.payment_intent as string,
+                status: 'confirmed',
+                manualReview: true,
+                stockDeductedAt: new Date(),
+              });
+            } else {
+              await storage.updateOrder(orderId, {
+                paymentStatus: 'paid',
+                paymentIntentId: session.payment_intent as string,
+                status: 'confirmed',
+                stockDeductedAt: new Date(),
+              });
+            }
+            console.log(`Order ${orderId} payment verified and stock deducted via verification endpoint`);
+          } else {
+            // Stock already deducted - just update payment status if needed
+            await storage.updateOrder(orderId, {
+              paymentStatus: 'paid',
+              paymentIntentId: session.payment_intent as string,
+              status: 'confirmed',
+            });
+            console.log(`Order ${orderId} payment verified (stock already deducted)`);
+          }
         }
         
         res.json({ 

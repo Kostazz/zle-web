@@ -95,8 +95,9 @@ async function recordEvent(
 /**
  * Atomic stock deduction with fail-safe handling.
  * Returns list of failed deductions for manual review.
+ * Exported for use in verification endpoint as backup for webhook race conditions.
  */
-async function atomicStockDeduction(
+export async function atomicStockDeduction(
   orderId: string,
   items: CartItem[]
 ): Promise<{ success: boolean; failures: string[] }> {
