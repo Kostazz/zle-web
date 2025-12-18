@@ -425,6 +425,12 @@ export async function registerRoutes(
         description,
         stock: Number(stock) || 100,
         isActive: isActive !== false,
+        // Waterfall payout fields (ZLE v1.2.2) - defaults
+        productModel: req.body.productModel || "legacy",
+        unitCost: req.body.unitCost || null,
+        stockOwner: req.body.stockOwner || null,
+        pricingMode: req.body.pricingMode || null,
+        pricingPercent: req.body.pricingPercent || null,
       });
       res.json(product);
     } catch (error) {
@@ -594,6 +600,83 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error anonymizing user:", error);
       res.status(500).json({ error: "Failed to anonymize user" });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CSV EXPORT ENDPOINTS (ZLE v1.2.3)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Admin - Export ledger as CSV
+  app.get("/api/admin/exports/ledger.csv", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { exportLedgerCsv } = await import("./exports");
+      const csv = await exportLedgerCsv();
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=ledger.csv");
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting ledger:", error);
+      res.status(500).json({ error: "Failed to export ledger" });
+    }
+  });
+
+  // Admin - Export orders as CSV
+  app.get("/api/admin/exports/orders.csv", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { exportOrdersCsv } = await import("./exports");
+      const csv = await exportOrdersCsv();
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=orders.csv");
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting orders:", error);
+      res.status(500).json({ error: "Failed to export orders" });
+    }
+  });
+
+  // Admin - Export payouts as CSV
+  app.get("/api/admin/exports/payouts.csv", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { exportPayoutsCsv } = await import("./exports");
+      const csv = await exportPayoutsCsv();
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=payouts.csv");
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting payouts:", error);
+      res.status(500).json({ error: "Failed to export payouts" });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REFUND ENDPOINT (ZLE v1.2.2)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Admin - Apply refund for order
+  app.post("/api/admin/orders/:id/refund", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { amount, reason } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Valid refund amount is required" });
+      }
+      
+      const { applyRefundForOrder } = await import("./refunds");
+      const actorId = req.user?.claims?.sub;
+      const providerEventId = `manual-refund-${id}-${Date.now()}`;
+      
+      const result = await applyRefundForOrder(id, amount, reason || "Admin refund", providerEventId, actorId);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error applying refund:", error);
+      res.status(500).json({ error: "Failed to apply refund" });
     }
   });
 

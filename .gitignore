@@ -4,3 +4,23 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment and secrets (ZLE v1.2.2)
+.env
+.env.*
+!.env.example
+
+# Security-sensitive files
+*.pem
+*.key
+*.p12
+*.sqlite
+*.dump
+
+# Backups
+_backup/
+backups/
+
+# Local caches
+.cache/
+*.log

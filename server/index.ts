@@ -8,6 +8,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { seedPartners } from "./payouts";
+import { requestIdMiddleware } from "./middleware/requestId";
 
 const app = express();
 const httpServer = createServer(app);
@@ -110,6 +111,9 @@ app.post(
     }
   }
 );
+
+// Request ID middleware for observability (ZLE v1.2.2)
+app.use(requestIdMiddleware);
 
 // Security middleware (ZLE EU + OPS PACK v1.0)
 app.use(helmet({
