@@ -11,6 +11,7 @@ import { orders, orderEvents, products, auditLog, type CartItem } from '@shared/
 import { eq, and, sql, gte } from 'drizzle-orm';
 import { emitOrderEvent, OpsEventType } from './ops/events';
 import { handleChargeback } from './refunds';
+import { finalizePaidOrder } from './paymentPipeline';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string, uuid: string): Promise<void> {
@@ -215,16 +216,15 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     currency: 'CZK',
   });
 
-  // Generate payouts for confirmed order (ZLE EU + OPS PACK v1.0)
-  import('./payouts').then(({ generatePayoutsForOrder }) => {
-    generatePayoutsForOrder(orderId)
-      .then(() => {
-        emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
-      })
-      .catch(err => 
-        console.error('Failed to generate payouts:', err)
-      );
+  // Finalize order: ledger entry + payouts (idempotent via paymentPipeline)
+  await finalizePaidOrder({
+    orderId,
+    provider: 'stripe',
+    providerEventId: stripeEventId,
+    meta: { source: 'webhook-checkout', sessionId: session.id },
   });
+  
+  emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
   
   // Send order confirmation email
   if (updatedOrder) {
@@ -303,16 +303,15 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
     currency: 'CZK',
   });
 
-  // Generate payouts
-  import('./payouts').then(({ generatePayoutsForOrder }) => {
-    generatePayoutsForOrder(orderId)
-      .then(() => {
-        emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
-      })
-      .catch(err => 
-        console.error('Failed to generate payouts:', err)
-      );
+  // Finalize order: ledger entry + payouts (idempotent via paymentPipeline)
+  await finalizePaidOrder({
+    orderId,
+    provider: 'stripe',
+    providerEventId: stripeEventId,
+    meta: { source: 'webhook-payment-intent', paymentIntentId: paymentIntent.id },
   });
+  
+  emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
 }
 
 async function handlePaymentFailed(paymentIntent: any, stripeEventId: string) {

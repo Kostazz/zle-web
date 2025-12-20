@@ -1,0 +1,60 @@
+APPLY FIX NOW (SAFE / ADDITIVE / IDEMPOTENT)
+
+Problem: Verify endpoint marks order paid + deducts stock, but does NOT record order_events, does NOT create ledger sale entry, does NOT generate payouts. This breaks Scenario A.
+
+GOAL: Make verify and webhook share the same idempotent “post-payment pipeline” without breaking existing flows.
+
+ABSOLUTE RULES:
+- Additive-only, no breaking changes.
+- Do not change Stripe signature behavior.
+- Must be idempotent: no duplicates if verify+webhook both run.
+
+IMPLEMENTATION (preferred minimal architecture):
+
+1) Create new helper: server/paymentPipeline.ts (new file)
+Export function:
+  async function finalizePaidOrder({
+    orderId,
+    provider,
+    providerEventId,
+    meta
+  })
+
+Inside finalizePaidOrder do idempotently:
+A) Insert into order_events with unique(provider, providerEventId)
+   - onConflictDoNothing
+B) Ensure ledger sale entry exists exactly once for this order
+   - either use unique constraint (recommended) OR query first then insert
+   - type='sale', direction='in', amount=order.total, currency=order.currency (or default)
+C) Call generatePayoutsForOrder(orderId) (already idempotent)
+   - do not throw to caller; log errors
+D) Optional: write audit_log entry "finalizePaidOrder" (meta includes providerEventId)
+
+2) Update verify endpoint in server/routes.ts:
+After order is confirmed paid + stockDeductedAt is set (successful atomic deduction),
+call:
+  await finalizePaidOrder({
+    orderId,
+    provider: "stripe",
+    providerEventId: `verify-${sessionId}`,
+    meta: { source: "verify" }
+  })
+
+Important:
+- If verify is called twice, order_events insert should conflict and early-exit OR proceed safely without dupes.
+
+3) Update webhook handler (server/webhookHandlers.ts) to also call finalizePaidOrder (if not already)
+Use providerEventId = stripe event id (evt_...)
+This ensures both paths behave the same.
+
+4) Verification:
+Re-run Scenario A.
+Expected:
+- ledger sale count = 1
+- payouts count > 0 (and no duplicates)
+- events count >= 1
+- stock deducted exactly once (already OK)
+
+OUTPUT REQUIRED:
+- list files changed/created
+- brief explanation why it’s safe and idempotent

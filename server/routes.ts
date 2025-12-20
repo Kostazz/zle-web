@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { sendShippingUpdateEmail } from "./emailService";
 import { atomicStockDeduction } from "./webhookHandlers";
+import { finalizePaidOrder } from "./paymentPipeline";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 
@@ -320,6 +321,14 @@ export async function registerRoutes(
               });
             }
             console.log(`Order ${orderId} payment verified and stock deducted via verification endpoint`);
+            
+            // Finalize order: create ledger entry, payouts, events (idempotent)
+            await finalizePaidOrder({
+              orderId,
+              provider: 'stripe',
+              providerEventId: `verify-${sessionId}`,
+              meta: { source: 'verify', sessionId },
+            });
           } else {
             // Stock already deducted - just update payment status if needed
             await storage.updateOrder(orderId, {
@@ -328,6 +337,14 @@ export async function registerRoutes(
               status: 'confirmed',
             });
             console.log(`Order ${orderId} payment verified (stock already deducted)`);
+            
+            // Still finalize if not done yet (idempotent - will skip if already finalized)
+            await finalizePaidOrder({
+              orderId,
+              provider: 'stripe',
+              providerEventId: `verify-${sessionId}`,
+              meta: { source: 'verify-followup', sessionId },
+            });
           }
         }
         
@@ -893,6 +910,35 @@ export async function registerRoutes(
       ],
       note: "Signature verification is intact. Use Stripe CLI or Dashboard for authentic events."
     });
+  });
+
+  // POST /api/admin/dev/finalize-order/:id - Manually trigger finalizePaidOrder (for testing)
+  app.post("/api/admin/dev/finalize-order/:id", isDevAllowed, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const order = await storage.getOrder(id);
+      
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      if (order.paymentStatus !== 'paid') {
+        return res.status(400).json({ error: "Order is not paid yet" });
+      }
+      
+      const result = await finalizePaidOrder({
+        orderId: id,
+        provider: 'manual',
+        providerEventId: `manual-finalize-${id}-${Date.now()}`,
+        meta: { source: 'dev-finalize' },
+      });
+      
+      console.log(`[dev] Manual finalize for order ${id}:`, result);
+      res.json(result);
+    } catch (error) {
+      console.error("[dev] Error finalizing order:", error);
+      res.status(500).json({ error: "Failed to finalize order" });
+    }
   });
 
   return httpServer;
