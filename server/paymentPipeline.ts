@@ -36,26 +36,36 @@ export async function finalizePaidOrder({
   meta = {},
 }: FinalizePaidOrderParams): Promise<{ success: boolean; skipped: boolean; error?: string }> {
   try {
-    // A) Record event for idempotency - will conflict if already processed
-    const eventResult = await db
-      .insert(orderEvents)
-      .values({
-        orderId,
-        provider,
-        providerEventId,
-        type: 'payment_finalized',
-        payload: meta,
-      })
-      .onConflictDoNothing()
-      .returning();
+    // Check if ledger entry already exists (true idempotency guard)
+    const dedupeKey = `sale-${orderId}`;
+    const existingLedger = await db
+      .select({ id: ledgerEntries.id })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.dedupeKey, dedupeKey))
+      .limit(1);
 
-    // If no rows returned, event already exists - skip to avoid duplicates
-    if (eventResult.length === 0) {
-      console.log(`[pipeline] Order ${orderId} already finalized (event ${providerEventId} exists), skipping`);
+    if (existingLedger.length > 0) {
+      console.log(`[pipeline] Order ${orderId} already finalized (ledger exists), skipping`);
       return { success: true, skipped: true };
     }
 
     console.log(`[pipeline] Finalizing order ${orderId} via ${provider}:${providerEventId}`);
+    
+    // A) Record event for traceability
+    try {
+      await db
+        .insert(orderEvents)
+        .values({
+          orderId,
+          provider,
+          providerEventId,
+          type: 'payment_finalized',
+          payload: meta,
+        })
+        .onConflictDoNothing();
+    } catch (eventError) {
+      console.warn(`[pipeline] Event insert error (non-critical):`, eventError);
+    }
 
     // Fetch order data
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
@@ -65,7 +75,6 @@ export async function finalizePaidOrder({
     }
 
     // B) Create ledger sale entry (idempotent via dedupeKey unique constraint)
-    const dedupeKey = `sale-${orderId}`;
     try {
       await db.insert(ledgerEntries).values({
         orderId,
