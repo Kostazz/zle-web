@@ -111,7 +111,14 @@ export async function generatePayoutsForOrder(orderId: string): Promise<void> {
     }
 
   } catch (error) {
-    console.error(`[payouts] Error generating payouts for order ${orderId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isDevSimulation = errorMessage.includes('[DEV]');
+    
+    if (isDevSimulation) {
+      console.warn(`[payouts] Dev simulation triggered for order ${orderId}: ${errorMessage}`);
+    } else {
+      console.error(`[payouts] Error generating payouts for order ${orderId}: ${errorMessage}`);
+    }
   }
 }
 
