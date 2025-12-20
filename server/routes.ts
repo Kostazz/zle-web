@@ -738,7 +738,7 @@ export async function registerRoutes(
   // Middleware for dev-only endpoints
   const isDevAllowed = async (req: any, res: any, next: any) => {
     if (!isDevEnvironment) {
-      return res.status(403).json({ error: "Dev endpoints disabled in production" });
+      return res.status(404).json({ error: "Not found" });
     }
     
     // Allow if admin authenticated
@@ -938,6 +938,21 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[dev] Error finalizing order:", error);
       res.status(500).json({ error: "Failed to finalize order" });
+    }
+  });
+
+  // POST /api/admin/dev/gdpr-anonymize/:userId - Test GDPR anonymization (dev only)
+  app.post("/api/admin/dev/gdpr-anonymize/:userId", isDevAllowed, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { anonymizeUser } = await import("./gdpr");
+      const result = await anonymizeUser(userId, 'dev-test');
+      
+      console.log(`[dev] GDPR anonymize for user ${userId}:`, result);
+      res.json(result);
+    } catch (error) {
+      console.error("[dev] Error anonymizing user:", error);
+      res.status(500).json({ error: "Failed to anonymize user" });
     }
   });
 
