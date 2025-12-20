@@ -81,6 +81,10 @@ docker compose down -v && docker compose up -d
 - **Payments:** Stripe Checkout
 - **Email:** Resend
 
+## Brand / Content Guidelines
+
+- [ZLE A-MODE — Content Guardrail v1.0](docs/brand/ZLE_A_MODE_v1.0.md)
+
 ## EU Compliance (v1.0)
 
 This version includes skeleton support for:
