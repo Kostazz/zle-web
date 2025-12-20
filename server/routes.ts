@@ -2,13 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertOrderSchema, type CartItem, products, orders } from "@shared/schema";
+import { insertOrderSchema, type CartItem, products, orders, ledgerEntries, orderPayouts, orderEvents, auditLog } from "@shared/schema";
 import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { sendShippingUpdateEmail } from "./emailService";
 import { atomicStockDeduction } from "./webhookHandlers";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -705,6 +705,194 @@ export async function registerRoutes(
       console.error("Error applying refund:", error);
       res.status(500).json({ error: "Failed to apply refund" });
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DEV-ONLY TEST HELPERS (ZLE Pre-Launch Test Runner v1.0.1)
+  // Restricted to: NODE_ENV !== "production" AND (admin OR dev token)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const isDevEnvironment = process.env.NODE_ENV !== "production";
+  const DEV_TEST_TOKEN = process.env.DEV_TEST_TOKEN || "zle-dev-test-2024";
+  
+  // Dev-only payout fail flag (auto-resets after triggering once)
+  let devPayoutFailEnabled = false;
+  
+  // Middleware for dev-only endpoints
+  const isDevAllowed = async (req: any, res: any, next: any) => {
+    if (!isDevEnvironment) {
+      return res.status(403).json({ error: "Dev endpoints disabled in production" });
+    }
+    
+    // Allow if admin authenticated
+    if (req.user?.claims?.sub) {
+      try {
+        const userId = req.user.claims.sub;
+        const user = await storage.getUser(userId);
+        if (user?.isAdmin) {
+          return next();
+        }
+      } catch (e) {
+        // Continue to token check
+      }
+    }
+    
+    // Allow if dev token matches
+    const token = req.headers["x-dev-test-token"];
+    if (token === DEV_TEST_TOKEN) {
+      return next();
+    }
+    
+    return res.status(401).json({ error: "Unauthorized: admin auth or dev token required" });
+  };
+
+  // GET /api/admin/dev/latest-order - Get latest order summary
+  app.get("/api/admin/dev/latest-order", isDevAllowed, async (req, res) => {
+    try {
+      const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(1);
+      
+      if (allOrders.length === 0) {
+        return res.status(404).json({ error: "No orders found" });
+      }
+      
+      const order = allOrders[0];
+      res.json({
+        id: order.id,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        createdAt: order.createdAt,
+        total: order.total,
+        stockDeductedAt: order.stockDeductedAt,
+        manualReview: order.manualReview,
+      });
+    } catch (error) {
+      console.error("[dev] Error fetching latest order:", error);
+      res.status(500).json({ error: "Failed to fetch latest order" });
+    }
+  });
+
+  // GET /api/admin/dev/order/:id/debug - Full debug info for an order
+  app.get("/api/admin/dev/order/:id/debug", isDevAllowed, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Fetch order
+      const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      // Fetch ledger entries
+      const ledger = await db.select().from(ledgerEntries).where(eq(ledgerEntries.orderId, id));
+      
+      // Fetch payouts
+      const payouts = await db.select().from(orderPayouts).where(eq(orderPayouts.orderId, id));
+      
+      // Fetch idempotency events
+      const events = await db.select().from(orderEvents).where(eq(orderEvents.orderId, id));
+      
+      // Fetch audit log entries (entityId = orderId for order-related audits)
+      const audits = await db.select().from(auditLog).where(eq(auditLog.entityId, id));
+      
+      res.json({
+        order: {
+          id: order.id,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          paymentIntentId: order.paymentIntentId,
+          total: order.total,
+          createdAt: order.createdAt,
+          stockDeductedAt: order.stockDeductedAt,
+          manualReview: order.manualReview,
+          refundAmount: order.refundAmount,
+          refundReason: order.refundReason,
+        },
+        ledger: {
+          count: ledger.length,
+          saleCount: ledger.filter(l => l.type === 'sale').length,
+          refundCount: ledger.filter(l => l.type === 'refund').length,
+          chargebackCount: ledger.filter(l => l.type === 'chargeback').length,
+          entries: ledger.map(l => ({
+            id: l.id,
+            type: l.type,
+            amount: l.amount,
+            dedupeKey: l.dedupeKey,
+            createdAt: l.createdAt,
+          })),
+        },
+        payouts: {
+          count: payouts.length,
+          entries: payouts.map(p => ({
+            id: p.id,
+            partnerCode: p.partnerCode,
+            amount: p.amount,
+            status: p.status,
+            createdAt: p.createdAt,
+          })),
+        },
+        events: {
+          count: events.length,
+          entries: events.map(e => ({
+            id: e.id,
+            provider: e.provider,
+            providerEventId: e.providerEventId,
+            type: e.type,
+            createdAt: e.createdAt,
+          })),
+        },
+        audits: {
+          count: audits.length,
+          entries: audits.map(a => ({
+            id: a.id,
+            action: a.action,
+            createdAt: a.createdAt,
+          })),
+        },
+      });
+    } catch (error) {
+      console.error("[dev] Error fetching order debug:", error);
+      res.status(500).json({ error: "Failed to fetch order debug info" });
+    }
+  });
+
+  // POST /api/admin/dev/simulate-payout-fail - Enable payout fail simulation
+  app.post("/api/admin/dev/simulate-payout-fail", isDevAllowed, async (req, res) => {
+    devPayoutFailEnabled = true;
+    console.log("[dev] Payout fail simulation ENABLED (will auto-reset after one trigger)");
+    res.json({ 
+      enabled: true, 
+      message: "Payout fail simulation enabled. Next payout will fail then auto-reset." 
+    });
+  });
+
+  // GET /api/admin/dev/payout-fail-status - Check if payout fail is enabled
+  app.get("/api/admin/dev/payout-fail-status", isDevAllowed, async (req, res) => {
+    res.json({ enabled: devPayoutFailEnabled });
+  });
+
+  // Export the payout fail flag getter/consumer for use in payouts.ts
+  (global as any).__devPayoutFailEnabled = () => {
+    if (devPayoutFailEnabled) {
+      devPayoutFailEnabled = false; // Auto-reset
+      console.log("[dev] Payout fail simulation CONSUMED and AUTO-RESET");
+      return true;
+    }
+    return false;
+  };
+
+  // POST /api/admin/dev/replay-webhook-guidance - Provide Stripe CLI guidance
+  app.post("/api/admin/dev/replay-webhook-guidance", isDevAllowed, async (req, res) => {
+    res.json({
+      message: "To replay a webhook event, use Stripe CLI:",
+      steps: [
+        "1. Install Stripe CLI: https://stripe.com/docs/stripe-cli",
+        "2. Login: stripe login",
+        "3. Forward webhooks: stripe listen --forward-to localhost:5000/api/stripe/webhook/<UUID>",
+        "4. Trigger event: stripe trigger checkout.session.completed",
+        "5. Or resend from Stripe Dashboard > Developers > Webhooks > Select event > Resend"
+      ],
+      note: "Signature verification is intact. Use Stripe CLI or Dashboard for authentic events."
+    });
   });
 
   return httpServer;

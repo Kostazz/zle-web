@@ -12,6 +12,13 @@ const DEFAULT_CURRENCY = 'CZK';
 
 export async function generatePayoutsForOrder(orderId: string): Promise<void> {
   try {
+    // Dev-only: check if payout fail simulation is enabled
+    const devFailEnabled = (global as any).__devPayoutFailEnabled?.();
+    if (devFailEnabled) {
+      console.error(`[payouts][dev] SIMULATED PAYOUT FAILURE for order ${orderId} - auto-reset triggered`);
+      throw new Error(`[DEV] Simulated payout failure for testing`);
+    }
+    
     const existingPayouts = await db
       .select()
       .from(orderPayouts)
