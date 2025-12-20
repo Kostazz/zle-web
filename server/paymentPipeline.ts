@@ -36,22 +36,9 @@ export async function finalizePaidOrder({
   meta = {},
 }: FinalizePaidOrderParams): Promise<{ success: boolean; skipped: boolean; error?: string }> {
   try {
-    // Check if ledger entry already exists (true idempotency guard)
     const dedupeKey = `sale-${orderId}`;
-    const existingLedger = await db
-      .select({ id: ledgerEntries.id })
-      .from(ledgerEntries)
-      .where(eq(ledgerEntries.dedupeKey, dedupeKey))
-      .limit(1);
-
-    if (existingLedger.length > 0) {
-      console.log(`[pipeline] Order ${orderId} already finalized (ledger exists), skipping`);
-      return { success: true, skipped: true };
-    }
-
-    console.log(`[pipeline] Finalizing order ${orderId} via ${provider}:${providerEventId}`);
     
-    // A) Record event for traceability
+    // A) Always record event for traceability (before idempotency check)
     try {
       await db
         .insert(orderEvents)
@@ -66,6 +53,20 @@ export async function finalizePaidOrder({
     } catch (eventError) {
       console.warn(`[pipeline] Event insert error (non-critical):`, eventError);
     }
+
+    // Check if ledger entry already exists (idempotency guard for financial ops)
+    const existingLedger = await db
+      .select({ id: ledgerEntries.id })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.dedupeKey, dedupeKey))
+      .limit(1);
+
+    if (existingLedger.length > 0) {
+      console.log(`[pipeline] Order ${orderId} already finalized (ledger exists), skipping financial ops`);
+      return { success: true, skipped: true };
+    }
+
+    console.log(`[pipeline] Finalizing order ${orderId} via ${provider}:${providerEventId}`);
 
     // Fetch order data
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
