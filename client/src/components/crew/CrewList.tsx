@@ -1,4 +1,5 @@
 import { crewMembers } from "@/data/crew";
+import { SafeImage } from "@/components/SafeImage";
 
 export function CrewList() {
   return (
@@ -11,7 +12,7 @@ export function CrewList() {
           data-testid={`crew-member-${member.id}`}
         >
           <div className="relative aspect-square overflow-hidden zle-photo-frame mb-4">
-            <img
+            <SafeImage
               src={member.image}
               alt={member.nickname}
               className="w-full h-full object-cover zle-bw-photo group-hover:scale-105 transition-transform duration-500"

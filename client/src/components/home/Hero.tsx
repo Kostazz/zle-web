@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { PhotoGrid } from "./PhotoGrid";
 import { ArrowRight } from "lucide-react";
 import { useTodaysLogo } from "@/lib/logoContext";
+import { SafeImage } from "@/components/SafeImage";
 
 export function Hero() {
   const logoSrc = useTodaysLogo();
@@ -18,11 +19,10 @@ export function Hero() {
           >
             <span>JEĎ TO</span>
             {logoSrc ? (
-              <img
+              <SafeImage
                 src={logoSrc}
                 alt="ZLE"
                 className="hero-logo-inline zle-logo-polish"
-                data-testid="img-hero-logo"
               />
             ) : (
               <span>ZLE</span>

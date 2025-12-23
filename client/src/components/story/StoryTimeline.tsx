@@ -1,4 +1,5 @@
 import { storyItems } from "@/data/story";
+import { SafeImage } from "@/components/SafeImage";
 
 export function StoryTimeline() {
   return (
@@ -39,7 +40,7 @@ export function StoryTimeline() {
                   index % 2 === 0 ? "md:ml-12" : "md:mr-12"
                 }`}
               >
-                <img
+                <SafeImage
                   src={item.image}
                   alt={item.title}
                   className="w-full h-full object-cover zle-bw-photo hover:scale-105 transition-transform duration-500"

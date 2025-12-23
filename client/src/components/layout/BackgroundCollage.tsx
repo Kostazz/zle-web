@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SafeImage } from "@/components/SafeImage";
 
 const collageImages = [
   "/zle-photos/collage/466633752_563437729605717_6859405490420458826_n.jpg",
@@ -39,7 +40,7 @@ export function BackgroundCollage() {
               transform: `translateY(${(i % 3) * 20}px)`,
             }}
           >
-            <img
+            <SafeImage
               src={img}
               alt=""
               className="w-full h-full object-cover"

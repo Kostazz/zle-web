@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { crewVideos, formatDuration, isShortVideo, isLongVideo, type CrewVideo } from "@/data/crewVideos";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Play, Clock, Eye, EyeOff, Film, AlertTriangle } from "lucide-react";
+import { SafeVideo } from "@/components/SafeVideo";
+import { safePublicUrl } from "@/lib/safeUrl";
+import { Clock, Eye, EyeOff, Film, AlertTriangle } from "lucide-react";
 
 type FilterType = "all" | "premiere" | "public" | "short" | "long";
 
@@ -24,69 +26,46 @@ function VideoSkeleton() {
   );
 }
 
-function VideoPlaceholder({ title }: { title: string }) {
+function YouTubePlaceholder() {
   return (
-    <div className="aspect-video bg-white/5 border border-white/10 rounded-sm flex flex-col items-center justify-center">
+    <div className="absolute inset-0 bg-black flex flex-col items-center justify-center">
       <Film className="w-12 h-12 text-white/20 mb-2" />
-      <span className="font-heading text-xs text-white/30 tracking-wider text-center px-4">
-        {title}
-      </span>
-    </div>
-  );
-}
-
-function VideoNotFound() {
-  return (
-    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10">
-      <AlertTriangle className="w-8 h-8 text-white/40 mb-2" />
-      <span className="font-heading text-xs text-white/50 tracking-wider">VIDEO BRZY</span>
+      <span className="font-heading text-xs text-white/40 tracking-wider">VIDEO NEDOSTUPNÉ</span>
     </div>
   );
 }
 
 function VideoCard({ video }: { video: CrewVideo }) {
-  const [videoError, setVideoError] = useState(false);
-  const [thumbError, setThumbError] = useState(false);
-  
   const isPremiere = video.visibility === "shop";
   const duration = formatDuration(video.durationSec);
   const isShort = isShortVideo(video.durationSec);
+  const hasValidYouTubeUrl = video.sourceType === "youtube" && video.src && video.src.includes("youtube");
 
   return (
     <div className="zle-card p-3 space-y-3" data-testid={`card-video-${video.id}`}>
       <div className="relative aspect-video overflow-hidden rounded-sm bg-black">
         {video.sourceType === "youtube" ? (
-          <iframe
-            src={video.src}
-            title={video.title}
-            className="absolute inset-0 w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            referrerPolicy="strict-origin-when-cross-origin"
-            sandbox="allow-scripts allow-same-origin allow-presentation"
-            loading="lazy"
-          />
+          hasValidYouTubeUrl ? (
+            <iframe
+              src={video.src}
+              title={video.title}
+              className="absolute inset-0 w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              loading="lazy"
+            />
+          ) : (
+            <YouTubePlaceholder />
+          )
         ) : (
-          <>
-            {videoError && <VideoNotFound />}
-            <video
-              controls
-              preload="metadata"
-              playsInline
-              className="w-full h-full object-cover"
-              poster={video.thumb && !thumbError ? video.thumb : undefined}
-              onError={() => setVideoError(true)}
-            >
-              <source src={video.src} type="video/mp4" />
-            </video>
-            {video.thumb && !thumbError && !videoError && (
-              <img
-                src={video.thumb}
-                alt=""
-                className="hidden"
-                onError={() => setThumbError(true)}
-              />
-            )}
-          </>
+          <SafeVideo
+            src={video.src}
+            poster={video.thumb}
+            className="w-full h-full object-cover"
+            controls
+            preload="metadata"
+            playsInline
+          />
         )}
         
         {duration && (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { zlePhotos } from "@/data/zlePhotos";
+import { SafeImage } from "@/components/SafeImage";
 
 export function CrewRotator() {
   const [currentPhotos, setCurrentPhotos] = useState([
@@ -39,7 +40,7 @@ export function CrewRotator() {
           className="relative aspect-square overflow-hidden zle-photo-frame"
           data-testid={`crew-rotator-${index + 1}`}
         >
-          <img
+          <SafeImage
             src={photo}
             alt={`ZLE crew member ${index + 1}`}
             className={`w-full h-full object-cover zle-bw-photo transition-all duration-600 ${

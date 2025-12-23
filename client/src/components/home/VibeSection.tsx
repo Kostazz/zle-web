@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { zlePhotos } from "@/data/zlePhotos";
+import { SafeImage } from "@/components/SafeImage";
 
 const vibeAlts = ["ZLE session", "Crew vibes", "Street life"];
 
@@ -61,7 +62,7 @@ export function VibeSection() {
                 className="aspect-square overflow-hidden zle-photo-frame"
                 data-testid={`image-vibe-${index + 1}`}
               >
-                <img
+                <SafeImage
                   src={photo}
                   alt={vibeAlts[index]}
                   className={`w-full h-full object-cover zle-bw-photo hover:scale-105 transition-all duration-600 ${

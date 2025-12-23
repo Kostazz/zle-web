@@ -1,0 +1,151 @@
+Goal:
+Make all public images + videos (including WhatsApp filenames with spaces/colons/parentheses)
+render reliably everywhere (Replit, Codespaces, Vercel) without renaming files
+and without touching backend / DB / auth / payments.
+
+Hard Rules:
+- Frontend-only changes.
+- Do NOT change server logic, API routes, DB schema, Stripe, auth, or business logic.
+- Do NOT rename any files in client/public.
+- Must remain portable and work with relative URLs only.
+
+────────────────────────────────
+1) Central safe URL helpers
+────────────────────────────────
+
+File: client/src/lib/safeUrl.ts
+
+Export the following helpers:
+
+A) isProbablyEncoded(value: string): boolean
+   - Returns true if the string already contains percent-encoded sequences (%20, %28, %29, etc.)
+   - Simple heuristic is enough (regex /%[0-9A-Fa-f]{2}/)
+
+B) splitPathAndSuffix(input: string): { path: string; suffix: string }
+   - Split path from query/hash safely:
+     Example:
+       "/img/a b.jpg?x=1#top"
+       → path="/img/a b.jpg", suffix="?x=1#top"
+
+C) safePublicUrl(input?: string): string
+   Requirements:
+   - If input is empty/undefined → return ""
+   - If input starts with:
+       "data:" or "blob:" → return input unchanged
+       "http://" or "https://" → return input unchanged
+   - If input starts with "/":
+       1. Split path + suffix
+       2. If path is probably already encoded → keep as-is
+       3. Else encode path safely using encodeURI
+       4. Re-attach suffix
+   - Never double-encode
+   - Always return a string safe for <img src> and <video src>
+
+────────────────────────────────
+2) SafeImage component
+────────────────────────────────
+
+File: client/src/components/SafeImage.tsx
+
+Props:
+- src?: string
+- alt?: string
+- className?: string
+- fallbackSrc?: string (default "/zle-photos/_fallback.jpg")
+
+Behavior:
+- Always render an <img> element (never return null)
+- Internal state with 3-step strategy:
+  Step 1 → safePublicUrl(src)
+  Step 2 → raw src (exact string)
+  Step 3 → fallbackSrc
+- onError:
+  - Advance to next step
+  - Stop after fallback
+- In development only (NODE_ENV !== "production"):
+  - console.warn once with the failing src chain
+- No layout or styling changes unless required to prevent breakage
+
+────────────────────────────────
+3) SafeVideo component (local files)
+────────────────────────────────
+
+File: client/src/components/SafeVideo.tsx
+
+Props:
+- src?: string
+- className?: string
+- poster?: string
+- fallbackPoster?: string (default "/crew-videos/_fallback.jpg")
+- controls?: boolean (default true)
+- preload?: "none" | "metadata" | "auto" (default "metadata")
+- muted?: boolean (default false)
+- playsInline?: boolean (default true)
+
+Behavior:
+- Always render a stable container (never null)
+- If src is empty → render placeholder with poster + friendly message
+- 3-step load strategy:
+  Step 1 → safePublicUrl(src)
+  Step 2 → raw src
+  Step 3 → placeholder (no crash)
+- Use <video><source src="..."></video>
+- Attach onError to <video> or <source>
+- Poster logic:
+  - If poster provided → safePublicUrl(poster)
+  - Else → fallbackPoster
+- In dev only, console.warn once with failing src chain
+- No backend changes
+
+────────────────────────────────
+4) YouTube embeds (safe + responsive)
+────────────────────────────────
+
+For sourceType = "youtube":
+- Render responsive <iframe>
+- Do NOT re-encode the URL
+- Attributes:
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  referrerPolicy="strict-origin-when-cross-origin"
+  loading="lazy"
+- If URL missing/invalid → show placeholder card instead
+
+────────────────────────────────
+5) Replace direct media usage
+────────────────────────────────
+
+- Replace all direct <img src="..."> where public images are used:
+  - Crew components
+  - Events / Story / Gallery / Hero
+  - Keep layout identical
+- Replace local <video> usage with <SafeVideo>
+- Use relative paths only ("/zle-photos/...", "/crew-videos/...")
+
+────────────────────────────────
+6) Fallback assets
+────────────────────────────────
+
+Ensure these files exist:
+- client/public/zle-photos/_fallback.jpg
+- client/public/crew-videos/_fallback.jpg
+
+If missing:
+- Create minimal ZLE-style placeholders (dark, grainy, simple icon)
+- No server code added
+
+────────────────────────────────
+7) Verify
+────────────────────────────────
+
+- WhatsApp-named images load (spaces, parentheses, colons)
+- Local MP4 videos load with weird filenames
+- YouTube embeds render responsively
+- No empty cards, no broken layouts
+- App behaves identically in:
+  Replit / Codespaces / Vercel
+- No backend touched
+
+────────────────────────────────
+Result:
+Frontend-only, portable, bulletproof media handling.
+No renaming, no crashes, no environment-specific bugs.

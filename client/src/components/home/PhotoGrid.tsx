@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { zlePhotos } from "@/data/zlePhotos";
+import { SafeImage } from "@/components/SafeImage";
 
 const initialPhotos = [
   { id: 1, src: zlePhotos.hero[0], alt: "ZLE crew action" },
@@ -55,7 +56,7 @@ export function PhotoGrid() {
           onMouseLeave={() => setHoveredId(null)}
           data-testid={`image-grid-${photo.id}`}
         >
-          <img
+          <SafeImage
             src={photo.src}
             alt={photo.alt}
             className={`w-full h-full object-cover transition-all duration-500 ${
