@@ -1,6 +1,18 @@
 import { useState } from "react";
 import type { Product } from "@shared/schema";
 import { ProductModal } from "./ProductModal";
+import { ImageOff } from "lucide-react";
+
+function ImagePlaceholder({ name }: { name: string }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/5 border border-white/10">
+      <ImageOff className="w-12 h-12 text-white/30 mb-2" />
+      <span className="font-heading text-xs text-white/40 tracking-wider text-center px-4">
+        {name}
+      </span>
+    </div>
+  );
+}
 
 interface ProductCardProps {
   product: Product;
@@ -9,12 +21,15 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [secondaryImageError, setSecondaryImageError] = useState(false);
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   
   const hasMultipleImages = product.images && product.images.length > 1;
   const primaryImage = product.image;
   const secondaryImage = hasMultipleImages && product.images ? product.images[1] : null;
+  const showPlaceholder = !primaryImage || imageError;
 
   return (
     <>
@@ -26,23 +41,31 @@ export function ProductCard({ product }: ProductCardProps) {
         data-testid={`card-product-${product.id}`}
       >
         <div className="relative aspect-square mb-4 overflow-hidden rounded-sm zle-photo-frame">
-          <img
-            src={primaryImage}
-            alt={product.name}
-            className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
-              isSoldOut ? "" : isHovered && secondaryImage ? "opacity-0" : isHovered ? "scale-105 brightness-110" : ""
-            }`}
-            loading="lazy"
-          />
-          {secondaryImage && (
-            <img
-              src={secondaryImage}
-              alt={`${product.name} - alternate view`}
-              className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
-                isHovered ? "opacity-100 scale-105 brightness-110" : "opacity-0"
-              }`}
-              loading="lazy"
-            />
+          {showPlaceholder ? (
+            <ImagePlaceholder name={product.name} />
+          ) : (
+            <>
+              <img
+                src={primaryImage}
+                alt={product.name}
+                className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
+                  isSoldOut ? "" : isHovered && secondaryImage && !secondaryImageError ? "opacity-0" : isHovered ? "scale-105 brightness-110" : ""
+                }`}
+                loading="lazy"
+                onError={() => setImageError(true)}
+              />
+              {secondaryImage && !secondaryImageError && (
+                <img
+                  src={secondaryImage}
+                  alt={`${product.name} - alternate view`}
+                  className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 zle-bw-photo ${
+                    isHovered ? "opacity-100 scale-105 brightness-110" : "opacity-0"
+                  }`}
+                  loading="lazy"
+                  onError={() => setSecondaryImageError(true)}
+                />
+              )}
+            </>
           )}
           <div 
             className={`absolute inset-0 transition-opacity duration-300 ${

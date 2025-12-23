@@ -4,8 +4,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Minus, ShoppingBag, X, AlertTriangle } from "lucide-react";
+import { Plus, Minus, ShoppingBag, X, AlertTriangle, ImageOff } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+
+function ModalImagePlaceholder({ name }: { name: string }) {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-white/5">
+      <ImageOff className="w-16 h-16 text-white/30 mb-3" />
+      <span className="font-heading text-sm text-white/40 tracking-wider text-center px-6">
+        {name}
+      </span>
+    </div>
+  );
+}
 
 interface ProductModalProps {
   product: Product;
@@ -16,12 +27,14 @@ interface ProductModalProps {
 export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [imageError, setImageError] = useState(false);
   const { addItem, setIsOpen: setCartOpen } = useCart();
   const { toast } = useToast();
   
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   const maxQuantity = Math.min(product.stock, 10);
+  const showPlaceholder = !product.image || imageError;
 
   const handleAddToCart = () => {
     if (isSoldOut) {
@@ -89,12 +102,17 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
         </button>
         
         <div className="grid grid-cols-1 md:grid-cols-2">
-          <div className="relative aspect-square bg-white">
-            <img
-              src={product.image}
-              alt={product.name}
-              className="w-full h-full object-cover"
-            />
+          <div className="relative aspect-square bg-black">
+            {showPlaceholder ? (
+              <ModalImagePlaceholder name={product.name} />
+            ) : (
+              <img
+                src={product.image}
+                alt={product.name}
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+              />
+            )}
             {isSoldOut && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                 <span className="font-heading text-xl tracking-wider text-white bg-black px-6 py-3 border border-white">
