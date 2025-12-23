@@ -1,0 +1,80 @@
+Goal:
+Add a safe "Crew Videos" section that can host short + long skate videos (shop-first premieres), without changing backend, DB, auth, Stripe or any business logic.
+
+Non-negotiable rules:
+- Frontend-only changes + static assets only.
+- Do NOT modify API routes, DB schema, payments, auth flow, server logic, or shared schema types.
+- Must work in Replit, Codespaces, Vercel: portable relative URLs only (no hardcoded hosts).
+- Do NOT touch existing crewMembers data file except importing it where needed (leave crew.ts unchanged).
+- UI must never render a blank screen: always show skeleton/empty/error/placeholder.
+
+Tasks:
+1) Create a data config file:
+   - Path: client/src/data/crewVideos.ts
+   - Export: crewVideos (array)
+   - Each item:
+     - id: string
+     - title: string
+     - description?: string
+     - date?: string (YYYY-MM-DD)
+     - durationSec?: number
+     - visibility: "shop" | "public"
+     - sourceType: "file" | "youtube"
+     - src:
+       - for file: relative path like "/crew-videos/<file>.mp4"
+       - for youtube: safe embed URL only (e.g. "https://www.youtube-nocookie.com/embed/<id>")
+     - thumb?: string (relative, e.g. "/crew-videos/<thumb>.jpg")
+     - tags?: string[] (optional)
+   - Include at least 4 demo entries:
+     - 2x sourceType "file" (short + long)
+     - 2x sourceType "youtube" (short + long)
+     - Mix visibility: at least one "shop" and one "public"
+
+2) Add static assets folder:
+   - Create folder: client/public/crew-videos/
+   - Add placeholder files if none exist yet:
+     - placeholder-thumb.jpg (simple neutral placeholder)
+     - (If you cannot add real mp4s, keep file entries pointing to future filenames and handle missing files gracefully.)
+
+3) Build a new component:
+   - Path: client/src/components/crew/CrewVideoWall.tsx
+   - Requirements:
+     - Always renders a stable layout (never returns null/empty root).
+     - No backend calls needed (videos come from crewVideos config).
+     - States:
+       - loading skeleton (brief artificial loading is OK, e.g. 150–300ms via setTimeout, to ensure consistent skeleton UX)
+       - empty state (if crewVideos.length === 0)
+       - error state (catch runtime errors and show fallback message)
+     - Filtering controls:
+       - All
+       - Premiere (visibility === "shop")
+       - Public (visibility === "public")
+       - Short (durationSec < 180)
+       - Long (durationSec >= 180)
+     - Cards:
+       - If thumb exists, show thumb; if not, show placeholder card (icon/gradient) without breaking grid.
+       - Show: title, visibility badge, date (if present), duration label (if present), short description.
+     - Media rendering:
+       - sourceType "file": HTML5 <video controls preload="metadata" playsInline> with <source src=... type="video/mp4" />
+         - Must not crash if file missing: show a graceful “Video not found yet” overlay/fallback inside the card.
+       - sourceType "youtube": responsive iframe embed (16:9) with:
+         - allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+         - referrerPolicy="strict-origin-when-cross-origin"
+         - sandbox="allow-scripts allow-same-origin allow-presentation"
+         - Use youtube-nocookie.com when possible.
+     - Accessibility:
+       - Buttons reachable, visible focus styles, aria-labels for filter buttons.
+
+4) Integrate into Crew page safely:
+   - Find the existing Crew page/section component (likely client/src/pages/Crew.tsx).
+   - Add CrewVideoWall below the crew members block, keeping existing layout intact.
+   - Do not change existing routes or navigation.
+   - Ensure it matches the ZLE vibe (raw/dark, clean big typography). Keep styling consistent with current UI.
+
+5) Safety guarantees:
+   - No changes to server/, routes, Stripe, auth, DB, or any shared schema.
+   - No absolute URLs.
+   - If any data is missing (thumb/src/duration), the UI still renders predictably.
+
+Result:
+Crew page reliably shows a "Crew Videos" section with shop-first premieres + public videos, supports both local file videos and YouTube embeds, works everywhere (Replit/Codespaces/Vercel), and never renders a broken/empty screen.
