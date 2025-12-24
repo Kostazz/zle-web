@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { safePublicUrl } from "@/lib/safeUrl";
+import { safePublicUrl } from "@/lib/media";
 
 interface SafeImageProps {
   src?: string;

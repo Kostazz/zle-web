@@ -3,7 +3,6 @@ import { crewVideos, formatDuration, isShortVideo, isLongVideo, type CrewVideo }
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SafeVideo } from "@/components/SafeVideo";
-import { safePublicUrl } from "@/lib/safeUrl";
 import { Clock, Eye, EyeOff, Film, AlertTriangle } from "lucide-react";
 
 type FilterType = "all" | "premiere" | "public" | "short" | "long";
