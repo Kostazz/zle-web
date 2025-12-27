@@ -9,6 +9,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { env, flags, printEnvStatus, getHealthData } from "./env";
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,80 +31,93 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Initialize Stripe (only if enabled and configured)
 async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
+  if (!flags.ENABLE_STRIPE) {
+    log("Stripe disabled via ENABLE_STRIPE=false", "stripe");
+    disableStripe();
+    return;
+  }
 
-  if (!databaseUrl) {
-    console.warn('DATABASE_URL not set - Stripe integration disabled');
+  if (!flags.HAS_DATABASE) {
+    log("Stripe disabled - DATABASE_URL not set", "stripe");
     disableStripe();
     return;
   }
 
   if (!isStripeAvailable()) {
-    log('Stripe credentials not available - payments disabled', 'stripe');
+    log("Stripe credentials not available - payments disabled", "stripe");
     disableStripe();
     return;
   }
 
   try {
-    log('Initializing Stripe schema...', 'stripe');
-    await runMigrations({ databaseUrl });
-    log('Stripe schema ready', 'stripe');
+    log("Initializing Stripe schema...", "stripe");
+    await runMigrations({ databaseUrl: env.DATABASE_URL! });
+    log("Stripe schema ready", "stripe");
 
     const stripeSync = await getStripeSync();
 
-    // Set up managed webhook
-    log('Setting up managed webhook...', 'stripe');
-    const replitDomains = process.env.REPLIT_DOMAINS;
-    if (replitDomains) {
-      const webhookBaseUrl = `https://${replitDomains.split(',')[0]}`;
+    // Set up managed webhook (only on Replit with domains)
+    if (env.REPLIT_DOMAINS) {
+      log("Setting up managed webhook...", "stripe");
+      const webhookBaseUrl = `https://${env.REPLIT_DOMAINS.split(",")[0]}`;
       const { webhook, uuid } = await stripeSync.findOrCreateManagedWebhook(
         `${webhookBaseUrl}/api/stripe/webhook`,
         {
           enabled_events: [
-            'checkout.session.completed',
-            'payment_intent.succeeded',
-            'payment_intent.payment_failed',
+            "checkout.session.completed",
+            "payment_intent.succeeded",
+            "payment_intent.payment_failed",
           ],
-          description: 'ZLE e-commerce webhook',
+          description: "ZLE e-commerce webhook",
         }
       );
-      log(`Webhook configured: ${webhook.url} (UUID: ${uuid})`, 'stripe');
+      log(`Webhook configured: ${webhook.url} (UUID: ${uuid})`, "stripe");
     }
 
-    // Sync all existing Stripe data in the background
-    log('Syncing Stripe data...', 'stripe');
-    stripeSync.syncBackfill()
-      .then(() => {
-        log('Stripe data synced', 'stripe');
-      })
-      .catch((err: Error) => {
-        console.error('Error syncing Stripe data:', err);
-      });
+    // Sync Stripe data in background
+    log("Syncing Stripe data...", "stripe");
+    stripeSync
+      .syncBackfill()
+      .then(() => log("Stripe data synced", "stripe"))
+      .catch((err: Error) => console.error("Error syncing Stripe data:", err));
   } catch (error) {
-    console.error('Failed to initialize Stripe:', error);
-    // Don't throw - allow app to continue without Stripe if it fails
+    console.error("Failed to initialize Stripe:", error);
+    disableStripe();
   }
 }
 
+// Health endpoint - always available
+app.get("/health", (_req, res) => {
+  res.json(getHealthData());
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json(getHealthData());
+});
+
 // Register Stripe webhook route BEFORE express.json()
-// This is critical - webhook needs raw Buffer, not parsed JSON
 app.post(
-  '/api/stripe/webhook/:uuid',
-  express.raw({ type: 'application/json' }),
+  "/api/stripe/webhook/:uuid",
+  express.raw({ type: "application/json" }),
   async (req, res) => {
-    const signature = req.headers['stripe-signature'];
+    if (!flags.ENABLE_STRIPE) {
+      return res.status(503).json({ error: "Stripe disabled" });
+    }
+
+    const signature = req.headers["stripe-signature"];
 
     if (!signature) {
-      return res.status(400).json({ error: 'Missing stripe-signature' });
+      return res.status(400).json({ error: "Missing stripe-signature" });
     }
 
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
 
       if (!Buffer.isBuffer(req.body)) {
-        console.error('Webhook body is not a Buffer');
-        return res.status(500).json({ error: 'Webhook processing error' });
+        console.error("Webhook body is not a Buffer");
+        return res.status(500).json({ error: "Webhook processing error" });
       }
 
       const { uuid } = req.params;
@@ -111,30 +125,32 @@ app.post(
 
       res.status(200).json({ received: true });
     } catch (error: any) {
-      console.error('Webhook error:', error.message);
-      res.status(400).json({ error: 'Webhook processing error' });
+      console.error("Webhook error:", error.message);
+      res.status(400).json({ error: "Webhook processing error" });
     }
   }
 );
 
-// Request ID middleware for observability (ZLE v1.2.2)
+// Request ID middleware
 app.use(requestIdMiddleware);
 
-// Security middleware (ZLE EU + OPS PACK v1.0)
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-}));
+// Security middleware
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = env.NODE_ENV === "production";
 if (isProduction) {
-  app.set('trust proxy', 1);
+  app.set("trust proxy", 1);
 }
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isProduction ? 100 : 1000,
-  message: { error: 'Too many requests, please try again later.' },
+  message: { error: "Too many requests, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -142,24 +158,25 @@ const apiLimiter = rateLimit({
 const checkoutLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isProduction ? 10 : 100,
-  message: { error: 'Too many checkout attempts, please try again later.' },
+  message: { error: "Too many checkout attempts, please try again later." },
 });
 
-app.use('/api/stripe/create-checkout-session', checkoutLimiter);
-app.use('/api/checkout', checkoutLimiter);
-app.use('/api/admin', apiLimiter);
+app.use("/api/stripe/create-checkout-session", checkoutLimiter);
+app.use("/api/checkout", checkoutLimiter);
+app.use("/api/admin", apiLimiter);
 
-// Now apply JSON middleware for all other routes
+// JSON middleware
 app.use(
   express.json({
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
-  }),
+  })
 );
 
 app.use(express.urlencoded({ extended: false }));
 
+// Request logging
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -178,7 +195,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -187,45 +203,59 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize Stripe before routes
+  // Print environment status table
+  printEnvStatus();
+
+  // Initialize Stripe (if enabled)
   await initStripe();
-  
-  // Seed partners and payout rules
-  await seedPartners();
-  
+
+  // Seed partners (only if DB available and SEED_ON_START enabled)
+  if (flags.HAS_DATABASE) {
+    if (flags.SEED_ON_START) {
+      log("Seeding partners (SEED_ON_START=true)...", "db");
+      try {
+        await seedPartners();
+        log("Partner seeding complete", "db");
+      } catch (error) {
+        console.error("Partner seeding failed:", error);
+      }
+    } else {
+      // Always seed partners for now (existing behavior)
+      try {
+        await seedPartners();
+      } catch (error) {
+        console.error("Partner seeding failed (non-fatal):", error);
+      }
+    }
+  } else {
+    log("Skipping partner seeding - no database", "db");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     res.status(status).json({ message });
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
+  // Setup Vite in development, static serving in production
+  if (isProduction) {
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
-      port,
+      port: env.PORT,
       host: "0.0.0.0",
       reusePort: true,
     },
     () => {
-      log(`serving on port ${port}`);
-    },
+      log(`serving on port ${env.PORT}`);
+    }
   );
 })();

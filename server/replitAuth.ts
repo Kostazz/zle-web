@@ -7,16 +7,21 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { flags, env } from "./env";
 
+// Check if Replit auth is available and should be enabled
 export function isReplitAuthAvailable(): boolean {
-  return Boolean(process.env.REPL_ID);
+  // Must have ENABLE_AUTH flag and be in Replit environment
+  if (!flags.ENABLE_AUTH) return false;
+  if (!env.REPL_ID) return false;
+  return true;
 }
 
 const getOidcConfig = memoize(
   async () => {
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      env.REPL_ID!
     );
   },
   { maxAge: 3600 * 1000 }
@@ -24,21 +29,38 @@ const getOidcConfig = memoize(
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+
+  // Use PostgreSQL session store if DB available, otherwise memory
+  if (flags.HAS_DATABASE) {
+    const pgStore = connectPg(session);
+    const sessionStore = new pgStore({
+      conString: env.DATABASE_URL,
+      createTableIfMissing: false,
+      ttl: sessionTtl,
+      tableName: "sessions",
+    });
+    return session({
+      secret: env.SESSION_SECRET,
+      store: sessionStore,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: !env.isDev,
+        maxAge: sessionTtl,
+      },
+    });
+  }
+
+  // Fallback to memory store (dev only, sessions don't persist)
+  console.warn("[auth] Using memory session store (no database)");
   return session({
-    secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
+    secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: false,
       maxAge: sessionTtl,
     },
   });
@@ -54,9 +76,7 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(
-  claims: any,
-) {
+async function upsertUser(claims: any) {
   await storage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
@@ -67,9 +87,20 @@ async function upsertUser(
 }
 
 export async function setupAuth(app: Express) {
+  // If auth is disabled, register stub routes that don't crash
   if (!isReplitAuthAvailable()) {
-    console.warn("[auth] Replit auth disabled: REPL_ID not set (Codespaces/local mode)");
-    app.get("/api/login", (_req, res) => res.status(503).json({ message: "Auth disabled in dev mode" }));
+    const reason = !flags.ENABLE_AUTH
+      ? "ENABLE_AUTH=false"
+      : !env.REPL_ID
+        ? "REPL_ID missing (not on Replit)"
+        : "unknown";
+
+    console.warn(`[auth] Disabled: ${reason}`);
+
+    // Stub routes that return graceful responses
+    app.get("/api/login", (_req, res) =>
+      res.status(503).json({ message: "Auth disabled in this environment" })
+    );
     app.get("/api/callback", (_req, res) => res.redirect("/"));
     app.get("/api/logout", (_req, res) => res.redirect("/"));
     app.get("/api/auth/user", (_req, res) => res.json(null));
@@ -105,7 +136,7 @@ export async function setupAuth(app: Express) {
           scope: "openid email profile offline_access",
           callbackURL: `https://${domain}/api/callback`,
         },
-        verify,
+        verify
       );
       passport.use(strategy);
       registeredStrategies.add(strategyName);
@@ -135,7 +166,7 @@ export async function setupAuth(app: Express) {
     req.logout(() => {
       res.redirect(
         client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
+          client_id: env.REPL_ID!,
           post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
         }).href
       );
@@ -144,6 +175,7 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // If auth is disabled, allow all requests through
   if (!isReplitAuthAvailable()) {
     return next();
   }

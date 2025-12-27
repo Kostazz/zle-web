@@ -2,99 +2,136 @@
 
 Czech underground skateboard brand e-commerce platform.
 
-## Requirements
-
-**Node.js 20 LTS recommended.**
-
 ## Quick Start
 
+```bash
+npm install
+node script/bootstrap.mjs
+```
+
+That's it! The bootstrap script handles:
+1. Starting Docker containers (if docker-compose.yml exists)
+2. Waiting for PostgreSQL to be ready
+3. Running database migrations
+4. Starting the development server
+
+## Requirements
+
+- **Node.js 20 LTS** (required)
+- **Docker** (optional, for local PostgreSQL)
+
+## Feature Flags
+
+Control which features are enabled via environment variables:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `ENABLE_AUTH` | `true` on Replit, `false` elsewhere | Enable Replit authentication |
+| `ENABLE_STRIPE` | `true` if keys exist | Enable Stripe payments |
+| `ENABLE_EMAIL` | `true` if RESEND_API_KEY set | Enable email notifications |
+| `ENABLE_OPS` | `false` | Enable OPS automation webhooks |
+| `SEED_ON_START` | `false` | Run database seeding on startup |
+
+### Example: Run with minimal features
+
+```bash
+ENABLE_AUTH=false ENABLE_STRIPE=false npm run dev
+```
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SESSION_SECRET` | Express session secret (auto-generated in dev if missing) |
+
+### Optional (Payments)
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Stripe secret key (sk_test_...) |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (pk_test_...) |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+
+### Optional (Email)
+
+| Variable | Description |
+|----------|-------------|
+| `RESEND_API_KEY` | Resend API key for transactional emails |
+
+### Optional (Auth - Replit only)
+
+| Variable | Description |
+|----------|-------------|
+| `REPL_ID` | Set automatically on Replit |
+| `REPLIT_DOMAINS` | Set automatically on Replit |
+
+## Platform Setup
+
 ### Replit
-1. Click "Run" - everything is pre-configured
-2. Stripe and auth work automatically via Replit integrations
 
-### GitHub Codespaces / Local Development
+1. Click "Run" - everything auto-configures
+2. Stripe and auth work via Replit integrations
+3. Add custom secrets in "Secrets" tab if needed
+
+### GitHub Codespaces / Local
+
 1. Start database: `docker compose up -d`
-2. Set environment secrets (see below)
-3. Apply schema: `npm run db:push`
-4. Start dev server: `npm run dev`
-
-The app will be available at http://localhost:5000
-
-## Environment Secrets
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `SESSION_SECRET` | Yes | Express session secret (any random string) |
-| `STRIPE_SECRET_KEY` | No* | Stripe secret key for payments |
-| `STRIPE_PUBLISHABLE_KEY` | No* | Stripe publishable key for client |
-| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
-| `RESEND_API_KEY` | No | Resend API key for emails |
-| `REPL_ID` | Auto | Set automatically in Replit |
-
-*Stripe keys are optional in development - payments will be disabled without them.
-
-### Replit Secrets
-Set in the "Secrets" tab:
-- `SESSION_SECRET` (required)
-- Stripe integration is configured automatically
-
-### Codespaces/Local Secrets
-Create `.env` file or set environment variables:
+2. Create `.env` file:
 ```bash
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zle
 SESSION_SECRET=your-random-secret-here
-STRIPE_SECRET_KEY=sk_test_...  # Optional
-STRIPE_PUBLISHABLE_KEY=pk_test_...  # Optional
+# Optional:
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+```
+3. Run bootstrap: `node script/bootstrap.mjs`
+
+Or manually:
+```bash
+docker compose up -d
+npm install
+npm run db:push
+npm run dev
 ```
 
 ## Dev-Safe Fallbacks
 
 The app gracefully handles missing services:
 
-- **No Replit auth?** → Auth routes return 503, app works without login
+- **No REPL_ID?** → Auth routes return 503, app works without login
 - **No Stripe keys?** → Payments disabled, shop browsing works
 - **No Resend key?** → Emails disabled, orders still process
+- **No DATABASE_URL?** → Limited functionality mode with warnings
 
-## Local Development (from ZIP)
+Startup prints a status table showing what's enabled:
 
-### 1. Start Database
-
-```bash
-docker compose up -d
+```
+┌─────────────────────────────────────────┐
+│           ZLE Environment Status         │
+├─────────────────────────────────────────┤
+│  Mode:     development                   │
+│  Platform: Local/Codespaces              │
+├─────────────────────────────────────────┤
+│  Database: configured ✓                  │
+│  Auth:     disabled                      │
+│  Stripe:   enabled ✓                     │
+│  Email:    disabled                      │
+│  OPS:      disabled                      │
+└─────────────────────────────────────────┘
 ```
 
-### 2. Configure Environment
+## NPM Scripts
 
-**Linux/Mac:**
-```bash
-cp .env.example .env
-```
-
-**Windows (PowerShell):**
-```powershell
-Copy-Item .env.example .env
-```
-
-Edit `.env` with your Stripe keys if testing payments.
-
-### 3. Install Dependencies
-
-```bash
-npm install
-```
-
-### 4. Push Database Schema
-
-```bash
-npm run db:push
-```
-
-### 5. Start Development Server
-
-```bash
-npm run dev
-```
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm start` | Run production build |
+| `npm run db:push` | Push Drizzle schema to database |
+| `npm run check` | TypeScript type checking |
 
 ## Docker Commands
 
@@ -109,14 +146,26 @@ docker compose down
 docker compose down -v && docker compose up -d
 ```
 
+## Health Check
+
+```bash
+curl http://localhost:5000/health
+```
+
+Returns JSON with enabled features and database connectivity status.
+
 ## Project Structure
 
 ```
 ├── client/          # React frontend (Vite)
 ├── server/          # Express backend
+│   ├── env.ts       # Feature flags and env validation
+│   ├── index.ts     # Server entry point
+│   └── replitAuth.ts # Authentication (Replit OpenID)
 ├── shared/          # Shared TypeScript schemas
+├── script/
+│   └── bootstrap.mjs # One-command dev setup
 ├── docker-compose.yml
-├── .env.example
 └── drizzle.config.ts
 ```
 
@@ -127,61 +176,38 @@ docker compose down -v && docker compose up -d
 - **Payments:** Stripe Checkout
 - **Email:** Resend
 
-## Brand / Content Guidelines
+## Brand Guidelines
 
 - [ZLE A-MODE — Content Guardrail v1.0](docs/brand/ZLE_A_MODE_v1.0.md)
 
 ## EU Compliance (v1.0)
 
-This version includes skeleton support for:
 - Partner payout tracking (20/40/40 split)
 - Accounting ledger entries
 - Audit logging
 - GDPR anonymization endpoint
 - VAT fields on orders
 
-## ZLE CORE INFRA + SECURITY + COMPLIANCE PACK (v1.2.2 + v1.2.3)
+## Security Infrastructure (v1.2.2 + v1.2.3)
 
-### New Features
 - **Order Events Table** - Guaranteed idempotency for webhook processing
-- **Waterfall Payout Engine** - COGS/distributable-based payouts with product model support
-- **Atomic Stock Deduction** - Prevents overselling with fail-safe manual review
-- **Refund/Returns Skeleton** - EU 14-day withdrawal support with ledger entries
-- **Chargeback Handling** - Dispute webhook processing with ledger entries
-- **RBAC + 2FA Skeleton** - User roles and TOTP fields (disabled by default)
+- **Waterfall Payout Engine** - COGS/distributable-based payouts
+- **Atomic Stock Deduction** - Prevents overselling
+- **Refund/Returns Skeleton** - EU 14-day withdrawal support
+- **RBAC + 2FA Skeleton** - User roles and TOTP fields
 - **Consents Table** - GDPR cookie/marketing consent logging
-- **Payment Providers Table** - Crypto-ready infrastructure (disabled)
-- **CSV Exports** - Admin-only ledger, orders, payouts exports
-- **Request ID Middleware** - x-request-id for observability
-- **Log Sanitizer** - PII redaction in production logs
-- **OPS Event Hooks** - Future automation hooks (disabled by default)
+- **CSV Exports** - Admin-only data exports
 
-### Production Migrations Discipline
+## Production Deployment
 
-**IMPORTANT: In production, never use `db:push`.**
+**Never use `db:push` in production.** Use migrations:
 
 ```bash
-# Development only
-npm run db:push
-
-# Production: Use migrations
 npm run db:generate   # Generate migration files
 npm run db:migrate    # Apply migrations
 ```
 
-### Backup/Restore (Manual)
-
-```bash
-# Backup
-pg_dump $DATABASE_URL > backup_$(date +%Y%m%d).sql
-
-# Restore
-psql $DATABASE_URL < backup_YYYYMMDD.sql
-```
-
-Retention suggestion: Daily backups + 30 days retention.
-
-### Admin CSV Exports
+## Admin CSV Exports
 
 ```
 GET /api/admin/exports/ledger.csv
