@@ -1,0 +1,57 @@
+You are working in the repo "zle-web" inside folder:
+ZLEFinalAudited (5)/ZLEFinalAudited
+
+Goal:
+Make the project run smoothly in BOTH Replit and GitHub Codespaces (and local) without manual steps, using environment secrets (no .env file required). Provide a single command to start everything.
+
+Current blockers (must be fixed):
+1) Replit Auth crashes in Codespaces with openid-client error: "clientId must be a non-empty string" from server/replitAuth.ts
+2) Stripe init tries to read Replit token (X_REPLIT_TOKEN) and fails in Codespaces.
+3) DB errors like relation "partners" does not exist when seed runs, so migrations/schema are not applied automatically.
+4) People keep running npm from wrong directory. Provide robust scripts.
+
+Rules:
+- Do NOT remove features. Only add dev-safe fallbacks and improve startup flow.
+- In Codespaces/local: if Replit auth env is missing, auth must auto-disable (no crash).
+- In Codespaces/local: if Stripe secrets are missing, Stripe must auto-disable (no crash).
+- DB should be created/ready via docker-compose and then migrations/schema must be applied before seed.
+- Prefer Drizzle migration/push if present.
+- Use existing docker-compose.yml.
+
+Tasks:
+A) Implement a dev-safe guard in server/replitAuth.ts:
+   - If required env vars (REPLIT_CLIENT_ID, REPLIT_CLIENT_SECRET) are missing, log a warning and skip setupAuth instead of throwing.
+B) Implement Stripe client init fallback:
+   - Use STRIPE_SECRET_KEY from env directly.
+   - Never require X_REPLIT_TOKEN in Codespaces/local.
+   - If STRIPE_SECRET_KEY is missing: log "[stripe] disabled" and skip stripe initialization without crashing.
+C) DB bootstrap:
+   - Ensure DATABASE_URL is respected.
+   - Add scripts so that on startup we run migrations/schema creation BEFORE any seeding.
+   - If drizzle is used, add a script that runs drizzle push or migrate (whatever exists).
+D) Add a single script:
+   - "dev:setup" that does:
+     1) docker compose up -d
+     2) npm install (only if needed)
+     3) apply migrations/schema
+     4) run seed if present
+     5) start dev server
+E) Update README.md with exact instructions for:
+   - Replit Secrets required
+   - Codespaces secrets required
+   - One-liner start command
+
+Environment secrets to support:
+DATABASE_URL
+SESSION_SECRET (required for express-session)
+STRIPE_SECRET_KEY (optional in dev)
+STRIPE_WEBHOOK_SECRET (optional)
+RESEND_API_KEY (optional)
+REPLIT_CLIENT_ID (optional; only for Replit auth)
+REPLIT_CLIENT_SECRET (optional; only for Replit auth)
+
+Output required:
+- Modify code + package.json scripts to meet goals.
+- Provide the exact commands to run (npm run dev:setup).
+- Ensure app does not crash when optional secrets are missing.
+Proceed and apply changes.

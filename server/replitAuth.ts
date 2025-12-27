@@ -8,6 +8,10 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
+export function isReplitAuthAvailable(): boolean {
+  return Boolean(process.env.REPL_ID);
+}
+
 const getOidcConfig = memoize(
   async () => {
     return await client.discovery(
@@ -63,6 +67,15 @@ async function upsertUser(
 }
 
 export async function setupAuth(app: Express) {
+  if (!isReplitAuthAvailable()) {
+    console.warn("[auth] Replit auth disabled: REPL_ID not set (Codespaces/local mode)");
+    app.get("/api/login", (_req, res) => res.status(503).json({ message: "Auth disabled in dev mode" }));
+    app.get("/api/callback", (_req, res) => res.redirect("/"));
+    app.get("/api/logout", (_req, res) => res.redirect("/"));
+    app.get("/api/auth/user", (_req, res) => res.json(null));
+    return;
+  }
+
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
@@ -131,6 +144,10 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (!isReplitAuthAvailable()) {
+    return next();
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {

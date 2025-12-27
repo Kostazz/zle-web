@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
-import { getStripeSync } from "./stripeClient";
+import { getStripeSync, isStripeAvailable, disableStripe } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -30,12 +30,18 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// Initialize Stripe schema and sync data on startup
 async function initStripe() {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
     console.warn('DATABASE_URL not set - Stripe integration disabled');
+    disableStripe();
+    return;
+  }
+
+  if (!isStripeAvailable()) {
+    log('Stripe credentials not available - payments disabled', 'stripe');
+    disableStripe();
     return;
   }
 
@@ -44,7 +50,6 @@ async function initStripe() {
     await runMigrations({ databaseUrl });
     log('Stripe schema ready', 'stripe');
 
-    // Get StripeSync instance
     const stripeSync = await getStripeSync();
 
     // Set up managed webhook

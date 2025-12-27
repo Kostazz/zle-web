@@ -1,9 +1,20 @@
-// Stripe client for ZLE e-commerce - uses Replit Stripe integration
 import Stripe from 'stripe';
 
 let connectionSettings: any;
+let stripeDisabled = false;
 
-async function getCredentials() {
+export function isStripeAvailable(): boolean {
+  return !stripeDisabled && (
+    Boolean(process.env.STRIPE_SECRET_KEY) ||
+    Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL)
+  );
+}
+
+function isReplitEnvironment(): boolean {
+  return Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
+}
+
+async function getCredentialsFromReplit() {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? 'repl ' + process.env.REPL_IDENTITY
@@ -45,8 +56,26 @@ async function getCredentials() {
   };
 }
 
-// Get a fresh Stripe client - never cache
+async function getCredentials() {
+  if (process.env.STRIPE_SECRET_KEY) {
+    return {
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+      secretKey: process.env.STRIPE_SECRET_KEY,
+    };
+  }
+  
+  if (isReplitEnvironment()) {
+    return getCredentialsFromReplit();
+  }
+  
+  throw new Error('No Stripe credentials available');
+}
+
 export async function getUncachableStripeClient() {
+  if (!isStripeAvailable()) {
+    throw new Error('Stripe is disabled');
+  }
+  
   const { secretKey } = await getCredentials();
 
   return new Stripe(secretKey, {
@@ -54,22 +83,31 @@ export async function getUncachableStripeClient() {
   });
 }
 
-// Get publishable key for client-side
 export async function getStripePublishableKey() {
+  if (!isStripeAvailable()) {
+    throw new Error('Stripe is disabled');
+  }
+  
   const { publishableKey } = await getCredentials();
   return publishableKey;
 }
 
-// Get secret key for server-side operations
 export async function getStripeSecretKey() {
+  if (!isStripeAvailable()) {
+    throw new Error('Stripe is disabled');
+  }
+  
   const { secretKey } = await getCredentials();
   return secretKey;
 }
 
-// StripeSync singleton for webhook processing and data sync
 let stripeSync: any = null;
 
 export async function getStripeSync() {
+  if (!isStripeAvailable()) {
+    throw new Error('Stripe is disabled');
+  }
+  
   if (!stripeSync) {
     const { StripeSync } = await import('stripe-replit-sync');
     const secretKey = await getStripeSecretKey();
@@ -83,4 +121,9 @@ export async function getStripeSync() {
     });
   }
   return stripeSync;
+}
+
+export function disableStripe() {
+  stripeDisabled = true;
+  console.warn('[stripe] disabled - no credentials available');
 }

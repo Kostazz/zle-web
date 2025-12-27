@@ -6,6 +6,56 @@ Czech underground skateboard brand e-commerce platform.
 
 **Node.js 20 LTS recommended.**
 
+## Quick Start
+
+### Replit
+1. Click "Run" - everything is pre-configured
+2. Stripe and auth work automatically via Replit integrations
+
+### GitHub Codespaces / Local Development
+1. Start database: `docker compose up -d`
+2. Set environment secrets (see below)
+3. Apply schema: `npm run db:push`
+4. Start dev server: `npm run dev`
+
+The app will be available at http://localhost:5000
+
+## Environment Secrets
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `SESSION_SECRET` | Yes | Express session secret (any random string) |
+| `STRIPE_SECRET_KEY` | No* | Stripe secret key for payments |
+| `STRIPE_PUBLISHABLE_KEY` | No* | Stripe publishable key for client |
+| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
+| `RESEND_API_KEY` | No | Resend API key for emails |
+| `REPL_ID` | Auto | Set automatically in Replit |
+
+*Stripe keys are optional in development - payments will be disabled without them.
+
+### Replit Secrets
+Set in the "Secrets" tab:
+- `SESSION_SECRET` (required)
+- Stripe integration is configured automatically
+
+### Codespaces/Local Secrets
+Create `.env` file or set environment variables:
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zle
+SESSION_SECRET=your-random-secret-here
+STRIPE_SECRET_KEY=sk_test_...  # Optional
+STRIPE_PUBLISHABLE_KEY=pk_test_...  # Optional
+```
+
+## Dev-Safe Fallbacks
+
+The app gracefully handles missing services:
+
+- **No Replit auth?** → Auth routes return 503, app works without login
+- **No Stripe keys?** → Payments disabled, shop browsing works
+- **No Resend key?** → Emails disabled, orders still process
+
 ## Local Development (from ZIP)
 
 ### 1. Start Database
@@ -45,10 +95,6 @@ npm run db:push
 ```bash
 npm run dev
 ```
-
-The app will be available at:
-- **Client:** http://localhost:5000
-- **API:** http://localhost:5000/api
 
 ## Docker Commands
 
@@ -144,10 +190,6 @@ GET /api/admin/exports/payouts.csv
 ```
 
 Requires admin authentication. PII is masked by default.
-
-## Environment Variables
-
-See `.env.example` for all required variables.
 
 ## License
 
