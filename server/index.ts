@@ -1,3 +1,6 @@
+import "dotenv/config";
+import path from "path";
+import { fileURLToPath } from "url";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -11,7 +14,16 @@ import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
+
+// Serve static images BEFORE any Vite/SPA fallback
+app.use(
+  "/images",
+  express.static(path.join(__dirname, "..", "foto"))
+);
+
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -202,6 +214,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve static images BEFORE SPA fallback
+app.use("/images", express.static(path.join(__dirname, "..", "foto")));
+
 (async () => {
   // Print environment status table
   printEnvStatus();
@@ -248,14 +263,10 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  httpServer.listen(
-    {
-      port: env.PORT,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${env.PORT}`);
-    }
-  );
+  const port = Number(process.env.PORT ?? 5000);
+  const host = process.env.HOST ?? "127.0.0.1";
+
+  httpServer.listen(port, host, () => {
+    log(`Server running on http://${host}:${port}`);
+  });
 })();

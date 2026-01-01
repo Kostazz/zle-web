@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertOrderSchema, type CartItem, products, orders, ledgerEntries, orderPayouts, orderEvents, auditLog } from "@shared/schema";
+import { normalizeProductImages } from "./utils/productImages";
 import { z } from "zod";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { sendShippingUpdateEmail } from "./emailService";
@@ -32,7 +33,7 @@ export async function registerRoutes(
   app.get("/api/products", async (req, res) => {
     try {
       const products = await storage.getProducts();
-      res.json(products);
+      res.json(products.map(normalizeProductImages));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch products" });
     }
@@ -44,7 +45,7 @@ export async function registerRoutes(
       if (!product) {
         return res.status(404).json({ error: "Product not found" });
       }
-      res.json(product);
+      res.json(normalizeProductImages(product));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch product" });
     }
@@ -53,7 +54,7 @@ export async function registerRoutes(
   app.get("/api/products/category/:category", async (req, res) => {
     try {
       const products = await storage.getProductsByCategory(req.params.category);
-      res.json(products);
+      res.json(products.map(normalizeProductImages));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch products" });
     }
