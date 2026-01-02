@@ -1,13 +1,14 @@
 import { getPragueDayOfMonth, getPragueDateSeed } from "./pragueDate";
 
+// ✅ Daily logo set (nová stabilní struktura)
 export const allLogos = [
-  "/zle/logo/36656331-57eb-4f01-951a-5a5abf884a6c.jpg",
-  "/zle/logo/39840c8a-5ec0-48e5-b9c6-add35e0505f2.jpg",
-  "/zle/logo/561b220f-9ef4-4973-83ad-7f6d5ee95497.jpg",
-  "/zle/logo/5ff6f168-038f-4555-ad33-c2eb736647d7.jpg",
-  "/zle/logo/9be474db-99b7-4fd6-9954-c54a20e8ec9d.jpg",
-  "/zle/logo/b707c12b-e8cb-48b1-a09f-32a1c4ee0a20.jpg",
-  "/zle/logo/d5ac29ea-b59a-46ed-bf51-5f941ead50d0.jpg",
+  "/zle/logo/daily/01.jpg",
+  "/zle/logo/daily/02.jpg",
+  "/zle/logo/daily/03.jpg",
+  "/zle/logo/daily/04.jpg",
+  "/zle/logo/daily/05.jpg",
+  "/zle/logo/daily/06.jpg",
+  "/zle/logo/daily/07.jpg",
 ];
 
 export function getAllLogos(): string[] {
@@ -26,11 +27,13 @@ export function shuffleWithSeed(array: string[], seed: number): string[] {
 
 export function getTodaysLogo(): string {
   const logos = getAllLogos();
-  
+
+  // ✅ Fallback musí existovat vždy
   if (logos.length === 0) {
-    return "/zle/logo/36656331-57eb-4f01-951a-5a5abf884a6c.jpg";
+    return "/zle/logo/daily/01.jpg";
   }
-  
+
+  // ✅ Deterministická denní rotace (Praha)
   const dayIndex = getPragueDayOfMonth() % logos.length;
   return logos[dayIndex];
 }
