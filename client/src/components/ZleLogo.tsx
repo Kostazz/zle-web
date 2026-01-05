@@ -1,21 +1,27 @@
-import { useTodaysLogo } from "@/lib/logoContext";
+import { useState } from "react";
+import { getTodaysLogo } from "@/lib/imageLoader";
 
 interface ZleLogoProps {
   className?: string;
 }
 
 export default function ZleLogo({ className = "" }: ZleLogoProps) {
-  const logoSrc = useTodaysLogo();
+  const [src, setSrc] = useState<string>(() => getTodaysLogo());
 
-  if (!logoSrc) return null;
+  const fallbackSrc = `${import.meta.env.BASE_URL}images/logo/daily/01.jpg`;
 
   return (
     <img
-      src={logoSrc}
+      src={src}
       alt="ZLE – Live Style Culture Brand"
-      className={`zle-logo-polish h-8 md:h-10 w-auto object-contain ${className}`.trim()}
       loading="lazy"
       data-testid="img-zle-logo"
+      className={`zle-logo h-8 md:h-10 w-auto object-contain ${className}`.trim()}
+      onError={() => {
+        if (src !== fallbackSrc) {
+          setSrc(fallbackSrc);
+        }
+      }}
     />
   );
 }
