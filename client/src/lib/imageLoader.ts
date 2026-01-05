@@ -1,14 +1,17 @@
 import { getPragueDayOfMonth, getPragueDateSeed } from "./pragueDate";
 
-// ✅ Daily logo set (nová stabilní struktura)
+// Base-safe prefix (funguje lokálně, v Codespaces i při nasazení pod subpath)
+const BASE = import.meta.env.BASE_URL;
+
+// ✅ Daily logo set (stabilní struktura v client/public/images/logo/daily)
 export const allLogos = [
-  "/zle/logo/daily/01.jpg",
-  "/zle/logo/daily/02.jpg",
-  "/zle/logo/daily/03.jpg",
-  "/zle/logo/daily/04.jpg",
-  "/zle/logo/daily/05.jpg",
-  "/zle/logo/daily/06.jpg",
-  "/zle/logo/daily/07.jpg",
+  `${BASE}images/logo/daily/01.jpg`,
+  `${BASE}images/logo/daily/02.jpg`,
+  `${BASE}images/logo/daily/03.jpg`,
+  `${BASE}images/logo/daily/04.jpg`,
+  `${BASE}images/logo/daily/05.jpg`,
+  `${BASE}images/logo/daily/06.jpg`,
+  `${BASE}images/logo/daily/07.jpg`,
 ];
 
 export function getAllLogos(): string[] {
@@ -28,9 +31,9 @@ export function shuffleWithSeed(array: string[], seed: number): string[] {
 export function getTodaysLogo(): string {
   const logos = getAllLogos();
 
-  // ✅ Fallback musí existovat vždy
-  if (logos.length === 0) {
-    return "/zle/logo/daily/01.jpg";
+  // ✅ Fallback musí existovat vždy (aspoň 01.jpg)
+  if (!logos || logos.length === 0) {
+    return `${BASE}images/logo/daily/01.jpg`;
   }
 
   // ✅ Deterministická denní rotace (Praha)
