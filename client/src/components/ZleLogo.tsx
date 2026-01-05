@@ -1,27 +1,31 @@
-import { useState } from "react";
-import { getTodaysLogo } from "@/lib/imageLoader";
+import { SafeImage } from "@/components/SafeImage";
+import { useTodaysLogo } from "@/lib/logoContext";
+
+type ZleLogoVariant = "header" | "heroInline";
 
 interface ZleLogoProps {
   className?: string;
+  variant?: ZleLogoVariant;
 }
 
-export default function ZleLogo({ className = "" }: ZleLogoProps) {
-  const [src, setSrc] = useState<string>(() => getTodaysLogo());
+export default function ZleLogo({ className = "", variant = "header" }: ZleLogoProps) {
+  const logoSrc = useTodaysLogo();
 
+  // fallback musí fungovat všude (lokál/Codespaces/produkce)
   const fallbackSrc = `${import.meta.env.BASE_URL}images/logo/daily/01.jpg`;
 
+  const base =
+    variant === "header"
+      ? "zle-logo-safe h-8 md:h-10 w-auto"
+      : "hero-logo-inline zle-logo-safe";
+
   return (
-    <img
-      src={src}
+    <SafeImage
+      src={logoSrc || fallbackSrc}
       alt="ZLE – Live Style Culture Brand"
-      loading="lazy"
-      data-testid="img-zle-logo"
-      className={`zle-logo h-8 md:h-10 w-auto object-contain ${className}`.trim()}
-      onError={() => {
-        if (src !== fallbackSrc) {
-          setSrc(fallbackSrc);
-        }
-      }}
+      className={`${base} ${className}`.trim()}
+      loading={variant === "header" ? "lazy" : "eager"}
+      fallbackSrc={fallbackSrc}
     />
   );
 }
