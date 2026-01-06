@@ -12,7 +12,7 @@ export default function ZleLogo({ className = "", variant = "header" }: ZleLogoP
   const logoSrc = useTodaysLogo();
 
   // fallback musí fungovat všude (lokál/Codespaces/produkce)
-  const fallbackSrc = `${import.meta.env.BASE_URL}images/logo/daily/01.jpg`;
+  const fallbackSrc = "/zle/logo/daily/01.jpg";
 
   const base =
     variant === "header"
