@@ -1,17 +1,19 @@
 import { getPragueDayOfMonth, getPragueDateSeed } from "./pragueDate";
 
-// Base-safe prefix (funguje lokálně, v Codespaces i při nasazení pod subpath)
-const BASE = import.meta.env.BASE_URL;
+// ✅ Jediný oficiální root pro logo assets:
+// client/public/zle/logo/daily/*.jpg  ->  /zle/logo/daily/*.jpg
+// (Neřešíme BASE_URL – v Codespaces i lokálně to funguje spolehlivě.)
+const LOGO_ROOT = "/zle/logo/daily";
 
-// ✅ Daily logo set (stabilní struktura v client/public/images/logo/daily)
+// ✅ Daily logo set (stabilní struktura v client/public/zle/logo/daily)
 export const allLogos = [
-  `${BASE}images/logo/daily/01.jpg`,
-  `${BASE}images/logo/daily/02.jpg`,
-  `${BASE}images/logo/daily/03.jpg`,
-  `${BASE}images/logo/daily/04.jpg`,
-  `${BASE}images/logo/daily/05.jpg`,
-  `${BASE}images/logo/daily/06.jpg`,
-  `${BASE}images/logo/daily/07.jpg`,
+  `${LOGO_ROOT}/01.jpg`,
+  `${LOGO_ROOT}/02.jpg`,
+  `${LOGO_ROOT}/03.jpg`,
+  `${LOGO_ROOT}/04.jpg`,
+  `${LOGO_ROOT}/05.jpg`,
+  `${LOGO_ROOT}/06.jpg`,
+  `${LOGO_ROOT}/07.jpg`,
 ];
 
 export function getAllLogos(): string[] {
@@ -33,7 +35,7 @@ export function getTodaysLogo(): string {
 
   // ✅ Fallback musí existovat vždy (aspoň 01.jpg)
   if (!logos || logos.length === 0) {
-    return `${BASE}images/logo/daily/01.jpg`;
+    return `${LOGO_ROOT}/01.jpg`;
   }
 
   // ✅ Deterministická denní rotace (Praha)
