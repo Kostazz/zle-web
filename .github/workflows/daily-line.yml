@@ -1,0 +1,28 @@
+name: Daily Line Generator
+
+on:
+  schedule:
+    - cron: "1 * * * *" # hourly at minute 1 UTC
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Europe/Prague time
+        run: |
+          now="$(TZ=Europe/Prague date +%H:%M)"
+          echo "Prague time: $now"
+          if [ "$now" != "00:01" ]; then
+            echo "Not the scheduled time in Europe/Prague ($now). Exiting."
+            exit 0
+          fi
+      - name: Call daily line endpoint
+        env:
+          CRON_URL: ${{ secrets.DAILY_LINE_CRON_URL }}
+          CRON_SECRET: ${{ secrets.DAILY_LINE_CRON_SECRET }}
+        run: |
+          curl -sS -X POST "$CRON_URL" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{"source":"github_action"}'
