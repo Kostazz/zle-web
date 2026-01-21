@@ -1,0 +1,354 @@
+We are upgrading the ZLE checkout/payment system in this React + TypeScript + Tailwind project.
+
+GOAL:
+
+Add modern payment options for the ZLE shop:
+
+card
+
+bank transfer
+
+Google Pay
+
+Apple Pay
+
+USDC
+
+BTC
+
+ETH
+
+SOL
+
+PI
+
+
+For all crypto methods (USDC/BTC/ETH/SOL/PI) add a REQUIRED network selector (UI only).
+
+Keep the existing cart, routing and layout working exactly as before.
+
+Phase 1 = UX + data model only. NO real payments, only internal state / logging.
+
+
+IMPORTANT RULES:
+
+Do NOT break anything that already works.
+
+Do NOT remove or rename existing types, props or components unless absolutely necessary.
+
+Prefer additive changes (extend, not rewrite).
+
+If something already exists (order type, checkout form, etc.), extend it gently instead of recreating it.
+
+
+──────────────────────────────────────── PHASE 0 – QUICK SCAN (READ-ONLY) ────────────────────────────────────────
+
+1. Locate:
+
+Cart / checkout components (e.g. CheckoutPage, CheckoutForm, CartSidebar, etc.).
+
+Order/Cart TypeScript types (e.g. ZleOrder, CartItem, etc.).
+
+Any existing “payment method” fields or UI.
+
+
+
+2. BEFORE editing, summarize:
+
+Where the checkout UI lives (file path).
+
+Where the order type is defined (file path).
+
+Whether there is already any paymentMethod field.
+
+
+
+
+Only after this short scan and summary you may continue.
+
+──────────────────────────────────────── PHASE 1 – DATA MODEL (NON-BREAKING) ────────────────────────────────────────
+
+We want a single order type to carry the payment info.
+
+1. Find the main order type, likely named something like:
+
+
+
+ZleOrder (preferred), or
+
+whatever existing type represents a placed order.
+
+
+2. If it already exists:
+
+EXTEND it by adding the following fields (do NOT remove any existing fields):
+
+
+
+
+paymentMethod:
+  | "card"
+  | "bank"
+  | "gpay"
+  | "applepay"
+  | "usdc"
+  | "btc"
+  | "eth"
+  | "sol"
+  | "pi";
+
+paymentNetwork?: string; // used only for crypto methods
+
+3. If there is NO order type yet:
+
+Create a new ZleOrder interface in the appropriate place (where other shared types live) and include at least:
+
+
+
+
+export interface ZleOrder {
+  id: string;                // or keep whatever ID style is used today
+  items: CartItem[];         // reuse existing type
+  totalPrice: number;        // or the existing price structure
+  createdAt: string;         // ISO string
+  paymentMethod:
+    | "card"
+    | "bank"
+    | "gpay"
+    | "applepay"
+    | "usdc"
+    | "btc"
+    | "eth"
+    | "sol"
+    | "pi";
+  paymentNetwork?: string;   // for crypto only
+  // keep / add any other fields already used (customer info, note, etc.)
+}
+
+4. Ensure no existing code is broken:
+
+If some places create an order without paymentMethod yet, give them a safe default (e.g. "card") until the UI is wired.
+
+Fix TypeScript errors minimally.
+
+
+
+
+──────────────────────────────────────── PHASE 2 – CHECKOUT UI: PAYMENT METHODS ────────────────────────────────────────
+
+Now update the checkout form where the user confirms their order.
+
+1. Identify the main checkout component that is rendered on the checkout route (e.g. /checkout).
+
+
+2. In this component:
+
+Add a new section titled “Způsob platby”.
+
+Implement a controlled input (e.g. useState or existing form library) for:
+
+
+
+
+paymentMethod:
+  | "card"
+  | "bank"
+  | "gpay"
+  | "applepay"
+  | "usdc"
+  | "btc"
+  | "eth"
+  | "sol"
+  | "pi";
+
+Render payment options as radio buttons or a select; labels in Czech, for example:
+
+card → „Platba kartou (online)“
+
+bank → „Bankovní převod“
+
+gpay → „Google Pay“
+
+applepay → „Apple Pay“
+
+usdc → „USDC (krypto)“
+
+btc → „Bitcoin (BTC)“
+
+eth → „Ethereum (ETH)“
+
+sol → „Solana (SOL)“
+
+pi → „Pi Network (PI)“
+
+
+Make the choice REQUIRED before submit.
+
+
+3. Styling:
+
+Use existing Tailwind style conventions already used in the form.
+
+Keep layout mobile-first and do NOT drastically change spacing.
+
+
+
+
+──────────────────────────────────────── PHASE 2.1 – CRYPTO NETWORK SUPPORT (UI ONLY) ────────────────────────────────────────
+
+For crypto methods we add a second, conditional field for “Síť”.
+
+1. In the same checkout component, when paymentMethod is one of:
+
+
+
+"usdc" | "btc" | "eth" | "sol" | "pi"
+
+render an additional SELECT or RADIO group:
+
+USDC:
+
+value "ethereum"         → label „Ethereum (USDC)“
+
+value "solana"           → label „Solana (USDC)“
+
+
+BTC:
+
+value "bitcoin"          → label „Bitcoin mainnet“
+
+
+ETH:
+
+value "ethereum-mainnet" → label „Ethereum mainnet“
+
+
+SOL:
+
+value "solana-mainnet"   → label „Solana mainnet“
+
+
+PI:
+
+value "pi-mainnet"       → label „Pi Network (Mainnet)“
+
+
+2. Bind this to a state field paymentNetwork (string).
+
+
+3. Validation rules:
+
+If paymentMethod is crypto (usdc, btc, eth, sol, pi):
+
+paymentNetwork is REQUIRED (user must select one option).
+
+
+If paymentMethod is non-crypto (card, bank, gpay, applepay):
+
+Do NOT show the network field.
+
+paymentNetwork should be undefined in the final order.
+
+
+
+
+4. Styling:
+
+Place the network field directly under the crypto method selection so it feels like a sub-choice.
+
+Match existing form spacing and typography.
+
+
+
+
+──────────────────────────────────────── PHASE 3 – SUBMIT BEHAVIOUR (NO REAL PAYMENTS) ────────────────────────────────────────
+
+We only want internal bookkeeping in this phase.
+
+1. In the existing checkout submit handler:
+
+Extend the code so that when creating the order object it includes:
+
+
+
+
+paymentMethod: selectedPaymentMethod,
+paymentNetwork: selectedPaymentNetwork, // or undefined for non-crypto
+
+All other current behaviour (like computing totals, clearing cart, showing success message) must stay unchanged.
+
+
+2. Do NOT call any real payment APIs.
+
+Instead you may:
+
+Log the order object into console.log("NEW ZLE ORDER", order); and/or
+
+Store it to localStorage under a key like "zle-orders" (append to an array).
+
+
+
+3. After submit:
+
+Keep the existing success UX (toast / redirect / thank-you page).
+
+Do NOT change the current navigation flow.
+
+
+
+
+──────────────────────────────────────── PHASE 4 – RESPONSIVE & REGRESSION CHECK ────────────────────────────────────────
+
+1. Test on mobile width:
+
+Checkout page still loads correctly.
+
+Payment method radios / select are usable on a small screen.
+
+Crypto network field appears ONLY when crypto is selected.
+
+Form can be submitted without console errors.
+
+
+
+2. Test on desktop width:
+
+Layout is still clean; no broken columns or overflowing content.
+
+
+
+3. Regression check:
+
+Add an item to cart, go to checkout, place an order.
+
+Confirm that:
+
+Cart behaviour is unchanged (items, totals).
+
+No TypeScript errors/warnings are introduced.
+
+No existing routes or components are broken.
+
+
+
+
+
+──────────────────────────────────────── FINAL REPORT ────────────────────────────────────────
+
+When done, return a short summary:
+
+The file(s) where the order type lives and how it was extended.
+
+The file(s) where the checkout/payment UI lives and what was added.
+
+Example of a final ZleOrder object (JSON) for:
+
+a card payment
+
+a USDC/Solana payment
+
+a PI/PI-mainnet payment.
+
+
+
+Do NOT introduce any real payment processing; this is a UI + data-model preparation only.

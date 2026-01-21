@@ -1,0 +1,46 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# Environment and secrets (ZLE v1.2.2)
+.env
+.env.*
+!.env.example
+
+# Security-sensitive files
+*.pem
+*.key
+*.p12
+*.sqlite
+*.dump
+
+# Local dev artifacts (do not commit)
+SESSION_SECRET
+Secrets
+
+# Backups
+_backup/
+backups/
+
+# Local caches
+.cache/
+*.log
+
+# build artifacts
+dist
+client/dist
+server/dist
+
+# dependencies
+node_modules
+
+# caches
+.vite
+client/.vite
+.turbo
+
+# misc
+.DS_Store

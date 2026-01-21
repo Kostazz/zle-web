@@ -1,0 +1,233 @@
+🔧 MASTER PROMPT PRO REPLIT – ZLE AUTO-IMAGE LOADER v1.2 (bez duplicit, jen bezpečné úpravy)
+
+Jsi zkušený senior vývojář (TypeScript + React + Next.js + Tailwind CSS).
+Pracuješ na projektu ZLE (skate/underground brand).
+
+Tvůj úkol je minimální, bezpečný a přesně ohraničený:
+
+Upravit projekt tak, aby všechny části webu, které zobrazují fotky (hero, gallery, crew, bg koláže atd.), automaticky používaly všechny obrázky ze svých složek v /public, místo omezeného “ručního” seznamu,
+a zároveň se na jedné obrazovce neopakovaly stejné fotky v různých sekcích.
+Všechny ostatní části kódu musí zůstat beze změny, kromě toho, co je v tomto zadání explicitně povoleno.
+
+0) Co smíš a co NESMÍŠ dělat
+
+SMÍŠ:
+
+přidat nové helper funkce / soubory pro načítání obrázků (lib/image-loader.ts apod.),
+
+změnit způsob, jak se sestavují pole s obrázky (původní ruční pole → automaticky z adresářů),
+
+v případě potřeby upravit signatury komponent tak, aby dostávaly seznam obrázků přes props (např. images: string[]).
+
+NESMÍŠ:
+
+měnit layout JSX (strukturu sekcí, hierarchii, počty gridů),
+
+měnit Tailwind CSS třídy, styly, animace a hover efekty,
+
+měnit texty v UI,
+
+přejmenovávat soubory, složky, komponenty, props nebo typy, pokud to není nutné pro obrázky,
+
+mazat existující logiku, která nesouvisí s načítáním obrázků,
+
+měnit routování, konfiguraci Next.js, env proměnné, API routy, logiku formulářů atd.
+
+Tvůj zásah se musí týkat pouze logiky načítání seznamů obrázků a jejich předání do komponent.
+
+1) Analýza stávajícího stavu
+
+Najdi všechny části, kde se pracuje s fotkami pro ZLE:
+
+soubory jako hero-section.tsx, gallery-section.tsx, crew-section.tsx, další sekce se ZLE fotkami,
+
+konstanty typu HERO_IMAGES, GALLERY_IMAGES, CREW_IMAGES apod.
+
+Zjisti, z jakých složek v /public tyto seznamy fotek pocházejí, např.:
+
+/public/assets/gallery
+
+/public/assets/bg-collage
+
+/public/assets/hero
+
+/public/assets/crew
+
+případně další složky používané pro ZLE fotky.
+
+Do JSX struktury, Tailwind tříd ani textů nezasahuj, pokud to není nutné kvůli předávání pole obrázků.
+
+2) Helper pro čtení fotek ze složky
+
+Vytvoř (nebo uprav) soubor:
+
+lib/image-loader.ts
+
+Do něj přidej:
+
+// lib/image-loader.ts
+import fs from "fs"
+import path from "path"
+
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".jfif"]
+
+export function getImagesFromDir(relativeDir: string): string[] {
+  const dirPath = path.join(process.cwd(), "public", relativeDir)
+
+  if (!fs.existsSync(dirPath)) {
+    return []
+  }
+
+  const files = fs.readdirSync(dirPath)
+
+  return files
+    .filter((file) => {
+      const ext = path.extname(file).toLowerCase()
+      return IMAGE_EXTENSIONS.includes(ext)
+    })
+    .map((file) => `/${relativeDir}/${file}`)
+}
+
+
+relativeDir = cesta bez /public, např. "assets/gallery" → výsledné URL /assets/gallery/xxx.jpg.
+
+Nepřepisuj jiné existující helpery, jen tento soubor přidej / použij.
+
+3) Nahrazení ručních seznamů fotek automatickým čtením
+
+U každého stávajícího seznamu fotek:
+
+Najdi konstanty typu:
+
+const GALLERY_IMAGES = [
+  "/assets/gallery/xxx-01.jpg",
+  "/assets/gallery/xxx-02.jpg",
+  // ...
+]
+
+
+nebo generátory:
+
+const GALLERY_IMAGES = Array.from({ length: 24 }, (_, i) => ...)
+
+
+Nahraď je voláním getImagesFromDir:
+
+import { getImagesFromDir } from "@/lib/image-loader"
+
+const GALLERY_IMAGES = getImagesFromDir("assets/gallery")
+const HERO_IMAGES = getImagesFromDir("assets/hero")
+const CREW_IMAGES = getImagesFromDir("assets/crew")
+// podle potřeby dalších složek
+
+
+Zachovej názvy těchto konstant, pokud nejsou v rozporu s nutnou úpravou. Cílem je změnit jen zdroj dat, ne zbytek kódu.
+
+4) Server vs. client – kde může běžet fs
+
+fs může běžet jen na serveru.
+
+Volání getImagesFromDir musí probíhat v serverové vrstvě:
+
+v server komponentě (bez "use client"),
+
+nebo v app/page.tsx / getStaticProps / getServerSideProps (podle typu projektu).
+
+Pokud je komponenta označená "use client" a přímo v ní je definovaný seznam fotek:
+
+přesuní definici seznamu fotek do serverové vrstvy (např. app/page.tsx),
+
+komponentě předej pole fotek přes props.
+
+Příklad pro App Router:
+
+// app/page.tsx (server component)
+import { getImagesFromDir } from "@/lib/image-loader"
+import { HeroSection } from "@/components/hero-section"
+import { GallerySection } from "@/components/gallery-section"
+
+export default function HomePage() {
+  const heroImages = getImagesFromDir("assets/hero")
+  const galleryImages = getImagesFromDir("assets/gallery")
+
+  return (
+    <div>
+      <HeroSection images={heroImages} />
+      <GallerySection images={galleryImages} />
+    </div>
+  )
+}
+
+
+A v komponentách pouze minimální úprava:
+
+// components/hero-section.tsx
+"use client"
+
+type HeroSectionProps = {
+  images: string[]
+}
+
+export function HeroSection({ images }: HeroSectionProps) {
+  // zachovej původní JSX, jen místo původní konstanty použij `images`
+}
+
+
+Strukturu komponenty, Tailwind třídy a obsah nech tak, jak je.
+
+5) Výsledek – čtení všech fotek
+
+Po této části musí platit:
+
+Všechny sekce (hero, gallery, crew, bg koláže…) automaticky používají všechny soubory v příslušných složkách /public, ne jen ručně vybrané.
+
+Přidání fotky do složky (např. /public/assets/gallery) ji automaticky zapojí do zobrazení.
+
+Vzhled (layout, počty fotek v gridech, styly) zůstává stejný, mění se jen datový zdroj.
+
+6) DŮLEŽITÉ: ŽÁDNÉ DUPLICITY NA JEDNÉ OBRAZOVCE
+
+Navíc musíš zajistit:
+
+Při jednom zobrazení stránky nesmí být stejná fotka použitá ve dvou různých sekcích zároveň
+(např. stejný obrázek v hero koláži i v galerii zároveň).
+
+Implementuj to centrálně na úrovni stránky, kde skládáš data pro sekce (např. app/page.tsx):
+
+Sestav seznamy takto:
+
+const heroAll = getImagesFromDir("assets/hero")
+const heroImages = heroAll.slice(0, 6) // nebo jiný počet podle layoutu
+
+const galleryAll = getImagesFromDir("assets/gallery")
+const galleryImages = galleryAll
+  .filter((src) => !heroImages.includes(src))
+  .slice(0, 24)
+
+const crewAll = getImagesFromDir("assets/crew")
+const crewImages = crewAll
+  .filter((src) => !heroImages.includes(src) && !galleryImages.includes(src))
+  .slice(0, 4)
+
+
+Použij tyto seznamy jako props pro jednotlivé sekce.
+
+Tím zajistíš:
+
+žádné opakování napříč sekcemi v rámci jednoho renderu,
+
+žádné vynucené změny layoutu – pořád pracuješ se stejným počtem fotek v dané sekci.
+
+7) Finální kontrola
+
+Na konci ověř:
+
+Projekt se bez chyb sestaví a běží.
+
+Stránka vizuálně vypadá jako předtím (layout, styly, texty beze změny).
+
+Hero / gallery / crew sekce zobrazují fotky z kompletních složek, ne jen z omezených ručních seznamů.
+
+Na jedné obrazovce není stejná fotka použitá ve dvou sekcích zároveň.
+
+Proveď přesně tyto úpravy a nic dalšího neměň.

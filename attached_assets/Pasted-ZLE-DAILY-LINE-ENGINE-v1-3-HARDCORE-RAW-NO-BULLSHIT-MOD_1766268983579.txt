@@ -1,0 +1,158 @@
+ZLE DAILY LINE ENGINE v1.3 — HARDCORE / RAW / NO-BULLSHIT MODE
+KONTEKST
+
+Projekt: ZLE web / e-shop
+Existuje modul / role / prompt pro generování textu „DNEŠNÍ ZLE HLÁŠKA“.
+
+Tvůj úkol je POUZE UPRAVIT JAZYKOVÁ PRAVIDLA / PROMPT / TEXTOVÝ ENGINE
+tak, aby generoval výrazně tvrdší, provokativnější a real-life hlášky.
+
+❗ ABSOLUTNÍ PRAVIDLA (CRITICAL)
+
+❌ NESAHEJ na UI
+
+❌ NESAHEJ na logiku
+
+❌ NESAHEJ na databázi
+
+❌ NESAHEJ na routy, API, auth
+
+❌ NEMĚŇ strukturu aplikace
+
+❌ NEPŘIDÁVEJ žádné nové závislosti
+
+✔️ POVOLENO:
+
+úprava textového promptu / role / pravidel generování hlášek
+
+úprava pouze obsahu hlášek, ne jejich zobrazování
+
+Jakýkoliv zásah mimo text = FAIL.
+
+🎯 CÍL ÚPRAVY
+
+Změnit „DNEŠNÍ ZLE HLÁŠKU“ tak, aby:
+
+byla víc na hranu
+
+nebyla filozofická
+
+nebyla motivační
+
+nebyla „lifestyle marketing“
+
+byla raw, drzá, ze života
+
+zněla, jako že vznikla mezi lidma, co to fakt žijou
+
+🧱 POVINNÝ FORMÁT HLÁŠKY
+
+Každá hláška MUSÍ:
+
+Začínat přesně:
+
+ZLE je
+
+
+Být:
+
+1 věta (max 2, ale spíš 1)
+
+česky
+
+krátká, úderná
+
+pochopitelná na mobilu
+
+bez vysvětlování
+
+🔥 POVINNÝ TÓN (HARDCORE MODE)
+
+Každá hláška musí splnit ALESPOŇ 2 z těchto bodů:
+
+vědomé porušení pravidel
+
+sebereflexe přes průser
+
+alkohol / únava / chyba / ego / fuckup
+
+ironie, lehká drzost
+
+„tohle se říká jen mezi svýma“ vibe
+
+reálná situace ze života, ne poučka
+
+🚫 STRIKTNĚ ZAKÁZÁNO
+
+moudra
+
+poučky
+
+citáty
+
+motivace
+
+„správná cesta“
+
+pozitivní affirmations
+
+safe marketing text
+
+Pokud by hláška šla dát na plakát → JE ŠPATNĚ.
+
+🧪 INTERNÍ SELF-CHECK (POVINNÝ)
+
+Před schválením každé hlášky si agent MUSÍ položit:
+
+Řekl by to někdo u piva / po průseru / ve tři ráno?
+
+Nasere to aspoň malou skupinu lidí?
+
+Má to život, ne význam?
+
+Pokud ne → zahodit a vygenerovat jinou.
+
+🧨 REFERENČNÍ PŘÍKLADY (DRŽ SE TOHOTO DUCHA)
+
+„ZLE je jít jen na jedno a řešit to až zejtra.“
+
+„ZLE je říct si ‚už fakt končím‘ a objednat další.“
+
+„ZLE je když víš, že to není dobrej nápad… a stejně ho uděláš.“
+
+„ZLE je plánovat budoucnost s kocovinou.“
+
+„ZLE je když tě seberou papíry, ale náladu ne.“
+
+„ZLE je žít tak, že na to máš historky.“
+
+„ZLE je když to dává smysl jen těm, co tam byli.“
+
+📦 VÝSTUP
+
+Zachovej stávající napojení modulu
+
+Pouze nahraď / zpřesni textový engine
+
+Ověř, že:
+
+aplikace běží
+
+nic jiného se nezměnilo
+
+generují se nové, tvrdší hlášky
+
+✅ HOTOVO, KDYŽ
+
+hlášky jsou výrazně ostřejší
+
+nejsou „biblické žalmy“
+
+zní jako ZLE crew real talk
+
+žádný jiný kód není dotčen
+
+🔚 POZNÁMKA
+
+Pokud bys narazil na cokoliv, co by vyžadovalo zásah mimo text →
+ZASTAV SE a napiš, nic nepřepisuj.

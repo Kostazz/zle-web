@@ -1,0 +1,1061 @@
+ZLE CORE INFRA + SECURITY + COMPLIANCE PACK v1.2.2
+
+(Bulletproof / Additive-Only / 2025-Ready + EU/OPS/Observability + Admin Hardening + Prod Migrations + Integrity)
+
+We are working on the ZLE web e-shop.
+
+Stack
+
+Client: React + Vite + Tailwind
+
+Server: Express + TypeScript
+
+DB: PostgreSQL + Drizzle ORM
+
+Payments: Stripe (card, Apple Pay, Google Pay)
+
+Future: Crypto (BTC, ETH, SOL, USDC, PI placeholder)
+
+Environment: Replit + Portable ZIP (VS Code + Docker)
+
+
+
+---
+
+🔒 ABSOLUTE RULES (NON-NEGOTIABLE)
+
+1. ADD-ONLY MODE
+
+
+
+Do NOT delete, rename, or rewrite existing logic.
+
+If something exists → extend gently.
+
+If unsure → add new files / optional fields instead.
+
+
+2. SAFETY FIRST
+Before touching multiple files:
+
+
+
+create a git commit OR
+
+create /_backup/YYYY-MM-DD/ copies of every file you will touch.
+Never leave the project broken.
+
+
+3. AUDIT FIRST
+
+
+
+Locate where logic already lives.
+
+Map dependencies internally before modifying.
+
+
+4. IDEMPOTENCY
+
+
+
+Webhooks, payouts, refunds must never double-execute.
+
+Prefer “event log + unique constraint” for guaranteed idempotency.
+
+
+5. EU MINDSET
+
+
+
+Ledger is immutable.
+
+GDPR anonymizes PII, never deletes accounting data.
+
+Returns/withdrawals preserve auditability.
+
+
+6. NO UI/UX CHANGES
+
+
+
+Backend + infra only unless explicitly requested.
+
+
+7. NO SECRETS IN REPO
+
+
+
+Never write real keys into files.
+
+Only .env.example placeholders.
+
+Respect Replit secrets.
+
+
+8. PROD DISCIPLINE
+
+
+
+No “db:push” in production.
+
+Use migrations in production.
+
+Logging in prod must be redacted.
+
+
+
+---
+
+🎯 GOALS
+
+Prepare complete infrastructure, security and compliance so that:
+
+content (photos, story, products) can be added later with minimal code changes
+
+payouts, accounting and crypto are future-proof
+
+project meets 2025 standards (OWASP-minded hardening, EU ops discipline, Stripe/PCI-safe handling)
+
+project runs in Replit and as portable ZIP locally
+
+admin access is hardened (RBAC + 2FA skeleton)
+
+financial flows are transactionally safe (paid→stock→payout→ledger)
+
+
+
+---
+
+0️⃣ FULL AUDIT (MANDATORY FIRST STEP)
+
+Detect and document (but proceed automatically after):
+
+repo structure (/client, /server, /shared)
+
+Drizzle schema file location and how it’s used in drizzle config
+
+Stripe verify route + webhook route + how order is marked paid
+
+where order items live (line items vs cart snapshot)
+
+existing logging, rate limits, Helmet/CORS, request parsing order (raw vs json)
+
+current payout generation hook location (verify route vs webhook or both)
+
+current admin auth mechanism (sessions/JWT/whatever exists)
+
+whether stock is deducted and where; any existing concurrency controls
+Proceed after audit without asking for confirmation.
+
+
+
+---
+
+0.1️⃣ BACKUP / COMMIT BLOCK (MANDATORY BEFORE CHANGES)
+
+Before implementing anything:
+
+If git repo exists: create a commit named:
+chore: pre ZLE CORE INFRA v1.2.2 backup
+
+If no git: create /_backup/YYYY-MM-DD/ and copy every file that will be changed.
+Then implement.
+
+
+
+---
+
+1️⃣ WATERFALL PAYOUT ENGINE (CORE FIX)
+
+Business logic (canonical)
+
+grossTotal = order.total
+cogsTotal = sum(items.qty * items.unitCost)
+feesTotal = Stripe fees (+ shipping later)
+distributableTotal = grossTotal - cogsTotal - feesTotal
+
+Product support (ADD fields only)
+
+Extend products/variants with:
+
+productModel: "legacy" | "new"
+
+unitCost (COGS)
+
+optional stockOwner ("MICHAL" | "ZLE")
+
+optional pricingMode, pricingPercent (future-ready)
+
+
+Models
+
+LEGACY
+
+margin above COGS split evenly (1/3 each) unless rules specify otherwise
+
+
+NEW
+
+COGS / production profit → Michal
+
+margin split 40 / 40 / 20 (KOSTA / TOMAS / ZABR)
+
+
+Implementation requirements
+
+payouts computed from distributableTotal by default
+
+store payout basis explicitly (e.g. "basis": "distributable")
+
+rule selection based on order.createdAt (never “today”)
+
+support per-order now; future-proof for per-line later
+
+idempotent creation of:
+
+order_payouts
+
+ledger_entries
+
+
+
+Critical: do not break existing checkout
+
+Do NOT change existing order creation behavior.
+
+Add missing optional fields and compute waterfall totals safely:
+
+If unitCost missing → treat as 0 but flag in audit_log.meta (do not block)
+
+If productModel missing → default to "legacy" but flag meta
+
+
+
+
+---
+
+1.1️⃣ ORDER EVENTS TABLE (GUARANTEED IDEMPOTENCY + AUDIT)
+
+Add a dedicated order_events table:
+
+unique key on (provider, providerEventId)
+
+columns:
+
+id
+
+orderId nullable
+
+provider ("stripe" | "crypto" | "manual" | etc.)
+
+providerEventId string required
+
+type ("payment_succeeded" | "payment_failed" | "refund" | "chargeback" | etc.)
+
+payloadHash optional
+
+payload jsonb nullable (store minimal or redacted)
+
+createdAt
+
+
+
+Rules:
+
+Every webhook handler must first insert an order_event.
+
+If exists → exit early (idempotent).
+
+Do not store raw PII in payload in prod (redact/hash).
+
+
+
+---
+
+1.2️⃣ TRANSACTIONAL INTEGRITY (PAID → STOCK → PAYOUT → LEDGER)
+
+Wherever payment is confirmed (verify route and/or webhook), ensure operations are safe:
+
+Use a DB transaction if possible:
+
+1. set order paid (only if not already)
+
+
+2. deduct stock (only once)
+
+
+3. write ledger sale entry (only once)
+
+
+4. generate payouts (only once)
+
+
+5. commit
+
+
+
+
+If the codebase cannot easily wrap everything in one transaction now:
+
+at minimum add “once guards”:
+
+order.paymentStatus check
+
+order_events idempotency
+
+unique constraints for sale ledger per order
+
+stock update using atomic/conditional update (e.g. WHERE stock >= qty)
+
+
+
+Rules:
+
+payout failures must not block marking order paid; log error and retry via admin job later.
+
+
+
+---
+
+2️⃣ PAYMENT PROVIDERS LAYER (CRYPTO-READY, DISABLED)
+
+Add provider registry (no activation, no UI changes):
+
+stripe_card
+
+stripe_gpay
+
+stripe_applepay
+
+bank_transfer
+
+crypto_manual
+
+crypto_invoice (future)
+
+
+Crypto readiness schema (disabled by default):
+
+assets: BTC, ETH, SOL, USDC, PI placeholder
+
+networks (chain identifiers)
+
+addresses (rotatable)
+
+confirmations
+
+manual review flag
+
+
+Rules:
+
+all providers default enabled=false
+
+do not activate crypto without explicit request
+
+
+
+---
+
+2.1️⃣ PCI/STRIPE SAFE HANDLING (NO CARD DATA EVER)
+
+Add explicit technical rules (README or server comments):
+
+Never store PAN/CVC or any sensitive card data.
+
+Store only safe references:
+
+paymentIntentId
+
+provider
+
+status
+
+amount
+
+currency
+
+optional feeAmount
+
+
+Keep Stripe webhook signature verification intact.
+
+Keep raw body parse order correct.
+
+
+
+---
+
+3️⃣ LEDGER & ACCOUNTING (EU-READY)
+
+Ensure immutable ledger supports:
+
+sale
+
+payout
+
+refund
+
+fee
+
+optional chargeback and chargeback_fee (ADD)
+
+
+Rules:
+
+Never rewrite history.
+
+Refunds create negative entries.
+
+Payout cancellation uses adjustments or status flags; never delete ledger rows.
+
+
+
+---
+
+4️⃣ REFUND & RETURNS SKELETON (EU 14-DAY)
+
+Extend order lifecycle additively:
+
+states:
+
+return_requested
+
+return_received
+
+refunded
+
+returned
+
+
+track:
+
+withdrawal_deadline_at (order.createdAt + 14 days)
+
+refund_amount optional
+
+refund_reason optional
+
+
+
+Implement minimal server helper (no UI rewrite):
+
+applyRefundForOrder(orderId, amount, reason, providerEventId)
+
+inserts order_events (idempotency)
+
+writes ledger refund entry
+
+cancels/adjusts payouts
+
+updates order status
+
+
+
+Rules:
+
+must be idempotent
+
+must not delete orders
+
+
+
+---
+
+4.1️⃣ FRAUD / DISPUTE / CHARGEBACK SKELETON (ADD ONLY)
+
+Add optional fields (no UI needed):
+
+on orders:
+
+riskScore nullable
+
+manualReview boolean default false
+
+fraudNotes nullable
+
+
+add webhook handling placeholders for dispute/chargeback events:
+
+record in order_events
+
+create ledger entries (chargeback, chargeback_fee)
+
+set order state/flags appropriately (do not break existing flow)
+
+
+
+Default behavior: no change unless event occurs.
+
+
+---
+
+5️⃣ GDPR TECHNICAL SKELETON
+
+Ensure:
+
+anonymization endpoint (admin-only)
+
+PII replaced with placeholders
+
+orders kept for accounting
+
+audit_log entry created
+
+
+Retention config:
+
+minimal defaults
+
+do not auto delete unless explicitly requested
+
+
+
+---
+
+5.1️⃣ CONSENTS LOG (GDPR COOKIES/MARKETING) — SCHEMA ONLY
+
+Add consents table (no UI required now):
+
+id
+
+userId nullable
+
+sessionId nullable
+
+consentType ("essential" | "analytics" | "marketing")
+
+status ("granted" | "denied")
+
+policyVersion string
+
+source ("banner" | "settings" | "import")
+
+ip nullable (optional; if stored, hash/truncate)
+
+userAgent nullable
+
+createdAt
+
+
+Rules:
+
+store minimum necessary
+
+marketing tracking disabled by default
+
+
+
+---
+
+6️⃣ SECURITY HARDENING (2025 STANDARD)
+
+Add if missing (minimal, non-breaking):
+
+CSRF protection for cookie-based admin/session flows (if applicable)
+
+input validation for write endpoints (Zod or equivalent)
+
+webhook replay protection via order_events
+
+production log redaction (no PII)
+
+strict CORS in production (domain allowlist)
+
+rate limits on sensitive routes (auth/admin/checkout/verify/webhooks)
+
+
+Rules:
+
+Do NOT change auth system unless requested.
+
+Do NOT add CSP that breaks client unless explicitly asked.
+
+
+
+---
+
+6.1️⃣ OBSERVABILITY MINIMUM (REQUEST-ID + STRUCTURED LOGS)
+
+Add:
+
+generate x-request-id if missing
+
+include in logs and errors
+
+
+Production logging:
+
+no full request/response bodies
+
+log: route, method, status, duration, request-id
+
+
+Development logging:
+
+more verbose is OK
+
+
+
+---
+
+6.2️⃣ SESSION & COOKIE HARDENING (IF APPLICABLE)
+
+If the project uses cookie-based sessions:
+
+ensure cookies are:
+
+HttpOnly
+
+Secure (in prod)
+
+SameSite=Lax (or Strict if safe)
+
+
+set session expiration + rotation policy (minimal skeleton)
+
+never log session identifiers
+
+
+If not applicable, document “not used”.
+
+
+---
+
+6.3️⃣ ADMIN SECURITY MINIMUM (RBAC + 2FA SKELETON)
+
+Add additive-only admin hardening without changing UI:
+
+RBAC:
+
+roles: admin, staff, read_only
+
+enforce on admin endpoints (write operations)
+
+
+2FA (TOTP) skeleton:
+
+table or fields:
+
+twoFactorEnabled boolean
+
+twoFactorSecret encrypted/encoded (store safely)
+
+twoFactorRecoveryCodes hashed (optional)
+
+
+endpoints (admin-only), but do not break existing login:
+
+enable 2FA (generate secret)
+
+verify 2FA
+
+disable 2FA Default: 2FA disabled unless enabled by admin.
+
+
+
+
+If no user/auth system exists, implement schema placeholders + README TODO only (do not invent auth).
+
+
+---
+
+6.4️⃣ SECRETS HYGIENE (SAFE ADD ONLY)
+
+Add:
+
+.gitignore audit/extend to ensure:
+
+.env, .env.*, *.pem, *.key, *.p12, *.sqlite, *.dump, backups, local caches
+
+
+Optional CI placeholder (docs only) for secret scanning:
+
+gitleaks / GitHub secret scanning mention in README Do not add heavy CI unless requested; keep it as documented recommendation.
+
+
+
+
+---
+
+7️⃣ OPS & PORTABILITY
+
+Ensure:
+
+Docker Postgres for local dev
+
+.env.example only
+
+README with exact steps
+
+Node.js 20 LTS recommendation
+
+.nvmrc = 20 optional
+
+
+
+---
+
+7.1️⃣ BACKUP/RESTORE SKELETON (DOC ONLY)
+
+In README add:
+
+where prod DB lives (placeholder)
+
+backup command (pg_dump)
+
+restore command (psql)
+
+retention suggestion (e.g. daily + 30 days) as placeholder
+
+reminder: test restore periodically
+
+
+No automation required now; doc discipline only.
+
+
+---
+
+7.2️⃣ PROD MIGRATIONS DISCIPLINE (DRIZZLE)
+
+Ensure production-ready migration approach:
+
+keep db:push for dev only
+
+add/ensure scripts:
+
+db:generate (generate migrations)
+
+db:migrate (apply migrations)
+
+
+README:
+
+“In production use db:migrate, never db:push” Do NOT remove existing scripts; add alongside.
+
+
+
+
+---
+
+8️⃣ VERIFY (MANDATORY)
+
+Confirm:
+
+server boots locally with Docker Postgres
+
+checkout still works
+
+Stripe verify + webhook unchanged (signature verification preserved)
+
+payouts generated once (idempotent)
+
+refund/returns skeleton safe (idempotent)
+
+dispute/chargeback skeleton does not affect normal flow
+
+no TypeScript errors
+
+logs redacted in production mode
+
+RBAC does not block non-admin routes
+
+if auth not present, RBAC/2FA is placeholder-only (no break)
+
+
+
+---
+
+📄 FINAL OUTPUT REQUIRED
+
+Return:
+
+1. Files created
+
+
+2. Files modified
+
+
+3. What was added (summary)
+
+
+4. Exact local run commands
+
+
+5. Any risks / TODOs
+
+
+
+
+---
+
+⚠️ REMEMBER
+
+DO NOT invent legal claims
+
+DO NOT activate crypto
+
+DO NOT change UI
+
+DO NOT break existing flows
+
+DO NOT store sensitive card data
+
+
+
+---
+
+✅ DEFINITION OF DONE
+
+build passes
+
+ledger immutable
+
+payouts waterfall-correct
+
+GDPR anonymization works
+
+order_events prevents double-processing
+
+consent log schema exists (no UI required)
+
+observability minimum in place
+
+admin endpoints protected by RBAC (where applicable)
+
+2FA skeleton present (where applicable) without breaking login
+
+prod migrations discipline documented + scripts present
+
+project ready for content drop-in
+
+Aktivován Jarvis režim – PiRadar Continuum online.
+
+Níže máš **ZLE CORE INFRA + SECURITY + COMPLIANCE PACK v1.2.3 — MICRO PATCH** jako **jeden copy-paste blok**, určený k nalepení za v1.2.2. Je to čistě **additive-only**, bez UI změn, bez aktivace crypto, bez rozbití existujících flow.
+
+---
+
+## 🧩 ZLE v1.2.3 — MICRO PATCH (Additive-Only / No-UI / Safe)
+
+We are applying **ZLE v1.2.3 MICRO PATCH** on top of v1.2.2.
+
+ABSOLUTE RULES:
+
+* Additive-only. Do not delete/rename existing logic.
+* No UI changes.
+* If uncertain, add new files or optional fields rather than overriding.
+* Preserve existing Stripe verify + webhook behavior.
+
+### 0) SAFETY (MANDATORY)
+
+Before changing multiple files:
+
+* Create git commit: `chore: pre ZLE micro patch v1.2.3 backup`
+  OR create `/_backup/YYYY-MM-DD/` copies of files you touch.
+  Then proceed.
+
+---
+
+# 1) DB INTEGRITY & PERFORMANCE (INDEXES + UNIQUES)
+
+AUDIT FIRST:
+
+* Locate Drizzle schema file(s) (likely `shared/schema.ts`) and existing constraints/index style.
+
+IMPLEMENT:
+1.1 Add/ensure DB constraints & indexes (ADD ONLY; do not drop existing):
+
+* `order_events`: unique(provider, providerEventId) (should already exist from v1.2.2)
+
+  * add index on (orderId, createdAt) for tracing events per order.
+* `ledger_entries`: ensure at least:
+
+  * index(orderId)
+  * index(createdAt)
+* `order_payouts`: ensure index(orderId) and index(status)
+* `audit_log`: index(createdAt)
+* If there is a `users` table and admin operations are heavy: index(userId) where relevant.
+
+1.2 Prevent duplicate “sale” ledger entries:
+
+* Add a unique constraint that guarantees **only one** ledger “sale” entry per order.
+  Options (choose the least invasive that fits existing schema):
+  A) Add column `kind` or `entryType` already exists → unique(orderId, type) where type='sale' (if partial unique supported in your approach)
+  B) If partial unique is hard: add `dedupeKey` string (nullable) and set it to `sale:<orderId>` for sale entries; unique(dedupeKey).
+  Use the safer option that works in Postgres and Drizzle without breaking.
+
+RULE:
+
+* Never remove any existing ledger rows. Only prevent duplicates going forward.
+
+---
+
+# 2) INVENTORY OVERSELL GUARD (ATOMIC + FAIL SAFE)
+
+AUDIT FIRST:
+
+* Find where stock is deducted (likely in order confirmation/payment success flow).
+
+IMPLEMENT:
+2.1 Make stock deduction atomic:
+
+* For each line item, update stock with a conditional/atomic statement:
+
+  * decrement only if stock >= qty
+* If any line item cannot be deducted:
+
+  * do NOT crash payment handling
+  * mark order with:
+
+    * `manualReview = true` (if exists; otherwise add optional boolean)
+    * `fraudNotes` or `opsNotes` append: “Stock deduction failed — possible oversell”
+    * optionally set new safe status: `stock_issue` (ADD enum/value only if your status system allows it safely)
+  * write an `audit_log` entry with severity “important”
+  * return/continue without breaking paid state (paid remains paid; operations resolve manually)
+
+2.2 Never double-deduct:
+
+* Add “once guard”:
+
+  * if order has `stockDeductedAt` (add nullable timestamp) then skip deduction
+  * otherwise set it within the same transaction as deduction
+    ADD ONLY:
+* Add `stockDeductedAt` nullable timestamp to orders if not present.
+
+---
+
+# 3) LOG SANITIZER (PII REDACTION IN PROD)
+
+GOAL:
+Prevent accidental PII leakage via logs and exception printing.
+
+IMPLEMENT (minimal, non-breaking):
+3.1 Create `server/logging/redact.ts` (or similar) with:
+
+* function `redactSensitive(objOrString)` that removes/masks:
+
+  * email
+  * phone
+  * address fields
+  * authorization headers
+  * cookies
+  * Stripe secrets / webhook secret patterns
+    Keep it simple: mask values, keep keys.
+
+3.2 Wire it into server logging:
+
+* In production (`NODE_ENV=production`):
+
+  * do not log request bodies
+  * when logging errors, pass message/metadata through redactor
+* In development, keep current logs.
+
+RULE:
+
+* Do not change existing logger interface drastically.
+* Add wrapper helpers if needed; keep existing console logs working.
+
+---
+
+# 4) OPS EVENT HOOKS (NOTIFICATIONS INTERFACE — DISABLED BY DEFAULT)
+
+GOAL:
+Prepare future automation (notify Michal/partners) without implementing messaging now.
+
+IMPLEMENT:
+4.1 Add file `server/ops/events.ts` exporting:
+
+* event types: `ORDER_CREATED`, `PAYMENT_CONFIRMED`, `REFUND_CREATED`, `STOCK_ISSUE`, `PAYOUTS_GENERATED`
+* function `emitOpsEvent(type, payload)` that:
+
+  * by default does nothing except optionally log in dev
+  * is explicitly disabled in production unless `OPS_EVENTS_ENABLED=true`
+
+4.2 Add `.env.example` placeholders (extend only):
+
+* `OPS_EVENTS_ENABLED=false`
+* optional placeholders:
+
+  * `OPS_WEBHOOK_URL=`
+  * `OPS_EMAIL_TO=`
+
+4.3 Call `emitOpsEvent` at safe points:
+
+* After order created (non-sensitive payload)
+* After payment confirmed
+* After refund created
+* When stock issue detected
+* After payouts generated
+  Must not throw or block primary flow.
+
+RULE:
+
+* Do not send real emails/webhooks now. Interface only.
+
+---
+
+# 5) ADMIN-ONLY CSV EXPORT SKELETON (NO UI)
+
+GOAL:
+Enable accounting export later with minimal work.
+
+AUDIT FIRST:
+
+* Identify how admin auth is enforced on routes (RBAC middleware or existing guard).
+
+IMPLEMENT:
+5.1 Add endpoint (admin-only, read-only):
+
+* `GET /api/admin/exports/ledger.csv`
+* `GET /api/admin/exports/orders.csv`
+* `GET /api/admin/exports/payouts.csv`
+  Minimal CSV content:
+* ledger: createdAt, orderId, type, direction, amount, currency, meta (stringified)
+* orders: id, createdAt, status, total, netTotal, vatRate, vatAmount, currency
+* payouts: orderId, partnerCode, amount, status, createdAt, paidAt
+
+Rules:
+
+* Must require RBAC role admin or staff (read_only allowed if you want; default admin-only).
+* Must not include raw PII by default.
+* If order has customer fields, exclude or hash them unless explicitly needed.
+
+5.2 Add streaming response for large datasets (nice but optional). If too heavy, return simple CSV generation for now.
+
+---
+
+# 6) STRIPE WEBHOOK “RAW BODY” SAFETY CHECK (NO BEHAVIOR CHANGE)
+
+AUDIT FIRST:
+
+* Verify that Stripe webhook route uses raw body middleware BEFORE any JSON parser.
+
+IMPLEMENT:
+
+* If correct: add a short comment “Do not reorder middleware — Stripe signature requires raw body”.
+* If incorrect: fix middleware order minimally ONLY for the webhook route (do not change global parsing).
+
+---
+
+# 7) VERIFY (MANDATORY)
+
+After patch:
+
+* Typecheck/build passes
+* Existing checkout/verify/webhook still works
+* order_events still prevents duplicate processing
+* sale ledger duplicates prevented by constraint/dedupeKey
+* stock deduction is atomic and fails safe (manualReview + audit_log) without breaking paid orders
+* logs in production do not print bodies/PII
+* ops events are disabled by default
+* CSV endpoints require admin guard and do not leak PII
+
+FINAL OUTPUT REQUIRED:
+
+* List files created
+* List files modified
+* Brief summary of changes
+* Exact local run commands remain unchanged
+
+---

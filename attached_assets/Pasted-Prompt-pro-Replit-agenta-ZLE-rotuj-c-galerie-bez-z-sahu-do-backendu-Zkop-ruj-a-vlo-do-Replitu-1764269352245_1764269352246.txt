@@ -1,0 +1,130 @@
+Prompt pro Replit agenta – ZLE rotující galerie (bez zásahu do backendu)
+
+Zkopíruj a vlož do Replitu:
+
+Prompt:
+
+V projektu ZLEFinalAudited prosím přidej jemné rotující galerie fotek – pouze na úrovni frontendu.
+
+⚠️ DŮLEŽITÉ OMEZENÍ
+
+NESAHEJ na backend, API, databázi, Stripe, Resend, auth, ani routing.
+
+NEMĚŇ existující logiku košíku, objednávek, plateb, přihlášení.
+
+Pracuj jen v React/TSX komponentách (client/src/…), styluj přes Tailwind tak, jak je to teď.
+
+1) Společný config pro fotky
+
+Vytvoř nový soubor client/src/data/zlePhotos.ts.
+
+Exportuj z něj strukturu typu:
+
+export const zlePhotos = {
+  hero: [
+    "/zle-photos/hero/xxxx.jpg",
+    "/zle-photos/hero/yyyy.jpg",
+    // … reálně doplň některé existující fotky z /public/zle-photos/hero
+  ],
+  vibe: [
+    "/zle-photos/collage/....jpg",
+    // …
+  ],
+  crew: [
+    "/zle-photos/crew/....jpg",
+    // …
+  ],
+  shop: [
+    "/zle-photos/products/....jpg",
+    // …
+  ],
+} as const;
+
+
+Cíl: až budeme chtít přidat další fotky, jen doplníme pole v zlePhotos.ts.
+
+NEDĚLEJ žádné dynamické čtení souborů z filesystemu – použij ručně zadané cesty.
+
+2) Rotující grid v Hero sekci (Home)
+
+V client/src/components/home/Hero.tsx používá appka 3×2 grid fotek pod nadpisem „JEĎ TO ZLE“.
+
+Udělej z toho nenápadný auto-rotující grid:
+
+použij useState + useEffect a setInterval, třeba každých 4–6 s vyměň jednu fotku v gridu za další z zlePhotos.hero.
+
+animace: jednoduchý fade in / fade out (opacity + lehký translate-y).
+
+zachovej současné rozložení (3×2), nic nerozházej.
+
+na mobilu dbej, aby se nic nerozpadalo (1 sloupec / 2 sloupce podle breakpoints, jak je teď).
+
+přidej className typu image-rotator jen pokud to pomůže čitelnosti, ale drž se stávajícího Tailwind stylu.
+
+3) ZLE VIBE sekce – pomalá slideshow
+
+V komponentě pro sekci „ZLE VIBE“ (v client/src/components/home/ – najdi ji podle textu ZLE VIBE) nech nad textem vše beze změny.
+
+Pod textem je grid fotek – přidej možnost, aby se pomalým tempem střídaly (např. každých 6–8 s) z pole zlePhotos.vibe.
+
+Na desktopu ponech grid layout (3 fotky vedle sebe / řádky), pouze obsah jednotlivých <img> se mění.
+
+Na mobilu zachovej současné chování (stack, žádná horizontální scroll šílenost).
+
+Animace opět pouze jemný fade, žádné karusely přes celou obrazovku.
+
+4) Crew stránka – rotace portrétů
+
+Na stránce C Crew (komponenty pod client/src/components/crew/) přidej rotaci fotek členů crew:
+
+Vytvoř jednoduchý komponent CrewRotator (např. v client/src/components/crew/CrewRotator.tsx), který mapuje přes zlePhotos.crew a vždy zobrazí 1–3 fotky, které se co pár sekund vymění.
+
+Nadpisy, texty a strukturu stránky NEMĚŇ, jen nahraď statický <img> blok tímto komponentem.
+
+Zachovej ZLE vibe – žádné smooth corporate slidery, jen pomalé střídání street fotek.
+
+5) Shop / produkty – jemné střídání detailů
+
+U produktových karet (soubor client/src/components/shop/ProductCard.tsx nebo podobný) přidej možnost mít více fotek jednoho produktu a jemně je proklikávat nebo automaticky střídat:
+
+Pokud pro produkt existuje více cest v zlePhotos.shop, zobraz první fotku jako default a na hover přepni na další (typické chování e-shopů – front/back view).
+
+Pokud produkt má jen jednu fotku, chovej se stejně jako teď.
+
+NEMĚŇ žádnou business logiku (cena, tlačítka „Add to Cart“, atd.).
+
+6) UX a výkon
+
+Dávej pozor na performance – žádné masivní setIntervaly běžící na všech komponentách bez cleanupu.
+
+V každém hooku useEffect zajisti clearInterval v cleanup funkci.
+
+Všechny <img> používej s loading="lazy" tam, kde to dává smysl.
+
+Rotace dělej tak, aby stránka byla stále dobře čitelná – žádné rychlé blikání.
+
+7) Testy a kontrola
+
+Ověř, že:
+
+Home, Shop, Crew, Story, Contact se bez problémů renderují.
+
+Košík a checkout fungují stejně jako před úpravou.
+
+Při chybějící fotce v zlePhotos se appka nezhroutí (fallback obrázek nebo bezpečná podmínka).
+
+Na závěr shrň, co jsi změnil (jen seznam souborů a stručný popis rotací).
+
+Cíl: jemně oživit web ZLE pomocí rotujících fotek, aniž bychom rozbíjeli backend nebo logiku e-shopu. Vše musí zůstat v ZLE underground-profi stylu, ne jako přezdobený slider.
+
+Když tohle Replit Agent udělá, budeme mít:
+
+živý hero s rotujícíma ZLE momentkama
+
+vibe sekci, co se hýbe, ale neruší
+
+crew stránku, kde se crew „střídá v čase“
+
+shop, kde produkt na hover ukáže víc než jeden záběr
+
+A pak už jen přidáváme další fotky tím, že doplníš pole v zlePhotos.ts – rotáčky to samy začnou používat.

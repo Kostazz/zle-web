@@ -1,0 +1,147 @@
+We need to fix two UX issues in the ZLE React + Tailwind shop.
+
+BEFORE YOU CHANGE ANYTHING:
+1) First analyze the current implementation.
+2) If the behavior is already correct according to the goals below, DO NOT MODIFY ANY FILES.
+3) In that case, only return a clear summary of what you found.
+
+Only if the current implementation does NOT meet the goals, apply the minimal necessary changes.
+
+GOALS:
+1) When navigating between pages (/, /shop, /story, /crew, /legal, /contact), the view must ALWAYS scroll to the top on route change (mobile + desktop).
+2) The product detail view must:
+   - have a clearly visible close “X” button,
+   - have a reachable “Add to cart” CTA (not hidden below the viewport),
+   - prevent the background page from scrolling while the modal is open,
+   - behave well on mobile AND desktop.
+
+Do NOT change colors, typography, hero section, legal pages, footer, or any other layout.
+
+────────────────────────────────────────
+PHASE 1 — ANALYZE (NO MODIFICATIONS)
+────────────────────────────────────────
+
+1. Find where routing is configured (App.tsx / router file).
+   - Check if there is already a ScrollToTop-like component or equivalent logic.
+   - Check what happens on / → /shop navigation (does it scroll to top or not?).
+
+2. Find the product detail component (modal/card).
+   - Identify how it is rendered (portal / inline).
+   - Check:
+     - is there already an X button?
+     - is the CTA always visible?
+     - does the background scroll when modal is open?
+
+3. If ALL of the above already matches the stated GOALS:
+   - DO NOT CHANGE ANY CODE.
+   - Just return a summary of the current implementation and explicitly say that no changes were needed.
+
+If something does NOT meet the GOALS, continue to PHASE 2.
+
+────────────────────────────────────────
+PHASE 2 — APPLY MINIMAL FIXES
+────────────────────────────────────────
+
+PART 1 — Scroll to top on every route change
+
+1. If there is no existing reusable scroll-to-top logic, create a helper component:
+
+client/src/components/layout/ScrollToTop.tsx
+
+Content:
+
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
+
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname]);
+  return null;
+};
+
+export default ScrollToTop;
+
+2. Inject <ScrollToTop /> inside the router, but outside all pages.
+
+Example pattern in App.tsx or router file:
+
+<BrowserRouter>
+  <ScrollToTop />
+  <MainLayout />
+</BrowserRouter>
+
+If an equivalent component already exists, reuse it instead of creating a duplicate.
+
+Do NOT change page content or layout.
+
+────────────────────────────────────────
+PART 2 — Fix product detail modal (mobile + desktop)
+
+1. Locate the component responsible for product detail (e.g. ProductDetail.tsx or ProductModal.tsx).
+
+2. If it is NOT already a proper full-screen overlay:
+   - Wrap the modal in a full-screen overlay:
+
+<div
+  className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+  onClick={onClose}   // only if background click should close
+>
+  <div
+    className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-zleBlack p-4 md:p-6"
+    onClick={(e) => e.stopPropagation()}
+  >
+    {modal content}
+  </div>
+</div>
+
+3. If there is no visible close button, add:
+
+<button
+  type="button"
+  onClick={onClose}
+  className="absolute right-4 top-4 text-2xl leading-none text-white/80 hover:text-white"
+  aria-label="Zavřít"
+>
+  ×
+</button>
+
+4. If the “Add to cart” CTA can be hidden below the viewport, move it into a sticky bottom action bar INSIDE the modal card:
+
+<div className="sticky bottom-0 left-0 right-0 mt-4 bg-zleBlack/95 border-t border-white/10 p-4 flex flex-col gap-3 sm:flex-row">
+  {existing "Add to cart" button}
+</div>
+
+Re-use the existing button component and props. Do NOT rename it and do NOT change its logic.
+
+5. Ensure:
+   - the modal container has max-h-[90vh] + overflow-y-auto,
+   - scrolling happens inside the modal, not in the background page.
+
+Apply only the changes that are necessary. If some parts already behave correctly, leave them as they are.
+
+────────────────────────────────────────
+VERIFY
+────────────────────────────────────────
+
+1. Navigating to /shop and other routes always starts at the top of the page.
+2. Opening a product:
+   - Close (X) button is visible immediately (mobile + desktop).
+   - The “Add to cart” button is visible or reachable without being hidden off-screen.
+   - Background does not scroll while modal is open.
+3. Desktop layout remains visually the same except for the improved modal behavior.
+
+────────────────────────────────────────
+SUMMARY OUTPUT (REQUIRED)
+────────────────────────────────────────
+
+In all cases, whether you changed something or not, return:
+
+- File path of the modal component.
+- File path where ScrollToTop (or equivalent) is located/used.
+- Whether any files were modified, and if yes:
+  - which ones,
+  - what changed in behavior from the user’s perspective.
+
+If no changes were needed, explicitly state that the current implementation already meets all GOALS.

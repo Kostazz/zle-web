@@ -1,0 +1,333 @@
+Tady máš jeden jediný finální master prompt – stačí ho celý zkopírovat do Replit Agenta a k němu nahrát nová ZLE loga (PNG/JPG).
+
+
+---
+
+🧠 ZLE LOGO MASTER PROMPT – FINAL
+
+Jsi Replit AI Agent pracující v projektu ZLEFinalAudited (React + TypeScript + Tailwind, e-shop).
+Tvůj úkol je kompletně zmodernizovat práci s logem ZLE, aniž bys jakkoliv rozbil existující funkčnost e-shopu.
+
+0) BEZPEČNOST & LIMITY
+
+1. Nesmíš měnit:
+
+logiku košíku, objednávek, plateb (Stripe, databáze),
+
+uživatelské účty, přihlášení,
+
+e-mailové notifikace, serverové routy,
+
+routing stránek, URL, API.
+
+
+
+2. Smíš měnit pouze:
+
+statická logo assety,
+
+komponenty, které logo zobrazují (header, hero / top bar),
+
+související styly (Tailwind / CSS),
+
+drobný refactor importů kolem loga.
+
+
+
+
+Všechno ostatní musí zůstat beze změny.
+
+
+---
+
+1) LOGA – PRÁCE S NOVÝMI SOUBORY Z TOHOTO PROMPTU
+
+Do tohoto promptu vkládám nové ZLE logo soubory (PNG/JPG).
+Z nich chci udělat centrální logo knihovnu, která se bude využívat na webu a časem rotovat.
+
+Tvoje úkoly:
+
+1. Vytvoř složku pro loga (pokud neexistuje):
+
+client/public/zle-logo/
+
+
+2. Všechny soubory vložené v tomto promptu automaticky ulož právě do:
+
+client/public/zle-logo/
+
+Použij stejné názvy souborů, není nutné je přejmenovávat.
+
+Předpokládej, že všechny vložené soubory jsou loga připravená k použití.
+
+
+
+3. Odstraň stará loga, ale pouze ta, která sloužila jako hlavní logo značky:
+
+Nejprve zjisti, které image soubory jsou použité jako logo v:
+
+client/src/components/layout/Header.tsx (nebo obdobná header/navbar komponenta),
+
+případně v dalších globálních layoutech nebo hero komponentách, pokud odkazují na staré logo.
+
+
+Tyto soubory (typicky v client/public nebo podobných složkách) odstraň, ale:
+
+nemaž žádné fotky z zle-photos (collage, crew, events, hero, products, …),
+
+nemaž žádné produktové, crew ani story fotky,
+
+nemaž favicon.
+
+
+
+
+4. Po dokončení struktury:
+
+vytvoř krátký log / komentář (např. v PR textu nebo v interním shrnutí), kde vypíšeš:
+
+cestu ke složce client/public/zle-logo/,
+
+seznam nově uložených souborů,
+
+které staré soubory loga byly smazané.
+
+
+
+
+
+
+---
+
+2) LOGO ENGINE – KONFIGURACE & VÝBĚR LOGA
+
+Chci, aby web uměl:
+
+pracovat s více logy (všechny v client/public/zle-logo/),
+
+umět si z nich vybrat aktuální logo,
+
+časem umožnit rotaci loga (např. jedno logo na den).
+
+
+Proto:
+
+1. Vytvoř nový helper (např.):
+
+// client/src/utils/zleLogo.ts
+export const ZLE_LOGOS = [
+  // doplň přesné názvy souborů z client/public/zle-logo/
+  "/zle-logo/IMG_...0000.jpg",
+  "/zle-logo/IMG_...0001.jpg",
+  ...
+];
+
+// jednoduchý výběr logo souboru – zatím deterministic podle data
+export function getDailyZleLogo(): string {
+  if (ZLE_LOGOS.length === 0) {
+    return "/zle-logo/default-logo.png"; // fallback, pokud jeden z logů zvolíš jako default
+  }
+  const today = new Date();
+  const index =
+    (today.getFullYear() * 10000 +
+     (today.getMonth() + 1) * 100 +
+     today.getDate()) %
+    ZLE_LOGOS.length;
+  return ZLE_LOGOS[index];
+}
+
+
+2. Pokud najdeš existující helper pro logo, můžeš ho upravit / nahradit, ale:
+
+nemiň žádné ostatní constants pro texty, ZLE hlášky, produkty apod.
+
+
+
+
+
+---
+
+3) IMPLEMENTACE LOGA V HEADERU A HERO
+
+Chci, aby se všechny hlavní loga na webu napojila na tento nový getDailyZleLogo():
+
+1. Najdi komponentu, která zobrazuje logo v navigaci (např. Header.tsx v client/src/components/layout/).
+
+Místo případného textu ZLE nebo starého <img src="/something"> použij:
+
+import { getDailyZleLogo } from "@/utils/zleLogo";
+
+const logoSrc = getDailyZleLogo();
+
+A v JSX:
+
+<Link href="/" className="flex items-center">
+  <img
+    src={logoSrc}
+    alt="ZLE – Live Style Culture Brand"
+    className="h-8 md:h-10 lg:h-12 w-auto drop-shadow-lg"
+  />
+</Link>
+
+
+
+2. Pokud je logo použité i v hero části (např. nad tlačítkem JDU DO SHOPU nebo v top baru):
+
+napoj hero část na stejný helper, aby se na celé stránce používalo stejné logo,
+
+zajisti, aby logo bylo vizuálně výraznější než okolní text:
+
+na desktopu ho klidně zvětši (např. h-12 lg:h-14),
+
+ale zachovej responzivitu (na mobilu menší).
+
+
+
+
+3. Kde je to vhodné, přidej decentní efekty:
+
+jemný 3D / glow efekt přes Tailwind utility:
+
+např. drop-shadow-[0_6px_16px_rgba(0,0,0,0.7)],
+
+
+nesmí to ale narušit celkový underground ZLE vibe:
+
+žádné cirkusové barvy, jen lehký “premium shine”.
+
+
+
+
+
+
+---
+
+4) STYLING & RESPONSIVITA
+
+1. Drž se existujícího vizuálu:
+
+černé pozadí, šum, grain,
+
+bílé logo, případně barevné varianty loga z dodaných souborů,
+
+ZLE zůstává raw, real, underground, jen v trochu „premium“ podání.
+
+
+
+2. Ujisti se, že:
+
+logo je vždy ostré (žádné roztažení mimo poměr),
+
+na mobilu se nezmenší tak, že bude nečitelné,
+
+v kombinaci s textem DNEŠNÍ ZLE HLÁŠKA a dalšími nadpisy nevznikne vizuální chaos:
+
+hlavní logo = jasně dominantní,
+
+nadpisy = sekundární.
+
+
+
+
+3. Pokud je potřeba, můžeš přidat drobný wrapper komponent:
+
+např. ZleLogo.tsx v components/ui/, který všude používá stejný markup a styly:
+
+export function ZleLogo({ className = "" }: { className?: string }) {
+  const src = getDailyZleLogo();
+  return (
+    <img
+      src={src}
+      alt="ZLE – Live Style Culture Brand"
+      className={cn(
+        "h-8 md:h-10 lg:h-12 w-auto drop-shadow-lg",
+        className
+      )}
+    />
+  );
+}
+
+
+
+
+
+---
+
+5) ČIŠTĚNÍ A REFRESH KÓDU
+
+1. Po implementaci loga:
+
+odstraň všechny nepoužívané importy starých log,
+
+smaž staré komponenty, které sloužily jen jako obal pro původní logo (pokud už nejsou potřeba),
+
+ujisti se, že nikde nezůstaly „mrtvé“ cesty typu /old-logo.png.
+
+
+
+2. Neprováděj žádné úpravy mimo kontext loga:
+
+neměň texty, ZLE hlášky, produkty, routy, API volání.
+
+
+
+3. Zkontroluj, že:
+
+TypeScript build prochází bez chyb,
+
+ESLint / Prettier (pokud jsou v projektu) nehlásí kritické problémy.
+
+
+
+
+
+---
+
+6) TESTOVÁNÍ – CO MUSÍ NA KONCI FUNGOVAT
+
+Na konci proveď tyto kontroly:
+
+1. Home / Header:
+
+Logo ZLE se načte z nové složky client/public/zle-logo/.
+
+Na refresh stránky se může změnit podle funkce getDailyZleLogo() (pokud je víc log).
+
+Na všech zvyklých breakpointech (mobil, tablet, desktop) vypadá dobře.
+
+
+
+2. Ostatní stránky (Shop, Story, Crew, Kontakt):
+
+Všechny běží stejně jako dřív.
+
+Košík, checkout, přihlášení a e-maily fungují beze změny.
+
+
+
+3. Žádná chyba v konzoli:
+
+žádné 404 na staré logo cesty,
+
+žádné runtime chyby v Reactu.
+
+
+
+
+
+---
+
+7) ZÁVĚREČNÉ SHRNUTÍ (PRO MĚ)
+
+Na konci prosím do výsledku stručně popiš:
+
+jaká je výsledná struktura složek s logy,
+
+jak se jmenuje helper / komponenta pro logo (soubor + export),
+
+jak funguje výběr loga (podle data / náhodně),
+
+co přesně bylo smazáno z původních logo assetů.
+
+
+Tím je úkol kompletní.

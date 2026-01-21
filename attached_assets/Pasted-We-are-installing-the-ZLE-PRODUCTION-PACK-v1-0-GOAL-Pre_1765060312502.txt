@@ -1,0 +1,270 @@
+We are installing the ZLE PRODUCTION PACK v1.0.
+
+GOAL:
+- Prepare this React/Tailwind project for production on a custom domain.
+- Add favicon (SVG), web manifest, robots.txt, sitemap.xml.
+- Add SEO/meta/OG tags in the main HTML head.
+- Do NOT break or overwrite existing logic or styles.
+- Only ADD missing, production-ready files and tags.
+
+The project is a ZLE brand web (underground skate/street label).
+
+IMPORTANT:
+- If something already exists (e.g. robots.txt, sitemap.xml, manifest), extend or gently adjust it, do NOT destroy important existing content.
+- Prefer minimal, additive changes.
+
+────────────────────────────────────────
+1) ENSURE PUBLIC DIRECTORY
+────────────────────────────────────────
+
+1. Detect the public/static folder. Common candidates:
+   - /public
+   - /static
+   - or Vite/CRA standard public folder.
+
+2. If multiple exist, prefer /public.
+
+For the rest of this script, I will refer to it as:
+   PUBLIC_ROOT
+
+────────────────────────────────────────
+2) CREATE ZLE FAVICON (SVG) AND LINK IT
+────────────────────────────────────────
+
+We will use an SVG favicon (text-based, easy to version-control).
+
+2.1. Create file:
+   PUBLIC_ROOT/zle-favicon.svg
+
+Insert EXACT content:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="8" ry="8" fill="#000000"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="28" fill="#ffffff" letter-spacing="2">
+    ZLE
+  </text>
+</svg>
+
+2.2. Find the main HTML template that defines <head>. Typical candidates:
+
+PUBLIC_ROOT/index.html
+
+or similar.
+
+
+Inside the <head> tag, ADD (if not already present):
+
+<link rel="icon" type="image/svg+xml" href="/zle-favicon.svg" />
+
+If there is already a <link rel="icon">, keep it, but it is OK to add this one as the new primary icon (or gently replace the old one if it is a default React icon).
+
+──────────────────────────────────────── 3) CREATE WEB MANIFEST ────────────────────────────────────────
+
+3.1. Create file: PUBLIC_ROOT/site.webmanifest
+
+Insert EXACT content:
+
+{
+  "name": "ZLE",
+  "short_name": "ZLE",
+  "description": "ZLE — live raw, ride hard. Underground skate/street brand.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/zle-favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}
+
+3.2. In the same main HTML <head> (PUBLIC_ROOT/index.html or equivalent), ADD:
+
+<link rel="manifest" href="/site.webmanifest" />
+
+If there is already a manifest link, either:
+
+update its href to "/site.webmanifest" if it was a default placeholder, OR
+
+keep the existing one and skip adding a duplicate.
+
+
+──────────────────────────────────────── 4) ADD BASIC META + OG TAGS ────────────────────────────────────────
+
+We will extend the <head> in the main HTML file (PUBLIC_ROOT/index.html or similar).
+
+4.1. Inside <head>, ensure there is a <title>. If the title is generic like "React App" or "Vite App", update it to:
+
+<title>ZLE — Live Raw, Ride Hard</title>
+
+If the title is already custom and ZLE-specific, keep it and do NOT override.
+
+4.2. Add (if not already present) the following meta tags for description and OpenGraph. Make sure you do not create duplicate <meta name="description"> or duplicate OG tags with the same property. If they already exist, gently update them to match ZLE.
+
+<meta name="description" content="ZLE — underground skate/street crew. Live raw, ride hard. No filters, no bullshit." />
+
+<meta property="og:title" content="ZLE — Live Raw, Ride Hard" />
+<meta property="og:description" content="ZLE je crew, spoty a rozbitý boty. Underground skate/street značka z paneláků a DIY reality." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://YOUR-DOMAIN-HERE" />
+<meta property="og:image" content="https://YOUR-DOMAIN-HERE/og-zle-default.png" />
+<meta property="og:site_name" content="ZLE" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="ZLE — Live Raw, Ride Hard" />
+<meta name="twitter:description" content="ZLE — underground skate/street značka. Real life, raw edges, no filters." />
+<meta name="twitter:image" content="https://YOUR-DOMAIN-HERE/og-zle-default.png" />
+
+IMPORTANT:
+
+Do NOT hardcode "YOUR-DOMAIN-HERE" to anything else. Keep it as a placeholder so the owner can later search & replace it.
+
+If there are older, generic OG tags, update their content instead of duplicating.
+
+
+4.3. OPTIONAL placeholder for OG image:
+
+Create a simple placeholder text file to remind us to add a real OG image later:
+
+File: PUBLIC_ROOT/og-readme.txt
+
+Content:
+
+Add a real OG image as /og-zle-default.png (1200x630, JPG/PNG).
+Update meta tags in index.html to point to the correct domain once ZLE has its final domain.
+
+(Do NOT attempt to create a binary PNG; just leave the placeholder note.)
+
+──────────────────────────────────────── 5) CREATE robots.txt ────────────────────────────────────────
+
+Create file (or update existing):
+
+PUBLIC_ROOT/robots.txt
+
+If the file does NOT exist, insert this content:
+
+User-agent: *
+Allow: /
+
+Sitemap: https://YOUR-DOMAIN-HERE/sitemap.xml
+
+If robots.txt already exists:
+
+Keep any important custom content.
+
+Ensure there is at least one "Sitemap:" line referencing "https://YOUR-DOMAIN-HERE/sitemap.xml".
+
+Do NOT disallow the entire site unless explicitly configured that way.
+
+
+Again, leave "YOUR-DOMAIN-HERE" as a placeholder.
+
+──────────────────────────────────────── 6) CREATE sitemap.xml ────────────────────────────────────────
+
+Create file (or update existing, but do not delete extra important routes):
+
+PUBLIC_ROOT/sitemap.xml
+
+Insert this minimal, production-ready content (if there is no sitemap yet):
+
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+>
+  <url>
+    <loc>https://YOUR-DOMAIN-HERE/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://YOUR-DOMAIN-HERE/shop</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://YOUR-DOMAIN-HERE/crew</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://YOUR-DOMAIN-HERE/contact</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://YOUR-DOMAIN-HERE/legal</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>
+
+If sitemap.xml already exists:
+
+Keep any additional URLs it already lists.
+
+Ensure at least the above core routes exist (/, /shop, /crew, /contact, /legal).
+
+Do NOT remove existing important URLs.
+
+
+Leave "YOUR-DOMAIN-HERE" as a placeholder.
+
+──────────────────────────────────────── 7) OPTIONAL: BASIC SEO FRIENDLY <html> TAG ────────────────────────────────────────
+
+In the main HTML (PUBLIC_ROOT/index.html), if possible and if it does not break the build system, gently add lang attribute to the <html> tag:
+
+From (if currently):
+
+<html>
+
+To:
+
+<html lang="cs">
+
+Only do this if index.html is a static template and not auto-managed by a framework that forbids editing this tag. If uncertain, you may skip this step.
+
+──────────────────────────────────────── 8) VERIFY & REPORT ────────────────────────────────────────
+
+After applying all changes:
+
+1. List all files that were created or modified:
+
+PUBLIC_ROOT/zle-favicon.svg
+
+PUBLIC_ROOT/site.webmanifest
+
+PUBLIC_ROOT/robots.txt
+
+PUBLIC_ROOT/sitemap.xml
+
+PUBLIC_ROOT/og-readme.txt (if created)
+
+PUBLIC_ROOT/index.html (or equivalent head template)
+
+
+
+2. Confirm:
+
+The app still builds and runs.
+
+<head> contains favicon, manifest, description, OG, and Twitter cards.robots.txt and sitemap.xml are accessible (in dev environment under /robots.txt and /sitemap.xml).
+
+
+
+3. Do NOT change anything else in the project beyond what is described above.
+
+
+
+Return a short summary of:
+
+What was created
+
+What was updated
+
+Any important considerations about framework-specific structure you detected.

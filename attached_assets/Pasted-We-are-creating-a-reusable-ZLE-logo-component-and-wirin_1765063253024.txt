@@ -1,0 +1,123 @@
+We are creating a reusable ZLE logo component and wiring it into the navbar.
+
+GOAL:
+- Extract the current navbar <img> logo into a dedicated <ZleLogo /> component.
+- Keep all existing behavior and spacing.
+- Normalize logo sizing so future logo files look consistent.
+- Use the SAME className that the original <img> uses, and ONLY append sizing utilities.
+- Do NOT break or significantly change any other layout or logic.
+
+The project is a React + Tailwind ZLE web (dark background, skate brand).
+
+────────────────────────────────────────
+STEP 1 – FIND CURRENT NAVBAR LOGO
+────────────────────────────────────────
+
+1. Locate the main header/navbar component. Common candidates:
+   - client/src/components/layout/Header.(tsx|jsx)
+   - client/src/components/layout/Navbar.(tsx|jsx)
+   - client/src/components/Header.(tsx|jsx)
+   - or similar.
+
+2. In that file (call it NAVBAR_FILE), find the <img> element that renders the brand logo
+   in the top-left of the site. It will have:
+   - a src string or imported logo variable
+   - an alt string (if any)
+   - a className string with spacing/margins we must preserve
+
+3. Write down:
+   - the exact src used
+   - the exact alt text
+   - the EXACT full className used on the <img>
+
+IMPORTANT:
+We will reuse the EXACT same className and only ADD:
+  h-8 md:h-10 w-auto object-contain
+to ensure consistent logo sizing on all devices.
+
+────────────────────────────────────────
+STEP 2 – CREATE ZleLogo COMPONENT
+────────────────────────────────────────
+
+1. Create a new file for the logo component, matching the project’s language:
+
+If TypeScript:
+   client/src/components/ZleLogo.tsx
+
+If JavaScript:
+   client/src/components/ZleLogo.jsx
+
+2. Component rules:
+   - Use the SAME src as the navbar image.
+   - Use SAME alt text (or default: "ZLE – Live Style Culture Brand").
+   - Use the EXACT original className string from navbar <img>,
+     and ONLY append: h-8 md:h-10 w-auto object-contain
+   - Do NOT remove or replace any existing classes (ml, flex spacing etc).
+
+Example (adapt src, alt, and className from Step 1):
+
+--- COMPONENT START ---
+import React from "react";
+import logoSrc from "/* use the same source as existing navbar */";
+
+export default function ZleLogo() {
+  return (
+    <img
+      src={logoSrc}
+      alt="ZLE – Live Style Culture Brand"
+      className="/* ORIGINAL navbar classes here */ h-8 md:h-10 w-auto object-contain"
+      loading="lazy"
+    />
+  );
+}
+--- COMPONENT END ---
+
+IMPORTANT:
+You MUST reuse the exact original className and only append sizing utilities.
+Do NOT rewrite or simplify the className.
+
+────────────────────────────────────────
+STEP 3 – USE <ZleLogo /> IN NAVBAR
+────────────────────────────────────────
+
+1. In NAVBAR_FILE, add import:
+
+import ZleLogo from "../ZleLogo";
+(or adjust path as needed)
+
+2. Replace ONLY the <img> element that previously rendered the logo with:
+
+<ZleLogo />
+
+3. Remove old imports like:
+import logo from "..."
+ONLY if unused after replacement.
+
+Do NOT change:
+- flex containers
+- Link wrappers
+- layout or spacing of other elements
+
+────────────────────────────────────────
+STEP 4 – VERIFY
+────────────────────────────────────────
+
+1. Run the app.
+2. Check on mobile:
+   - correct height
+   - no stretching
+   - same left/right spacing as before
+
+3. Check on desktop:
+   - height increases to md:h-10
+   - responsive behavior is identical aside from improved sizing consistency
+
+4. Confirm:
+   - No layout changes except the intended logo swap
+   - No errors
+   - Navbar behaves exactly as before
+
+Finally return:
+- The path where ZleLogo was created
+- The file where the navbar was updated
+- The EXACT className used in the final component

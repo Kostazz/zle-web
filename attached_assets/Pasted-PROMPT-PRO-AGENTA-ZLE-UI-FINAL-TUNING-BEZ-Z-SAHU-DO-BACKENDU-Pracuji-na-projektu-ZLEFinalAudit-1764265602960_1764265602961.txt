@@ -1,0 +1,153 @@
+PROMPT PRO AGENTA – ZLE UI FINAL TUNING (BEZ ZÁSAHU DO BACKENDU)
+
+Pracuji na projektu „ZLEFinalAudited“.
+Teď prosím udělej pouze front-end / UI úpravy, bez jakéhokoli zásahu do backendu, databáze nebo integrací.
+
+1) Co NESMÍŠ měnit
+
+Prosím NIJAK neupravuj:
+
+serverový kód (server/**, API routes, auth, sessions)
+
+Stripe integraci a platební logiku
+
+Resend / e-mail logiku
+
+databázové schema a dotazy
+
+routing, URL cesty, přihlašování, košík, objednávkový proces
+
+build / config soubory, replit.nix, env proměnné
+
+Cíl je jen vzhled a fotky v klientské části.
+
+2) Struktura fotek – používej jen JPG/PNG
+
+V client/public/zle-photos/ mám připravenou strukturu:
+
+zle-photos/hero
+
+zle-photos/collage
+
+zle-photos/crew
+
+zle-photos/events
+
+zle-photos/products
+
+Uděláš toto:
+
+Nahraď všechny placeholder / stock obrázky v UI tak, aby používaly jen soubory z těchto složek.
+
+Používej pouze soubory s příponou .jpg, .jpeg, .png (případně .webp).
+
+Všechny .jfif soubory ignoruj – ani na ně nelinkuj, ani je nenačítej.
+
+Pokud teď někde existuje odkaz na obrázek, který neexistuje, oprav ho na nejbližší smysluplný obrázek z příslušné složky (hero → hero, produktové karty → products, atd.).
+
+3) ZLE Hybrid Style System – final verze
+
+Dodrž prosím následující vizuální systém:
+
+Pozadí (background)
+
+Celá appka má černobílé kolážové pozadí složené z fotek ze zle-photos/collage.
+
+Koláž je:
+
+lehce rozostřená
+
+s jemným grain/noise
+
+v nízkém kontrastu, aby text zůstal dobře čitelný.
+
+Nesmí být moc výrazná – spíš „šum“ reálného skate světa pod UI.
+
+Přední vrstva (content bloky)
+
+Sekce (hero, shop, story, crew, kontakt) zobrazuj v čistých, mírně kontrastních blocích nad koláží:
+
+tmavý podklad (near-black)
+
+tenký světlejší border
+
+lehký box-shadow pro dojem 3D odtržení od pozadí.
+
+Typografie a texty ZLE
+
+Hlavní nadpis hero: „JEĎ TO ZLE“ – udělej z něj dominantní prvek:
+
+velký font, výrazný bold
+
+jemný 3D efekt pomocí text-shadow (malý posun dolů/doprava, nižší opacity)
+
+Stejné jemné 3D text-shadow aplikuj i na logo „ZLE“ v headeru a hlavní nadpisy sekcí.
+
+Dbej na to, aby 3D efekt zůstal decentní a čitelný, ne kýčovitý.
+
+Barevnost fotek
+
+Všechny fotky (hero, crew, events, products) drž:
+
+primárně černobíle nebo velmi jemně tónované
+
+můžeš jim dát lehký jednotný tón (např. lehce do tepla nebo lehce do zelena), ale jen minimálně – ZLE má působit raw, ne instagramový filtr.
+
+Karty produktů a CTA
+
+Produktové karty:
+
+použij reálné fotky z zle-photos/products
+
+sjednoť styl – tenký border, jemný shadow, lehce zaoblené rohy
+
+Tlačítka (např. „Add to Cart“, primární CTA):
+
+lehký 3D efekt (box-shadow směrem dolů)
+
+na hover mírný „lift“ (zvětšený shadow a malý posun nahoru).
+
+4) Hero sekce – vyladění
+
+Hero sekce „JEĎ TO ZLE“ vylepši takto:
+
+Layout
+
+Levá strana: velký nadpis „JEĎ TO ZLE“ + krátký podnadpis (aktuální copy ponechej, jen sjednoť styl).
+
+Pravá strana: grid 2×2 nebo 2×3 z reálných ZLE fotek (zle-photos/hero nebo reprezentativní events/crew), které připomínají referenční layout, ale s našimi fotkami.
+
+Efekty
+
+Nadpis s jemným 3D text-shadow.
+
+Fotky s tenkým rámečkem, lehkým shadow a drobným hover efektem (např. velmi malé přiblížení + lehké zesvětlení).
+
+5) Respektuj stávající CSS/komponenty
+
+Nepřepisuj celý design systém nebo komponenty z nuly.
+
+Snaž se navázat na stávající CSS / komponenty a jen je rozšířit:
+
+přidej třídy nebo rozšiř existující styl tak, aby zůstal kód přehledný,
+
+žádné drastické refaktory, žádná změna frameworku či knihoven.
+
+6) Kontrola
+
+Na závěr:
+
+Projeď všechny hlavní stránky (Home, Shop, Story, Crew, Kontakt).
+
+Zkontroluj, že:
+
+nikde se nenačítá .jfif
+
+všechny obrázky ukazují reálný ZLE obsah
+
+texty jsou čitelné
+
+nic nerozbilo košík, přihlášení ani checkout.
+
+Pokud potřebuješ upravit jen front-end cesty k assetům nebo CSS, udělej to.
+Do backendu, integrací a logiky PROSÍM NEZASAHUJ.

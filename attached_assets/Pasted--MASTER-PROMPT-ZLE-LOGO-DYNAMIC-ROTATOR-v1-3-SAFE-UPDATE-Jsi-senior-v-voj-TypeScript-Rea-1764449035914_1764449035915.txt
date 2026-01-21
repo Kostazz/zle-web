@@ -1,0 +1,213 @@
+🔧 MASTER PROMPT – ZLE LOGO DYNAMIC ROTATOR v1.3 (SAFE UPDATE)
+
+Jsi senior vývojář (TypeScript + React + Next.js + Tailwind CSS).
+Pracuješ na projektu ZLE (skate/underground brand).
+
+Tvůj úkol je minimální, bezpečný a přesně ohraničený:
+
+Implementovat dynamické načítání všech log ze složky /public/zle-logo/pro,
+každý den vybrat jedno logo, zobrazit ho na webu s jemným „polish“ efektem,
+a přitom NEMĚNIT layout, styly ani logiku projektu mimo oblast práce s logem.
+
+0) Co SMÍŠ a co NESMÍŠ dělat
+
+SMÍŠ:
+
+přidat nový helper soubor/funkce pro načítání obrázků loga,
+
+změnit způsob, jak se určuje src pro logo (statický import → dynamický výběr ze složky),
+
+upravit signaturu komponenty pro logo tak, aby přijímala logoSrc přes props,
+
+přidat jednu CSS třídu pro „polish“ efekt loga.
+
+NESMÍŠ:
+
+měnit layout JSX (strukturu sekcí, gridů, počet prvků),
+
+měnit Tailwind CSS třídy, existující styly, animace a hover efekty,
+
+měnit texty v UI,
+
+přejmenovávat soubory, složky, komponenty nebo props, pokud to není nutné pro logo,
+
+mazat nebo upravovat logiku, která nesouvisí s načítáním loga,
+
+měnit routování, konfiguraci Next.js, API, formuláře, env proměnné apod.
+
+Tvůj zásah se týká jen logiky loga (načtení, výběr, předání do komponenty, CSS polish).
+
+1) Helper pro čtení log ze složky
+
+Pokud už existuje getImagesFromDir, použij ho. Pokud ne, vytvoř soubor:
+
+lib/image-loader.ts a přidej:
+
+// lib/image-loader.ts
+import fs from "fs"
+import path from "path"
+
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".jfif"]
+
+export function getImagesFromDir(relativeDir: string): string[] {
+  const dirPath = path.join(process.cwd(), "public", relativeDir)
+
+  if (!fs.existsSync(dirPath)) {
+    return []
+  }
+
+  const files = fs.readdirSync(dirPath)
+
+  return files
+    .filter((file) => {
+      const ext = path.extname(file).toLowerCase()
+      return IMAGE_EXTENSIONS.includes(ext)
+    })
+    .map((file) => `/${relativeDir}/${file}`)
+}
+
+
+relativeDir = cesta bez /public, např. "zle-logo/pro" → výsledné URL /zle-logo/pro/xxx.png.
+
+Tento helper pouze přidej, nepřepisuj jiné helpery, pokud to není nutné.
+
+2) Načtení všech log a výběr loga dne
+
+V app/page.tsx (server component v Next.js App Routeru) načti loga:
+
+import { getImagesFromDir } from "@/lib/image-loader"
+import { ZLELogo } from "@/components/zle-logo" // název komponenty přizpůsob aktuálnímu projektu
+
+export default function HomePage() {
+  const logos = getImagesFromDir("zle-logo/pro")
+
+  let todaysLogo: string | null = null
+
+  if (logos.length > 0) {
+    const dayIndex = new Date().getDate() % logos.length
+    todaysLogo = logos[dayIndex]
+  }
+
+  return (
+    <div>
+      {/* ... ostatní obsah stránky zůstává beze změny */}
+
+      {todaysLogo && <ZLELogo logoSrc={todaysLogo} />}
+
+      {/* ... zbytek stránky */}
+    </div>
+  )
+}
+
+
+Požadavky:
+
+musí se použít všechna loga ze složky public/zle-logo/pro,
+
+výběr loga musí být deterministický podle dne (použij new Date().getDate() a modulo počtu log),
+
+přidej ochranu na případ, kdy složka bude prázdná (logos.length === 0) – v takovém případě se logo prostě nezobrazí (žádná chyba v buildu).
+
+3) Komponenta loga – přechod na logoSrc přes props
+
+Najdi komponentu, která renderuje hlavní logo ZLE (např. ZLELogo, Logo, BrandLogo, apod.).
+
+Odstraň v ní původní statický import loga, např.:
+
+// PŮVODNÍ VARIANTA – TOTO SMAŽ
+// import logoSrc from "/public/zle-logo/nejake-logo.png"
+
+
+Nahraď komponentu takto (přizpůsob název souboru a komponenty skutečnému stavu):
+
+// components/zle-logo.tsx
+"use client"
+
+type ZLELogoProps = {
+  logoSrc: string
+}
+
+export function ZLELogo({ logoSrc }: ZLELogoProps) {
+  return (
+    <img
+      src={logoSrc}
+      alt="ZLE logo"
+      className="zle-logo-polish"
+    />
+  )
+}
+
+
+Layout okolo (wrappery, flexbox, sekce hero atd.) neměň.
+
+Pokud je logo součástí jiné větší komponenty (např. hero sekce), pouze nahraď <img src="..."> verzí s logoSrc z props.
+
+Nech názvy komponent a strukturu JSX beze změny, uprav jen to, odkud berou src pro logo.
+
+4) CSS „polish“ efekt pro logo
+
+Do globálního stylesheetu (např. globals.css, app.css apod.) přidej třídu:
+
+.zle-logo-polish {
+  filter:
+    brightness(1.05)
+    contrast(1.15)
+    saturate(1.1)
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.05));
+
+  image-rendering: auto;
+  transition: 0.4s ease;
+}
+
+.zle-logo-polish:hover {
+  filter:
+    brightness(1.15)
+    contrast(1.25)
+    saturate(1.15)
+    drop-shadow(0 0 16px rgba(255, 255, 255, 0.15));
+}
+
+
+Tím:
+
+opticky „vyleštíš“ všechny varianty log (premium, street, clean, atd.),
+
+nijak neupravuješ samotné PNG/JPG soubory,
+
+efekt je jemný, profi a funguje pro všechny barevné kombinace.
+
+Nepřepisuj jiné existující třídy. Jen tuhle přidej navíc.
+
+5) Kontrola a omezení
+
+Na konci ověř:
+
+Projekt se bez chyb builduje a běží.
+
+Všechny loga v /public/zle-logo/pro jsou načtená (getImagesFromDir("zle-logo/pro")).
+
+Na stránce se zobrazuje vždy jedno logo, vybrané podle aktuálního dne.
+
+Layout, texty, rozložení sekcí, gridy a ostatní styly zůstaly beze změny.
+
+V komponentě pro logo už není žádný starý statický import konkrétního loga – používá se jen logoSrc z props.
+
+Logo na webu má aplikovanou třídu .zle-logo-polish a na hover se jemně zvýrazní.
+
+6) Závazné shrnutí
+
+Neměň nic jiného než:
+
+přidání getImagesFromDir, pokud ještě není,
+
+načtení všech log v app/page.tsx,
+
+výběr jednoho loga podle dne s ochranou pro prázdnou složku,
+
+úpravu komponenty loga na logoSrc props,
+
+přidání CSS třídy .zle-logo-polish.
+
+Vše ostatní v projektu musí zůstat identické.
+
+Proveď přesně tyto kroky a nic dalšího neupravuj.

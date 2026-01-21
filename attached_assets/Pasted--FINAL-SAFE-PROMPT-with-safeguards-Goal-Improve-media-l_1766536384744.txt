@@ -1,0 +1,177 @@
+✅ FINAL SAFE PROMPT (with safeguards)
+
+Goal:
+Improve media loading reliability across the site so public images + videos render everywhere (Replit, Codespaces, Vercel) even with WhatsApp filenames (spaces/parentheses/colons), without renaming files and without touching backend/DB/auth/payments.
+
+🔒 Hard Rules (NON-NEGOTIABLE)
+
+Frontend-only changes.
+
+Do NOT change server logic, API routes, DB schema, Stripe, auth, or business logic.
+
+Do NOT rename any files in client/public.
+
+Must remain portable and work with relative URLs only.
+
+Do NOT introduce new layout wrappers that could affect CSS or spacing.
+
+🧠 Additional Safety Guards (CRITICAL)
+
+No layout wrappers
+
+SafeImage must render only <img>, no surrounding <div> or layout elements.
+
+SafeVideo may render a minimal container only if already required, but must not change layout dimensions.
+
+Preserve existing props and styling
+
+Forward className, alt, loading, sizes, etc. exactly as provided.
+
+Do not alter CSS classes, spacing, grid behavior, or DOM structure.
+
+Non-breaking refactor only
+
+If a helper like safeUrl.ts already exists:
+
+Keep it working.
+
+Either re-export it from the new central helper or internally delegate to avoid large refactors.
+
+Do NOT require rewriting unrelated components.
+
+🧩 Tasks
+0) Centralize media URL handling (single source of truth)
+
+Create a central helper module that ALL media components use.
+
+File: client/src/lib/media.ts
+
+Export:
+
+safePublicUrl(input?: string): string
+
+isExternalUrl(input?: string): boolean
+
+normalizeMediaSrc(input?: string): string
+(alias of safePublicUrl for consistent usage)
+
+All image/video components must import from this single module.
+No duplicated helpers elsewhere.
+
+1) Implement robust URL encoding safely
+
+In safePublicUrl():
+
+a) If input is empty / undefined → return ""
+b) If input starts with data: or blob: → return unchanged
+c) If input starts with http:// or https:// → return unchanged
+d) If input is a relative path (starts with /):
+
+Preserve query (?) and hash (#) parts
+
+Encode only the pathname portion
+
+Avoid double-encoding (%xx must not be re-encoded)
+
+Output must be safe for <img src> and <video src> everywhere
+
+2) SafeImage component
+
+File: client/src/components/SafeImage.tsx
+
+Props:
+src?: string
+alt?: string
+className?: string
+fallbackSrc?: string (default: /zle-photos/_fallback.jpg)
+
+Behavior:
+
+Always render an <img> element (never return null)
+
+3-step load strategy:
+
+safePublicUrl(src)
+
+raw src (exact string as provided)
+
+fallbackSrc
+
+onError advances once per step, then stops
+
+In development only (NODE_ENV !== "production"):
+
+console.warn once with the failed src chain
+
+No layout or design changes
+
+3) SafeVideo component
+
+File: client/src/components/SafeVideo.tsx
+
+Props:
+src?: string
+poster?: string
+className?: string
+fallbackText?: string
+
+Behavior:
+
+Always render a stable container (never null)
+
+Local file videos (/…mp4):
+
+<video controls preload="metadata"
+       src={safePublicUrl(src)}
+       poster={safePublicUrl(poster)} />
+
+
+On error → show simple fallback text (no crash)
+
+YouTube embeds:
+
+Render iframe only if http(s)
+
+Use minimal required allow + sandbox
+
+Invalid/missing URL → fallback panel
+
+No server logic introduced
+
+4) Replace direct media usage across UI
+
+Replace direct <img src="..."> with <SafeImage ... />
+
+Replace direct <video src="..."> with <SafeVideo ... />
+
+Keep layout identical
+
+5) Fallback asset
+
+Ensure client/public/zle-photos/_fallback.jpg exists
+
+If missing:
+
+Create a minimal ZLE-style placeholder (dark, grainy, simple icon)
+
+No server changes
+
+6) Verify
+
+Crew images load even with WhatsApp filenames (spaces, parentheses, colons)
+
+Videos never crash UI
+
+No empty cards / broken layout
+
+Works identically in Replit, Codespaces, Vercel
+
+Backend untouched
+
+✅ Result
+
+Media never breaks the UI.
+WhatsApp-named files work without renaming.
+Single central helper.
+Frontend-only.
+Safe, portable, boring-reliable.

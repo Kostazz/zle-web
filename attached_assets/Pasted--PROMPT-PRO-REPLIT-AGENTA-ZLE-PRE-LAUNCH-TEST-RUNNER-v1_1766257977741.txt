@@ -1,0 +1,118 @@
+✅ PROMPT PRO REPLIT AGENTA — ZLE PRE-LAUNCH TEST RUNNER v1.0.1 (BULLETPROOF / SAFE / ADDITIVE)
+
+We are working on the ZLE web e-shop (React/Vite + Express/TS + Postgres/Drizzle + Stripe).
+Your task: execute Pre-Launch Test Scenarios A–G and produce a PASS/FAIL report with concrete evidence.
+ABSOLUTE RULES:
+1) ADDITIVE-ONLY: Do NOT delete, rename, or rewrite existing logic. If something exists, extend gently. If unsure, add new dev-only utilities.
+2) NO UI CHANGES: Do NOT change client UI/UX, layout, routes, or styling.
+3) NO SECRETS IN REPO: Never write real keys to files; only placeholders.
+4) DEV-ONLY HELPERS: Any helper endpoints/scripts must be guarded by NODE_ENV !== "production".
+5) STRIPE SAFETY: Do NOT change Stripe signature verification behavior. Do NOT break raw body parsing order for the webhook route.
+6) NON-DESTRUCTIVE TESTING: Do not mutate production-like data. Use the minimum changes required to observe behavior.
+7) IMPORTANT CONTROL RULE: If a scenario FAILS, DO NOT auto-fix core logic. First produce FAIL evidence + proposed minimal fix plan. Only apply fixes if explicitly instructed later.
+
+STEP 0 — AUDIT FIRST (NO CHANGES YET)
+- Identify where in code: Stripe verify route, Stripe webhook route/handler, order marked paid, stock deduction, payouts generation, ledger write, idempotency event storage (order_events or equivalent).
+- Identify actual DB table names from the Drizzle schema (use real names, do not guess): orders, order items (line items/cart snapshot), products/variants stock, ledger entries, order payouts, audit log, order events.
+- Output a brief map: file paths + function names + which tables are touched.
+
+STEP 0.1 — SAFETY BACKUP / COMMIT (BEFORE ANY CODE CHANGE)
+- If git repo exists: create a commit "chore: pre test-runner helpers backup".
+- If no git: create /_backup/YYYY-MM-DD/ and copy every file you will touch.
+Proceed after this.
+
+STEP 1 — ADD DEV-ONLY TEST HELPERS (ONLY IF MISSING)
+Add minimal dev-only endpoints/scripts to make tests verifiable WITHOUT touching UI:
+1) GET /api/admin/dev/latest-order
+   -> returns latest order id + status/paymentStatus + createdAt + currency/total (if present).
+2) GET /api/admin/dev/order/:id/debug
+   -> returns: order summary + ledger entries count/list + payouts count/list + stock deduction flags (stockDeductedAt or equivalent) + idempotency events count (order_events/providerEventId), using REAL schema/table names.
+3) POST /api/admin/dev/simulate-payout-fail
+   -> toggles a dev-only in-memory flag so payouts generation throws ONCE, then AUTO-RESETS immediately after it triggers; log clearly when enabled/consumed/reset.
+4) Optional: POST /api/admin/dev/replay-webhook (ONLY if feasible without breaking Stripe signature logic) OR provide exact Stripe CLI guidance.
+
+SECURITY FOR DEV HELPERS:
+- If admin auth exists, protect these endpoints with admin/RBAC.
+- If admin auth does NOT exist, restrict these endpoints to:
+  - NODE_ENV !== "production"
+  - AND (request from localhost OR a DEV_TEST_TOKEN header matches an env placeholder in .env.example)
+Do NOT expose these endpoints publicly.
+
+STEP 2 — RUN SCENARIO A (HAPPY PATH)
+- Instruct operator exactly what to click in the UI (Stripe test mode checkout).
+- After operator confirms payment, automatically fetch latest order and validate:
+  - order is paid/confirmed (according to existing model)
+  - exactly ONE ledger "sale" entry exists for that order (no duplicates)
+  - payouts exist and are NOT duplicated
+  - stock deducted exactly ONCE (stockDeductedAt or equivalent guard)
+Return PASS/FAIL with evidence:
+- short logs snippet (only relevant lines, redact any PII)
+- SQL queries used (or Drizzle queries) + actual results
+- which handler path was used (verify vs webhook or both)
+
+STEP 3 — RUN SCENARIO B (IDEMPOTENCY DOUBLE-FIRE)
+- Attempt to re-trigger verify flow OR replay webhook (guide operator if manual).
+- Validate no duplicates:
+  - no second ledger sale
+  - no extra payouts rows
+  - stock not deducted again
+Return PASS/FAIL with evidence.
+
+STEP 4 — RUN SCENARIO C (PAYOUT FAIL MUST NOT BLOCK PAID)
+- Enable dev-only payout fail flag.
+- Operator performs payment again.
+- Validate:
+  - order still becomes paid/confirmed
+  - payouts are missing or partial (expected)
+  - an error is logged AND an audit_log entry exists (or equivalent) with non-PII meta
+Return PASS/FAIL with evidence.
+Ensure the fail flag auto-resets and cannot remain stuck.
+
+STEP 5 — RUN SCENARIO D (REFUND)
+- If Stripe CLI is available, simulate refund event; otherwise instruct operator how to refund via Stripe dashboard (test mode).
+- Validate:
+  - ledger refund entry exists (immutable ledger: append-only, no rewrite)
+  - payouts adjusted/cancelled WITHOUT deleting ledger history
+  - idempotency prevents double-refund processing
+Return PASS/FAIL with evidence.
+
+STEP 6 — RUN SCENARIO E (GDPR ANONYMIZE)
+- Use an existing test user/order owner.
+- Call existing anonymize endpoint (admin-only).
+- Validate:
+  - PII fields are anonymized (placeholders/hashes)
+  - orders preserved for accounting
+  - audit_log entry created
+Return PASS/FAIL with evidence.
+
+STEP 7 — RUN SCENARIO F (STOCK CONCURRENCY)
+- Provide operator a clear manual test:
+  - set stock=1 for a product
+  - attempt 2 purchases in 2 windows/devices
+- Validate:
+  - only one purchase succeeds
+  - second fails with out-of-stock
+  - stock never goes negative
+Return PASS/FAIL with evidence.
+
+STEP 8 — RUN SCENARIO G (SECURITY SANITY)
+Verify:
+- Admin endpoints return 401/403 without auth (or are dev-locked)
+- Production log redaction is configured (no PII in prod logs)
+- CORS is not wildcard in production (dev can be open if clearly separated)
+- Stripe webhook signature verification intact AND raw body parsing order not broken
+Return PASS/FAIL with evidence.
+
+FINAL OUTPUT FORMAT (MANDATORY)
+Return a concise report:
+- Scenario A: PASS/FAIL + evidence
+- B: PASS/FAIL + evidence
+- C: PASS/FAIL + evidence
+- D: PASS/FAIL + evidence
+- E: PASS/FAIL + evidence
+- F: PASS/FAIL + evidence
+- G: PASS/FAIL + evidence
+Plus:
+- list of files created/modified (dev-only helpers included)
+- Blockers / Important / Nice-to-have
+Proceed automatically.

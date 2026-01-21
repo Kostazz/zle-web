@@ -1,0 +1,157 @@
+We are installing the ZLE ERROR PACK v1.1 into this React/Tailwind project.
+
+GOAL:
+- Add error pages ONLY if missing.
+- Never overwrite existing components.
+- Never break or modify working routing logic.
+- Add fallback 404 route ONLY if it does not already exist.
+- Add optional /500 route ONLY if missing.
+- Maintain full compatibility with the ZLE brand styling.
+
+────────────────────────────────────────
+STEP 0 — ANALYZE PROJECT
+────────────────────────────────────────
+Before any changes, scan the project for:
+
+1) Existing error components:
+   - Any file names containing: "404", "NotFound", "Error", "500", "ServerError"
+   - Under folders: /src/pages, /src/screens, /src/routes, /src/views, /src/components
+
+2) Existing error routes:
+   - Any <Route path="*"> or <Route errorElement={...}>
+   - Any route with path "/500"
+
+3) Existing error folder:
+   - /src/pages/errors
+   - /src/errors
+   - /src/error
+
+Based on findings:
+- Skip creating components that already exist.
+- Skip adding routes that already exist.
+- Skip importing components that already exist.
+
+────────────────────────────────────────
+STEP 1 — CREATE FOLDER IF MISSING
+────────────────────────────────────────
+
+If a folder for error pages does NOT exist:
+Create:
+   /src/pages/errors/
+
+If it already exists:
+Use it without modifying any existing files in it.
+
+────────────────────────────────────────
+STEP 2 — CREATE 404 COMPONENT (ONLY IF MISSING)
+────────────────────────────────────────
+
+If NO 404-style component exists (checked from Step 0):
+Create file:
+   /src/pages/errors/ZleNotFound.jsx (or .tsx based on project)
+
+Insert exactly this content:
+
+--- COMPONENT START ---
+import React from "react";
+import { Link } from "react-router-dom";
+
+export default function ZleNotFound() {
+  return (
+    <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 text-center bg-black text-zinc-100">
+      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-3">Error 404</p>
+      <h1 className="text-5xl font-black mb-4">Tady nic není, brácho.</h1>
+      <p className="max-w-xl text-zinc-400 mb-8">
+        Tahle stránka neexistuje nebo jsme ji už dávno rozšlapali skejtem.
+      </p>
+      <Link to="/" className="px-6 py-3 bg-zinc-100 text-black font-semibold">
+        Zpátky domů
+      </Link>
+    </div>
+  );
+}
+--- COMPONENT END ---
+
+If a 404 component already exists:
+DO NOT modify it.
+
+────────────────────────────────────────
+STEP 3 — CREATE 500 COMPONENT (ONLY IF MISSING)
+────────────────────────────────────────
+
+If NO 500-style component exists:
+Create file:
+   /src/pages/errors/ZleServerError.jsx or .tsx
+
+Insert:
+
+--- COMPONENT START ---
+import React from "react";
+import { Link } from "react-router-dom";
+
+export default function ZleServerError() {
+  return (
+    <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 text-center bg-black text-zinc-100">
+      <p className="text-xs uppercase tracking-[0.3em] text-red-500 mb-3">Error 500</p>
+      <h1 className="text-5xl font-black mb-4">Něco se pos*alo.</h1>
+      <p className="max-w-xl text-zinc-400 mb-8">
+        Server spadl jak při pokusu o první boardslide. Zkus to znova.
+      </p>
+      <button onClick={() => window.location.reload()}
+        className="px-6 py-3 bg-zinc-100 text-black font-semibold mb-3">
+        Zkusit znovu
+      </button>
+      <Link to="/" className="px-6 py-3 border border-zinc-500 text-zinc-200">
+        Zpět domů
+      </Link>
+    </div>
+  );
+}
+--- COMPONENT END ---
+
+If a 500 component exists:
+Skip this step.
+
+────────────────────────────────────────
+STEP 4 — UPDATE ROUTER (SAFE MODE)
+────────────────────────────────────────
+
+Locate the main route config file.
+
+Before changing ANYTHING:
+- Check if a "*" catch-all route already exists.
+- Check if "/500" route already exists.
+
+If fallback \"*\" route does NOT exist:
+Add this route at the END of the route list:
+
+<Route path="*" element={<ZleNotFound />} />
+
+If "/500" route does NOT exist:
+Add:
+
+<Route path="/500" element={<ZleServerError />} />
+
+If using createBrowserRouter:
+Append objects:
+{ path: "*", element: <ZleNotFound /> }
+{ path: "/500", element: <ZleServerError /> }
+
+Do NOT remove or modify ANY existing routes.
+
+────────────────────────────────────────
+STEP 5 — VERIFY
+────────────────────────────────────────
+
+After implementation:
+
+1. Build the app.
+2. Test:
+   - /anything-random → should show ZLE 404 page
+   - /500 → should show ZLE 500 page
+
+3. Confirm nothing else changed.
+4. Report:
+   - Which components were created
+   - Which routes were added
+   - What already existed and was left untouched

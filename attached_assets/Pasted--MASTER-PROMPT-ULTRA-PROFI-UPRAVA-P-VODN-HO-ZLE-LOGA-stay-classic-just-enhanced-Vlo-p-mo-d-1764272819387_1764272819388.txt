@@ -1,0 +1,105 @@
+🔥 MASTER PROMPT: ULTRA-PROFI UPRAVA PŮVODNÍHO ZLE LOGA (stay classic, just enhanced)
+
+(Vlož přímo do Replitu, nahrát původní logo jako referenci)
+
+TASK:
+Uprav původní ZLE logo do maximální profesionální podoby.
+Drž se striktně původního designu, tvaru, fontu i celkového rozložení.
+Neodchyluj se do nových stylů.
+Jen vylepši detaily, textury a světlo tak, aby to bylo profesionální, moderní a čisté.
+
+🎯 POŽADOVANÝ VÝSLEDEK
+
+Vytvoř několik variant, ale všechny musí:
+
+✔️ Zachovat původní font + tvar písmen Z L E
+
+– žádné změny fontu
+– žádné nové tvary
+– žádné úpravy hrubých linií
+– maximální věrnost původnímu vizuálu
+
+✔️ Zachovat layout:
+
+nahoře ZLE (bílé)
+
+dole LIVE STYLE CULTURE BRAND (červené)
+
+černé pozadí
+
+✔️ Dodat profesionální úpravu:
+
+jemné 3D (velmi subtilní, 10–15 % depth)
+
+realistické světlo (soft rim light, ne přepaly)
+
+hladké hrany
+
+čistší maskování rohů
+
+decentní shadow pod textem (2–4 px)
+
+povrch písmen: velmi jemný lesk (gloss 10–20 %)
+
+✔️ Žádné experimenty
+
+žádný extrémní chrom
+
+žádné futuristické efekty
+
+žádné nové textury
+
+žádné gradienty, pokud nejsou extrémně jemné (1–3 %)
+
+🖼️ GENEROVAT TYTO 3 KLÍČOVÉ VARIANTY
+1) Ultra Clean Classic
+
+základní logo, jen 3–5 % volume
+
+micro gloss
+
+perfektně vyhlazené hrany
+
+čisté, tiskové, merch-ready
+
+2) Professional Premium (nejlehčí 3D)
+
+hloubka 10–15 %
+
+jemné laterální světlo zleva
+
+slabý metallic finish (velmi jemný, nevíc než 10 %)
+
+ideální pro HERO sekci webu
+
+3) Hero Matte Street
+
+matná textura (velmi jemná)
+
+grain 2–3 % pro ZLE vibe
+
+jemnější stín
+
+působí undergroundově, ale profi
+
+📁 OUTPUT STRUKTURA
+
+Ulož:
+
+client/public/zle-logo/
+    zle-classic-clean.png
+    zle-premium-soft3d.png
+    zle-street-matte.png
+
+🚫 OMEZENÍ – NEPROVÁDĚT
+
+❌ neměnit font
+❌ neměnit barvu
+❌ neměnit rozložení
+❌ nevyhlazovat písmo do moderních bezserif stylů
+❌ žádné těžké 3D nebo přehnané bývalé chromové efekty
+
+✔️ PO DOKONČENÍ
+
+Popiš stručně, které varianty byly vytvořeny a jak moc se liší od originálu.
+Ale vždy zachovej původní identitu.

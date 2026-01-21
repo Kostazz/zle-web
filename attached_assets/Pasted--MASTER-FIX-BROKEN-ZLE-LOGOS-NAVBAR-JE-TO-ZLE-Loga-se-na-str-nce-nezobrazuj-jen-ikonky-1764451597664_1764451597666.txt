@@ -1,0 +1,139 @@
+🛠 MASTER FIX – BROKEN ZLE LOGOS (NAVBAR + „JEĎ TO ZLE“)
+
+Loga se na stránce nezobrazují (jen ikonky rozbitého obrázku), i když je implementovaný LogoProvider a useTodaysLogo().
+
+Ber to jako BUG. Cíl: loga se musí reálně renderovat.
+Neřeš už architekturu, jen oprav funkčnost.
+
+1) Ověř, že hook opravdu vrací existující URL
+
+Otevři logoContext.tsx (nebo soubor, kde je LogoProvider a useTodaysLogo()).
+
+Najdi místo, kde se vytváří pole log (logos).
+
+Dočasně tam přidej console.log("ZLE logos", logos) a spusť appku.
+
+Zkontroluj v konzoli:
+
+jestli logos.length > 0,
+
+a jak vypadají hodnoty (musí to být stringy, např. "/zle-logo/pro/zle-logo-raw.png").
+
+👉 Pokud je pole prázdné nebo obsahuje divné hodnoty (např. [object Module], undefined, cesty začínající /public/public/... apod.), znamená to, že import.meta.glob je špatně nastavený.
+
+2) Oprav import.meta.glob tak, aby fungoval ve Vite
+
+Tento projekt používá Vite + React.
+Důležité pravidlo:
+
+import.meta.glob funguje pro soubory uvnitř src (ne přímo z public).
+
+Soubory v public se servírují přímo jako /zle-logo/pro/xxx.png, ale nejsou součástí modulového grafu.
+
+Proto:
+
+Pokud teď používáš glob na public (např. "../public/zle-logo/pro/*" nebo "/zle-logo/pro/*"),
+→ to nevrátí použitelné moduly / URL.
+
+Udělej jednu z těchto dvou bezpečných variant (vyber jednu a aplikuj ji konzistentně):
+
+Varianta A – přesun log do src/assets (doporučeno)
+
+V projektu přesuň složku s logy:
+
+z: client/public/zle-logo/pro
+
+do: client/src/assets/zle-logo/pro
+
+Všechna existující místa, kde se na loga odkazuje jako na /zle-logo/pro/..., nech tak, jak jsou (logo rotátor je jediný, kdo používá importy).
+
+V logoContext.tsx nastav glob např. takto:
+
+const logoModules = import.meta.glob(
+  "./assets/zle-logo/pro/*.{png,jpg,jpeg,webp}",
+  { eager: true, import: "default" }
+)
+
+const logos = Object.values(logoModules) as string[]
+
+
+Tím získáš skutečná URL, která lze dát přímo do <img src="...">.
+
+Varianta B – explicitní importy místo globu
+
+Pokud nechceš přesouvat složku:
+
+Nech loga v public/zle-logo/pro,
+
+V logoContext.tsx zruš import.meta.glob a udělej explicitní seznam:
+
+const logos = [
+  "/zle-logo/pro/zle-logo-raw.png",
+  "/zle-logo/pro/zle-logo-3d.png",
+  "/zle-logo/pro/zle-logo-clean.png",
+  "/zle-logo/pro/zle-logo-street-matte.png",
+  // ... všechny, které ve složce jsou
+]
+
+
+Logiku logo dne (výběr podle data, context, hook) nech tak, jak jsi ji implementoval.
+
+Tahle varianta není „auto“ pro nové soubory, ale je 100% spolehlivá a rychlá na opravu.
+
+3) Zkontroluj, že <img> má správný src
+
+V Header.tsx / navbar komponentě najdi <img data-testid="img-zle-logo">.
+
+Ujisti se, že:
+
+bere src z hooku useTodaysLogo() nebo contextu,
+
+src je přesně ten string z pole logos,
+
+není tam žádná manipulace typu new URL(...) navíc, pokud už dostáváš hotové URL.
+
+Totéž v hero sekci:
+
+text „JEĎ TO ZLE“ → část ZLE nahrazená <img> logem:
+
+ověř, že tahle <img> taky používá stejný src jako navbar.
+
+4) Otestuj v prohlížeči a v Network/Elements
+
+Spusť appku.
+
+V devtools (Elements) klikni na <img data-testid="img-zle-logo">:
+
+zkontroluj atribut src
+
+zkuste ten src otevřít přímo do nového tabu – musí se zobrazit obrázek.
+
+Když je to ok, na stránce už se logo zobrazí.
+
+5) Co nesmíš změnit
+
+Neměň nic v layoutu, stylování, textu, routingu.
+
+Nesahej na jiné části aplikace (fotky, gallery, shop, story…).
+
+Neměň fungování LogoProvider / useTodaysLogo() kromě opravy zdroje URL.
+
+Je povoleno:
+
+upravit nebo nahradit import.meta.glob,
+
+případně přesunout složku s logy do src/assets,
+
+nebo použít explicitní pole cest.
+
+✅ Cílový stav
+
+useTodaysLogo() vrací string URL existujícího souboru loga.
+
+Navbar logo vlevo se normálně zobrazuje, ne jen rozbitý obrázek.
+
+„JEĎ TO ZLE“ používá stejné logo místo textu ZLE.
+
+Všechny loga mají stále .zle-logo-polish efekt.
+
+ŽÁDNÁ jiná část aplikace není změněná.

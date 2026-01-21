@@ -1,0 +1,538 @@
+are installing the full ZLE LEGAL PACK v1.0 into this React/Tailwind project.
+
+GOAL:
+- Add a global ZleFooter component
+- Add a central /legal hub page
+- Add all subpages: terms, privacy, cookies, returns, legal contact
+- Use the exact content below
+- Wire the footer into the main layout
+- Do NOT break or significantly change existing logic or styling
+
+IMPORTANT:
+- Adapt paths slightly if this is not a Next.js /src/pages setup.
+  If the project uses:
+    - Next.js: place pages under /app or /pages according to the existing structure.
+    - React + React Router: create components under /src/pages/legal/ and register them in the router.
+    - Single-page app without routing: still create the components under /src/legal/ so they’re ready; we can hook links later.
+
+If unsure, prefer:
+- /src/components for shared components
+- /src/pages/legal for legal pages (or the closest equivalent in this repo).
+
+────────────────────────────────────────
+1) CREATE DIRECTORIES
+────────────────────────────────────────
+
+Create these directories if they do not exist (or use the closest existing equivalents):
+
+- /src/components
+- /src/pages/legal
+
+Use the project’s existing structure as a guide. If there is already a pages/ or app/ directory, follow that convention.
+
+────────────────────────────────────────
+2) CREATE FOOTER COMPONENT: ZleFooter.tsx
+────────────────────────────────────────
+
+Create file (or update if it already exists):
+
+/src/components/ZleFooter.tsx
+
+Insert THIS EXACT CONTENT:
+
+```tsx
+export default function ZleFooter() {
+  return (
+    <footer className="w-full mt-16 pb-8 pt-8 text-center text-xs text-neutral-500 border-t border-neutral-800">
+      <div className="text-neutral-300 mb-4">
+        © ZLE {new Date().getFullYear()} — JEDˇ TO ZLE.
+      </div>
+
+      <div className="flex justify-center gap-6 mb-4 text-neutral-400">
+        <a href="/">Home</a>
+        <a href="/shop">Shop</a>
+        <a href="/crew">Crew</a>
+        <a href="/contact">Contact</a>
+      </div>
+
+      <div className="text-neutral-500 hover:text-neutral-300">
+        <a href="/legal">Legal</a>
+      </div>
+    </footer>
+  );
+}
+
+──────────────────────────────────────── 3) INSTALL FOOTER INTO MAIN LAYOUT ────────────────────────────────────────
+
+Find the main layout or root component where the whole app UI is rendered. Typical candidates:
+
+src/App.tsx
+
+src/App.jsx
+
+src/layouts/RootLayout.tsx
+
+or similar.
+
+
+In that root layout file:
+
+1. Add this import at the top (adjust path alias if needed):
+
+
+
+import ZleFooter from "./components/ZleFooter";
+
+or, if using @ alias:
+
+import ZleFooter from "@/components/ZleFooter";
+
+2. Render the footer once, below the main content but above closing tags, for example:
+
+
+
+function App() {
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {/* existing header / navbar */}
+      {/* existing main content wrapper */}
+      <main className="flex-1">
+        {/* existing routes / sections */}
+      </main>
+
+      <ZleFooter />
+    </div>
+  );
+}
+
+export default App;
+
+Do NOT remove or drastically change any existing logic. Just integrate <ZleFooter /> at the bottom.
+
+──────────────────────────────────────── 4) CREATE LEGAL HUB PAGE: /legal ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/index.tsx
+
+If the project uses a different routing structure, adapt accordingly (e.g. /src/pages/LegalHub.tsx and add a route “/legal”).
+
+Insert EXACTLY:
+
+export default function LegalHub() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200">
+      <h1 className="text-3xl font-bold mb-6">ZLE Legal Hub</h1>
+
+      <p className="mb-6 text-neutral-400 text-sm leading-relaxed">
+        Kompletní právní dokumentace značky ZLE. Všechno přehledně, nerušivě a profesionálně na jednom místě.
+      </p>
+
+      <ul className="space-y-3 text-sm text-neutral-300">
+        <li>
+          <a href="/legal/terms" className="hover:text-white underline underline-offset-4">
+            Obchodní podmínky
+          </a>
+        </li>
+        <li>
+          <a href="/legal/privacy" className="hover:text-white underline underline-offset-4">
+            Ochrana osobních údajů (GDPR)
+          </a>
+        </li>
+        <li>
+          <a href="/legal/cookies" className="hover:text-white underline underline-offset-4">
+            Cookies
+          </a>
+        </li>
+        <li>
+          <a href="/legal/returns" className="hover:text-white underline underline-offset-4">
+            Reklamační řád
+          </a>
+        </li>
+        <li>
+          <a href="/legal/contact" className="hover:text-white underline underline-offset-4">
+            Kontakt pro právní dotazy
+          </a>
+        </li>
+      </ul>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 5) CREATE TERMS PAGE: /legal/terms ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/terms.tsx
+
+Insert THIS CONTENT:
+
+export default function LegalTerms() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200 text-sm leading-relaxed">
+      <h1 className="text-3xl font-bold mb-6">Obchodní podmínky ZLE</h1>
+
+      <p className="text-neutral-400 mb-4 text-xs">
+        Poslední aktualizace: {/* TODO: doplň datum, např. 01.01.2025 */}
+      </p>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">1. Provozovatel</h2>
+        <p>
+          Provozovatel značky ZLE (dále jen „provozovatel“):
+          <br />
+          {/* TODO: doplň svoje údaje */}
+          Jméno / název: ________________________________ <br />
+          Sídlo: ________________________________ <br />
+          IČO (pokud je): ________________________________ <br />
+          Kontakt: ________________________________
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">2. Zboží a služby</h2>
+        <p>
+          ZLE nabízí zejména oblečení, doplňky a další produkty spojené s underground street kulturou.
+          Konkrétní popis, vlastnosti a cena jsou vždy uvedeny u daného produktu v katalogu nebo v nabídce.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">3. Objednávka a uzavření smlouvy</h2>
+        <p>
+          Objednávka vytvořená zákazníkem prostřednictvím webu je návrhem na uzavření kupní smlouvy.
+          Kupní smlouva je uzavřena okamžikem potvrzení objednávky provozovatelem (například potvrzovacím e-mailem).
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">4. Cena a způsoby platby</h2>
+        <p>
+          Cena zboží je vždy uvedena u konkrétního produktu. Ceny jsou konečné.
+          Přijímané způsoby platby (dle aktuální nabídky):
+        </p>
+        <ul className="list-disc list-inside mt-2">
+          <li>bankovní převod</li>
+          <li>dobírka / hotově při osobním převzetí</li>
+          <li>další metody mohou být přidány v budoucnu</li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">5. Dodání zboží</h2>
+        <p>
+          Zboží je doručováno prostřednictvím dopravců (např. výdejní místa, kurýr) nebo osobním předáním, pokud je tak domluveno.
+          Obvyklá doba dodání je 2–7 pracovních dnů od potvrzení objednávky / přijetí platby.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">6. Odstoupení od smlouvy</h2>
+        <p>
+          Zákazník – spotřebitel má právo odstoupit od smlouvy do 14 dnů od převzetí zboží, není-li stanoveno jinak.
+          Pro odstoupení lze použít kontaktní e-mail uvedený výše. Zboží by mělo být vráceno čisté, nepoškozené a pokud možno v původním obalu.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">7. Reklamace a vady</h2>
+        <p>
+          Podrobný postup pro reklamace je uveden v dokumentu „Reklamační řád“. 
+          Zákazník je povinen zboží po převzetí zkontrolovat a případné vady oznámit bez zbytečného odkladu.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">8. Ochrana osobních údajů</h2>
+        <p>
+          Zpracování osobních údajů se řídí dokumentem „Ochrana osobních údajů (GDPR)“, který je dostupný na stránce /legal/privacy.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="font-semibold mb-2">9. Závěrečná ustanovení</h2>
+        <p>
+          Tyto obchodní podmínky se řídí právem České republiky. Provozovatel si vyhrazuje právo podmínky aktualizovat.
+          Aktuální znění je vždy zveřejněno na této stránce.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 6) CREATE GDPR PAGE: /legal/privacy ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/privacy.tsx
+
+Insert:
+
+export default function LegalPrivacy() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200 text-sm leading-relaxed">
+      <h1 className="text-3xl font-bold mb-6">Ochrana osobních údajů (GDPR)</h1>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">1. Správce osobních údajů</h2>
+        <p>
+          Správcem osobních údajů je:
+          <br />
+          {/* TODO: doplň údaje */}
+          Jméno / název: ________________________________ <br />
+          Kontakt (e-mail): ________________________________
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">2. Rozsah zpracovávaných údajů</h2>
+        <p>Zpracováváme zejména tyto kategorie údajů:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>identifikační údaje (jméno, příjmení)</li>
+          <li>kontaktní údaje (e-mail, telefon, doručovací adresa)</li>
+          <li>údaje o objednávkách a platbách</li>
+          <li>technické údaje z cookies (IP adresa, typ zařízení, základní analytika)</li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">3. Účely zpracování</h2>
+        <p>Osobní údaje zpracováváme za účelem:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>vyřízení objednávek a doručení zboží</li>
+          <li>komunikace se zákazníky (dotazy, podpora, reklamace)</li>
+          <li>plnění právních povinností (daňové, účetní předpisy)</li>
+          <li>základní analytiky a ochrany webu (oprávněný zájem)</li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">4. Právní základ zpracování</h2>
+        <p>
+          Zpracování osobních údajů probíhá na základě:
+        </p>
+        <ul className="list-disc list-inside mt-2">
+          <li>plnění smlouvy (objednávka zboží)</li>
+          <li>splnění právní povinnosti (vedení účetnictví apod.)</li>
+          <li>oprávněného zájmu správce (bezpečnost, analytika)</li>
+          <li>souhlasu subjektu údajů (např. newsletter – pokud bude použit)</li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">5. Doba uchování údajů</h2>
+        <p>
+          Údaje uchováváme po dobu nezbytnou k plnění uvedených účelů a v souladu s právními předpisy (např. účetní doklady po dobu stanovenou zákonem).
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">6. Příjemci osobních údajů</h2>
+        <p>Osobní údaje mohou být zpřístupněny:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>dopravcům (pro doručení zboží)</li>
+          <li>poskytovateli webhostingu / technického řešení</li>
+          <li>případně účetnímu nebo daňovému poradci</li>
+        </ul>
+        <p className="mt-2">
+          Vždy pouze v nezbytném rozsahu pro splnění daného účelu.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">7. Práva subjektů údajů</h2>
+        <p>Máte zejména tato práva:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>právo na přístup k osobním údajům</li>
+          <li>právo na opravu nebo doplnění údajů</li>
+          <li>právo na výmaz (pokud to nebrání zákonným povinnostem)</li>
+          <li>právo na omezení zpracování</li>
+          <li>právo vznést námitku proti zpracování</li>
+          <li>právo podat stížnost u Úřadu pro ochranu osobních údajů</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 className="font-semibold mb-2">8. Kontakt pro GDPR</h2>
+        <p>
+          Pro uplatnění práv nebo dotazy k ochraně osobních údajů nás kontaktujte na:
+          <br />
+          {/* TODO: doplň GDPR kontakt */}
+          E-mail: ________________________________
+        </p>
+      </section>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 7) CREATE COOKIES PAGE: /legal/cookies ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/cookies.tsx
+
+Insert:
+
+export default function LegalCookies() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200 text-sm leading-relaxed">
+      <h1 className="text-3xl font-bold mb-6">Cookies – zásady používání</h1>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">1. Co jsou cookies</h2>
+        <p>
+          Cookies jsou malé textové soubory ukládané ve vašem prohlížeči při návštěvě webu. 
+          Pomáhají zajistit základní funkce webu a zlepšit uživatelský zážitek.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">2. Jaké cookies používáme</h2>
+        <ul className="list-disc list-inside mt-2">
+          <li>
+            <span className="font-semibold">Nezbytné cookies</span> – nutné pro správné fungování webu (nelze je vypnout v našich systémech).
+          </li>
+          <li>
+            <span className="font-semibold">Analytické cookies</span> – anonymní statistiky návštěvnosti a chování uživatelů na webu.
+          </li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">3. Jak cookies spravovat</h2>
+        <p>
+          Používání cookies můžete upravit v nastavení svého prohlížeče. 
+          Můžete je omezit nebo zcela zakázat. V takovém případě však některé části webu nemusí fungovat správně.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="font-semibold mb-2">4. Další informace</h2>
+        <p>
+          Další informace o tom, jak nakládáme s údaji, naleznete v dokumentu „Ochrana osobních údajů (GDPR)“.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 8) CREATE RETURNS PAGE: /legal/returns ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/returns.tsx
+
+Insert:
+
+export default function LegalReturns() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200 text-sm leading-relaxed">
+      <h1 className="text-3xl font-bold mb-6">Reklamační řád ZLE</h1>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">1. Uplatnění reklamace</h2>
+        <p>
+          Reklamaci zboží zakoupeného u ZLE lze uplatnit bez zbytečného odkladu po zjištění vady.
+          Pro co nejrychlejší vyřízení doporučujeme postupovat následovně.
+        </p>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">2. Kontakt pro reklamace</h2>
+        <p>
+          {/* TODO: doplň e-mail */}
+          Reklamaci můžete uplatnit e-mailem na adrese: ________________________________ <br />
+          Do zprávy prosím uveďte:
+        </p>
+        <ul className="list-disc list-inside mt-2">
+          <li>jméno a kontakt</li>
+          <li>číslo objednávky</li>
+          <li>popis závady</li>
+          <li>fotografie vady (pokud je to možné)</li>
+        </ul>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="font-semibold mb-2">3. Lhůta pro vyřízení</h2>
+        <p>
+          Reklamace bude vyřízena bez zbytečného odkladu, nejpozději do 30 dnů od jejího uplatnění, pokud se nedohodneme jinak.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="font-semibold mb-2">4. Způsob vyřízení reklamace</h2>
+        <p>V závislosti na charakteru vady může být reklamace vyřízena například:</p>
+        <ul className="list-disc list-inside mt-2">
+          <li>opravou zboží</li>
+          <li>výměnou za nové zboží</li>
+          <li>přiměřenou slevou z kupní ceny</li>
+          <li>vrácením kupní ceny</li>
+        </ul>
+      </section>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 9) CREATE LEGAL CONTACT PAGE: /legal/contact ────────────────────────────────────────
+
+Create file:
+
+/src/pages/legal/contact.tsx
+
+Insert:
+
+export default function LegalContact() {
+  return (
+    <main className="max-w-2xl mx-auto pt-20 pb-32 px-6 text-neutral-200 text-sm leading-relaxed">
+      <h1 className="text-3xl font-bold mb-6">Legal kontakt – ZLE</h1>
+
+      <p className="mb-4">
+        Pro dotazy týkající se právních dokumentů, osobních údajů nebo reklamací nás můžete kontaktovat zde:
+      </p>
+
+      <p className="mb-4">
+        {/* TODO: doplň e-mail pro legal / support */}
+        E-mail: ________________________________
+      </p>
+
+      <p className="text-neutral-400 text-xs">
+        Napiš klidně do předmětu „ZLE – právní dotaz / reklamace“, abychom věděli, že to má prioritu.
+      </p>
+    </main>
+  );
+}
+
+──────────────────────────────────────── 10) VERIFY & REPORT ────────────────────────────────────────
+
+After all files are created and content inserted:
+
+1. Ensure routes (or navigation) allow access to:
+
+/legal
+
+/legal/terms
+
+/legal/privacy
+
+/legal/cookies
+
+/legal/returns
+
+/legal/contact
+
+
+
+2. Ensure the ZleFooter is visible at the bottom of all main pages.
+
+
+3. Do not change any other parts of the project.
+
+
+
+Finally, return a summary:
+
+Which files were created
+
+Which files were modified
+
+Any routing changes you had to make (briefly)

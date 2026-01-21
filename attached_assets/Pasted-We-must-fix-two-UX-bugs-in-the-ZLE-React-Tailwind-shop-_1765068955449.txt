@@ -1,0 +1,127 @@
+We must fix two UX bugs in the ZLE React + Tailwind shop.  
+Fix them safely, without altering unrelated parts of the design.
+
+GOAL:
+1) When navigating between pages (/, /shop, /story, /crew, /legal, /contact), the view must ALWAYS scroll to the top — both on mobile and desktop.
+2) The product detail view must work correctly on mobile (priority) AND desktop:
+   - Must always show a visible close “X” button.
+   - Must always make the “Add to cart” CTA reachable and not hidden below the screen.
+   - Must prevent the background page from scrolling when the modal is open.
+
+Do not change colors, typography, hero section, legal pages, footer, or any other layout.
+
+────────────────────────────────────────
+PART 1 — Global ScrollToTop on route change
+────────────────────────────────────────
+
+1. Create a helper component:
+
+   client/src/components/layout/ScrollToTop.tsx
+
+   Code (TS or JS depending on project):
+
+   import { useEffect } from "react";
+   import { useLocation } from "react-router-dom";
+
+   const ScrollToTop = () => {
+     const { pathname } = useLocation();
+     useEffect(() => {
+       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+     }, [pathname]);
+     return null;
+   };
+
+   export default ScrollToTop;
+
+2. Inject <ScrollToTop /> INSIDE the router but OUTSIDE page components.
+
+   Example pattern inside App.tsx or Router file:
+
+   <BrowserRouter>
+     <ScrollToTop />
+     <MainLayout />
+   </BrowserRouter>
+
+3. Verify:
+   - Navigating to SHOP always opens at the top.
+   - All other routes behave the same (start at top).
+
+────────────────────────────────────────
+PART 2 — Fix product detail modal (mobile first, desktop also improved)
+────────────────────────────────────────
+
+1. Locate the product detail component (modal/card).
+   Typical names:
+   - ProductDetail.tsx
+   - ProductModal.tsx
+   - ShopItemDetail.tsx
+
+2. Wrap modal content in a full-screen overlay:
+
+   <div
+     className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+     onClick={onClose}  // only if clicking outside should close
+   >
+     <div
+       className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-zleBlack p-4 md:p-6"
+       onClick={(e) => e.stopPropagation()}
+     >
+       {/* modal content */}
+     </div>
+   </div>
+
+This ensures:
+- Mobile: modal does not overflow screen.
+- Desktop: stays centered, looks the same but functional.
+
+3. Add a visible CLOSE “X” button (mobile + desktop):
+
+   <button
+     type="button"
+     onClick={onClose}
+     className="absolute right-4 top-4 text-2xl leading-none text-white/80 hover:text-white"
+     aria-label="Zavřít"
+   >
+     ×
+   </button>
+
+4. Make the CTA always reachable by adding a sticky footer inside the modal card:
+
+   <div className="sticky bottom-0 left-0 right-0 mt-4 bg-zleBlack/95 border-t border-white/10 p-4 flex flex-col gap-3 sm:flex-row">
+     {/* EXISTING Add-to-cart button (reuse the same component and props) */}
+     {/* OPTIONAL secondary close button (only if needed): 
+         <button onClick={onClose} className="...">Zavřít</button> 
+     */}
+   </div>
+
+5. Image & content should scroll INSIDE the modal, not the background page.
+   Ensure modal card has:
+   - max-h-[90vh]
+   - overflow-y-auto
+
+6. Verify on mobile:
+   - X is visible immediately.
+   - CTA is visible or quickly reachable.
+   - Scrolling works ONLY inside modal.
+
+7. Verify on desktop:
+   - X is visible.
+   - CTA visible.
+   - Modal centered.
+   - Background does NOT scroll.
+
+────────────────────────────────────────
+DO NOT DO:
+- Do not change styles or layout outside shop modal.
+- Do not modify hero, navbar, legal pages, or footer.
+- Do not rewrite the shop grid — only the detail modal.
+
+────────────────────────────────────────
+SUMMARY OUTPUT (required)
+────────────────────────────────────────
+
+When done, return:
+- Path of the modified modal file.
+- Path of ScrollToTop.
+- Confirmation that routing scrolls to top on all devices.
+- Confirmation that product detail now shows X and reachable CTA.

@@ -1,0 +1,116 @@
+You are Replit Agent working inside this repo. Goal: make the project run in DEV with ONE command even when secrets are missing. Do NOT change business logic or UI. Only add safe guards, feature flags, and bootstrapping. Keep changes minimal and well-commented.
+
+TARGETS:
+1) Add feature flags so the server NEVER crashes if Stripe/Auth/Email/OPS secrets are missing.
+2) Add a single bootstrap script that brings up DB (docker), runs migrations, optionally seeds, and starts dev.
+3) Fix migrate/seed order (migrate must always run before seed).
+4) Make startup resilient: missing env => disable feature instead of throwing.
+
+IMPORTANT RULES:
+- Never commit real secrets.
+- Do not require Replit-specific auth to run locally/dev. Auth should be optional.
+- Prefer env var toggles, default OFF for risky integrations in dev.
+- Print clear console messages about what is enabled/disabled and why.
+- Add docs to README: “Quick start: npm run bootstrap”.
+
+STEP A — FEATURE FLAGS + ENV VALIDATION
+1) Create a new file: `server/env.ts`
+   - Use a lightweight validator (prefer zod if already installed; if not, implement a small manual checker).
+   - Export:
+     - `env` (typed values)
+     - `flags` with defaults:
+       - ENABLE_AUTH (default: false in dev)
+       - ENABLE_STRIPE (default: false in dev)
+       - ENABLE_EMAIL (default: false in dev)
+       - ENABLE_OPS (default: false in dev)
+       - SEED_ON_START (default: false in dev)
+     - Helper: `isTruthy(value)`
+   - Required always:
+     - NODE_ENV (default development)
+     - PORT (default 3000)
+     - DATABASE_URL (required only if DB access is needed; but if missing, app should still start in “no-db mode” with warnings)
+   - Optional:
+     - SESSION_SECRET (if missing, generate a dev-only ephemeral secret at runtime and warn)
+     - STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY, OPS_WEBHOOK_URL, OPS_EMAIL_TO
+     - REPLIT_CLIENT_ID / REPLIT_CLIENT_SECRET / REPLIT_ISSUER (or whatever auth expects)
+   - On startup log a compact status table:
+     - DB: configured? connected?
+     - Auth: enabled? configured?
+     - Stripe: enabled? configured?
+     - Email: enabled? configured?
+     - OPS: enabled? configured?
+
+2) Update `server/index.ts` (or wherever init happens):
+   - Import `{ env, flags }` from `server/env.ts`
+   - Ensure server starts even if DATABASE_URL missing:
+     - If DB missing => skip DB init, skip payouts seed, skip any DB-dependent routes that would crash.
+     - Keep non-DB endpoints working (health, static, basic routes).
+   - Wrap Stripe init so it never throws:
+     - Only run Stripe schema init if flags.ENABLE_STRIPE && STRIPE_SECRET_KEY exists.
+     - If not, log “[stripe] disabled (missing flag or key)”.
+   - Wrap payouts seeding:
+     - Only run if DB connected and flags.SEED_ON_START true.
+     - If table missing => instruct running migrate first (but bootstrap will handle).
+   - Add `/health` endpoint that returns JSON with enabled flags and db connectivity.
+
+STEP B — AUTH SHOULD NEVER CRASH (clientId error)
+3) Update `server/replitAuth.ts` (or auth module used by openid-client):
+   - If flags.ENABLE_AUTH is false => export a noop `setupAuth(app)` that just logs “[auth] disabled”.
+   - If enabled but missing required clientId/clientSecret/issuer => disable auth with warning instead of throwing.
+   - Ensure express-session always has a secret:
+     - Use env.SESSION_SECRET or fallback ephemeral secret in dev.
+   - Confirm no code path calls openid-client discovery when auth is disabled.
+
+STEP C — DB MIGRATION BEFORE SEED
+4) Find the current migration/seed implementation (Drizzle referenced: `drizzle.config.ts`, migrations likely exist).
+   - Ensure there is a script `db:migrate` that runs migrations.
+   - Ensure there is a script `db:seed` that seeds.
+   - Ensure server DOES NOT seed before migrate.
+   - If seed depends on tables, it must run after migrate.
+
+STEP D — BOOTSTRAP (ONE COMMAND)
+5) Add scripts to `package.json`:
+   - `dev` stays as-is (starts server)
+   - Add:
+     - `"db:up": "docker compose up -d"`
+     - `"db:down": "docker compose down"`
+     - `"db:migrate": "<command to run drizzle migrations>"`
+     - `"db:seed": "<command to run seed (partners etc.)>"`
+     - `"bootstrap": "node ./script/bootstrap.mjs"`
+   - Create `script/bootstrap.mjs`:
+     - Print steps with clear markers.
+     - Determine repo root reliably.
+     - Run `docker compose up -d` (only if docker-compose.yml exists).
+     - Wait for Postgres to be ready:
+       - Implement a simple retry loop using node + tcp connect OR run `docker exec` healthcheck if available.
+       - Retry up to ~30-60 seconds.
+     - Run `npm run db:migrate`
+     - If env SEED_ON_START true => run `npm run db:seed`
+     - Finally run `npm run dev`
+   - The bootstrap must work on Replit and locally.
+
+STEP E — DOCS
+6) Update README.md:
+   - Add “Quick start”:
+     - `npm install`
+     - `npm run bootstrap`
+   - Explain flags with examples:
+     - ENABLE_AUTH=false, ENABLE_STRIPE=false, ENABLE_EMAIL=false, SEED_ON_START=false
+   - Explain minimal required env for full functionality:
+     - DATABASE_URL + SESSION_SECRET for sessions
+     - Stripe keys for payments
+     - Replit/OpenID keys for auth
+
+STEP F — TEST
+7) Verify:
+   - With ZERO secrets, `npm run bootstrap` completes and server starts (auth/stripe/email disabled, no crash).
+   - With DATABASE_URL provided and docker up, migrations run then seed optional.
+   - No “clientId must be non-empty string”.
+   - No Stripe ECONNREFUSED crash: it should disable if keys missing.
+
+DELIVERABLE:
+- Commit changes across the mentioned files.
+- Provide a short summary of what you changed and where.
+- Provide exact commands to run after.
+
+Proceed now.
