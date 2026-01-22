@@ -13,7 +13,7 @@ interface SafeVideoProps {
   playsInline?: boolean;
 }
 
-const DEFAULT_FALLBACK_POSTER = "/crew-videos/_fallback.jpg";
+const DEFAULT_FALLBACK_POSTER = "/crew-videos/_fallback.svg";
 
 function VideoPlaceholder({ poster, className }: { poster: string; className?: string }) {
   return (

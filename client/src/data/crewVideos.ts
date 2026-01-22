@@ -20,8 +20,8 @@ export const crewVideos: CrewVideo[] = [
     durationSec: 420,
     visibility: "shop",
     sourceType: "file",
-    src: "/crew-videos/zabr-praha-streets.mp4",
-    thumb: "/crew-videos/zabr-praha-thumb.jpg",
+    src: "",
+  thumb: "/crew-videos/_fallback.svg",
     tags: ["premiere", "street", "praha"],
   },
   {
@@ -32,7 +32,8 @@ export const crewVideos: CrewVideo[] = [
     durationSec: 32,
     visibility: "public",
     sourceType: "file",
-    src: "/crew-videos/kosta-quick.mp4",
+    src: "",
+  thumb: "/crew-videos/_fallback.svg",
     tags: ["quick", "clip"],
   },
   {
