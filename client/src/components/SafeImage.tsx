@@ -4,9 +4,7 @@ import { getModernFormatVariants } from "@/lib/imageLoader";
 type SafeImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> & {
   src?: string | null;
   fallbackSrc?: string;
-  /** Když je src .jpg/.jpeg/.png, zkusí nejdřív .avif a .webp (přes imageLoader) */
   preferModernFormats?: boolean;
-  /** Prioritní načtení (LCP / hero) */
   priority?: boolean;
 };
 
@@ -17,11 +15,28 @@ function isRemote(url: string) {
   return /^https?:\/\//i.test(url);
 }
 
+function encodeLocalPath(input: string) {
+  if (!input) return input;
+  if (isRemote(input)) return input;
+
+  const i = input.search(/[?#]/);
+  const path = i === -1 ? input : input.slice(0, i);
+  const suffix = i === -1 ? "" : input.slice(i);
+
+  return encodeURI(path) + suffix;
+}
+
 function ensureLeadingSlash(url: string) {
   if (!url) return url;
-  if (url.startsWith("/")) return url;
-  return `/${url}`;
+  const u = url.startsWith("/") ? url : `/${url}`;
+  return encodeLocalPath(u);
 }
+
+type Variants = {
+  fallbackSrc: string;
+  webpSrc?: string;
+  avifSrc?: string;
+};
 
 export function SafeImage({
   src,
@@ -37,7 +52,8 @@ export function SafeImage({
   const normalized = React.useMemo(() => {
     const raw = src?.trim();
     if (!raw) return fallbackSrc;
-    return isRemote(raw) ? raw : ensureLeadingSlash(raw);
+    if (isRemote(raw)) return raw;
+    return ensureLeadingSlash(raw);
   }, [src, fallbackSrc]);
 
   const [currentSrc, setCurrentSrc] = React.useState<string>(normalized);
@@ -46,44 +62,48 @@ export function SafeImage({
     setCurrentSrc(normalized);
   }, [normalized]);
 
-  const finalLoading: React.ImgHTMLAttributes<HTMLImageElement>["loading"] =
-    priority ? "eager" : loading;
+  const finalLoading = priority ? "eager" : loading;
 
-  // fetchPriority není ve všech typech TS, ale v DOM to dnes běžně existuje
   const imgProps = props as React.ImgHTMLAttributes<HTMLImageElement> & {
     fetchPriority?: "high" | "low" | "auto";
   };
-
   const fetchPriority = priority ? "high" : imgProps.fetchPriority;
 
-  const isCurrentRemote = isRemote(currentSrc);
+  const variants: Variants = React.useMemo(() => {
+    if (!preferModernFormats || isRemote(currentSrc)) {
+      return { fallbackSrc: currentSrc };
+    }
 
-  // ✅ Jediná logika pro moderní fallback jde z imageLoader (žádné duplikace)
-  const variants =
-    preferModernFormats && !isCurrentRemote
-      ? getModernFormatVariants(currentSrc)
-      : { fallbackSrc: currentSrc };
+    const v = getModernFormatVariants(currentSrc) as unknown as {
+      webpSrc?: string;
+      avifSrc?: string;
+      webp?: string;
+      avif?: string;
+    };
+
+    return {
+      fallbackSrc: currentSrc,
+      webpSrc: v.webpSrc ?? v.webp,
+      avifSrc: v.avifSrc ?? v.avif,
+    };
+  }, [preferModernFormats, currentSrc]);
 
   const handleError: React.ReactEventHandler<HTMLImageElement> = (e) => {
-    // nejdřív zavoláme user handler, ať se nic neztratí
     onError?.(e);
-    // pak bezpečný fallback (ať se to nezacyklí)
     if (currentSrc !== fallbackSrc) setCurrentSrc(fallbackSrc);
   };
 
-  // Když nemáme moderní varianty, renderujeme jen <img>
   const hasModern = Boolean(variants.avifSrc || variants.webpSrc);
 
   if (hasModern) {
     return (
       <picture>
-        {variants.avifSrc ? (
+        {variants.avifSrc && (
           <source srcSet={variants.avifSrc} type="image/avif" />
-        ) : null}
-        {variants.webpSrc ? (
+        )}
+        {variants.webpSrc && (
           <source srcSet={variants.webpSrc} type="image/webp" />
-        ) : null}
-
+        )}
         <img
           {...imgProps}
           src={variants.fallbackSrc}
