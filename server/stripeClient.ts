@@ -22,7 +22,9 @@ export async function getUncachableStripeClient(): Promise<Stripe> {
 
   const secretKey = requireStripeSecretKey();
 
-return new Stripe(secretKey);
+  // ✅ no apiVersion override — let Stripe use default supported version
+  return new Stripe(secretKey);
+}
 
 export async function getStripePublishableKey(): Promise<string> {
   if (!isStripeAvailable()) throw new Error("Stripe is disabled");
