@@ -160,10 +160,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
 
       return res.status(201).json({ status: "created", date: today });
-    } catch (e) {
-      console.error("[daily-line] generate failed:", e);
-      return res.status(500).json({ error: "failed_to_generate_daily_line" });
-    }
+} catch (err: any) {
+  console.error("[checkout] create-session failed:", err);
+
+  const message =
+    err?.raw?.message ||
+    err?.message ||
+    "unknown_error";
+
+  const code =
+    err?.raw?.code ||
+    err?.code ||
+    err?.type ||
+    "unknown";
+
+  return res.status(500).json({
+    error: "failed_to_create_session",
+    code,
+    message,
+  });
+}
+
   });
 
   // ─────────────────────────────────────────────────────────
