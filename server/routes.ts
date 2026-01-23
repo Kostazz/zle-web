@@ -1,31 +1,29 @@
 // server/routes.ts
 
-import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import type { Express, RequestHandler } from "express";
+import type { Server } from "http";
 import type express from "express";
-import type { RequestHandler } from "express";
+import crypto from "crypto";
 
 import {
   insertOrderSchema,
+  insertProductSchema,
+  cartItemSchema,
   type CartItem,
+  type PaymentMethod,
   products,
   orders,
-  ledgerEntries,
-  orderPayouts,
-  orderEvents,
-  auditLog,
+  users,
   dailyLines,
 } from "@shared/schema";
 
 import { normalizeProductImages } from "./utils/productImages";
+import { storage } from "./storage";
 import { z } from "zod";
-import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
-import { sendShippingUpdateEmail } from "./emailService";
-import { atomicStockDeduction } from "./webhookHandlers";
-import { finalizePaidOrder } from "./paymentPipeline";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
+import { flags } from "./env";
+import { getUncachableStripeClient } from "./stripeClient";
 import { getPragueYYYYMMDD, generateDailyLineOpenAI } from "./utils/dailyLine";
 
 // ✅ Fallback products (when DB is down)
@@ -51,7 +49,6 @@ const isAuthenticated: RequestHandler = (req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 
 function safeProductsFallback() {
-  // normalize to the same shape used by client
   return (fallbackProducts as any[]).map(normalizeProductImages);
 }
 
@@ -67,12 +64,30 @@ function safeProductsFallbackByCategory(category: string) {
     .map(normalizeProductImages);
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+function getBaseUrl(req: any) {
+  // Render has proxy + https; trust proxy is enabled in production.
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+  const host = req.get("host");
+  return `${proto}://${host}`;
+}
 
-  await setupAuth(app);
+const ShippingMethodSchema = z.enum(["pickup", "zasilkovna", "ppl"]);
+
+function shippingPriceFor(method: z.infer<typeof ShippingMethodSchema>) {
+  switch (method) {
+    case "pickup":
+      return 0;
+    case "zasilkovna":
+      return 89;
+    case "ppl":
+      return 129;
+    default:
+      return 0;
+  }
+}
+
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  await setupAuth(app as any);
 
   // ─────────────────────────────────────────────────────────
   // DAILY LINE ENGINE (ZLE v1.0)
@@ -152,18 +167,12 @@ export async function registerRoutes(
   });
 
   // ─────────────────────────────────────────────────────────
-  // AUTH / USER
+  // AUTH / USER (admin gate)
   // ─────────────────────────────────────────────────────────
 
-  app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
+  app.get("/api/auth/user", isAuthenticated, async (_req: any, res) => {
+    // Render-first: admin gate only; no session-based user.
+    return res.json({ ok: true });
   });
 
   // ─────────────────────────────────────────────────────────
@@ -208,13 +217,206 @@ export async function registerRoutes(
   });
 
   // ─────────────────────────────────────────────────────────
-  // ORDERS / CHECKOUT / ADMIN
-  // (zbytek souboru zůstává BEZE ZMĚN)
+  // ORDERS (public create)
   // ─────────────────────────────────────────────────────────
 
-  // ⬇️⬇️⬇️
-  // ZBYTEK SOUBORU JE IDENTICKÝ S TVÝM PŮVODNÍM
-  // ⬆️⬆️⬆️
+  app.post("/api/orders", async (req, res) => {
+    try {
+      const parsed = insertOrderSchema.parse(req.body);
+      const order = await storage.createOrder(parsed);
+      return res.status(201).json(order);
+    } catch (err: any) {
+      const msg = err?.message || "Invalid order";
+      return res.status(400).json({ error: "invalid_order", message: msg });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // CHECKOUT (Stripe)
+  // ─────────────────────────────────────────────────────────
+
+  app.post("/api/checkout/create-session", async (req, res) => {
+    if (!flags.ENABLE_STRIPE) {
+      return res.status(503).json({ error: "stripe_disabled" });
+    }
+
+    const BodySchema = z.object({
+      items: z.array(cartItemSchema).min(1),
+      customerName: z.string().min(1),
+      customerEmail: z.string().email(),
+      customerAddress: z.string().min(1),
+      customerCity: z.string().min(1),
+      customerZip: z.string().min(1),
+      shippingMethod: ShippingMethodSchema,
+    });
+
+    let data: z.infer<typeof BodySchema>;
+    try {
+      data = BodySchema.parse(req.body);
+    } catch (e: any) {
+      return res.status(400).json({ error: "invalid_payload", message: e?.message });
+    }
+
+    try {
+      const shippingPrice = shippingPriceFor(data.shippingMethod);
+      const baseUrl = getBaseUrl(req);
+
+      // Create a pending order in DB first (webhook expects orderId in metadata)
+      const totalProducts = data.items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+      const total = totalProducts + shippingPrice;
+
+      const order = await storage.createOrder({
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        customerAddress: data.customerAddress,
+        customerCity: data.customerCity,
+        customerZip: data.customerZip,
+        items: JSON.stringify(data.items),
+        total,
+        paymentMethod: "card" as PaymentMethod,
+        paymentNetwork: null,
+      } as any);
+
+      const stripe = await getUncachableStripeClient();
+
+      const lineItems = data.items.map((it: CartItem) => ({
+        quantity: it.quantity,
+        price_data: {
+          currency: "czk",
+          unit_amount: Math.round(it.price * 100),
+          product_data: {
+            name: `${it.name} (${it.size})`,
+            images: it.image ? [`${baseUrl}${it.image.startsWith("/") ? it.image : `/${it.image}`}`] : undefined,
+            metadata: {
+              productId: it.productId,
+              size: it.size,
+            },
+          },
+        },
+      }));
+
+      if (shippingPrice > 0) {
+        lineItems.push({
+          quantity: 1,
+          price_data: {
+            currency: "czk",
+            unit_amount: Math.round(shippingPrice * 100),
+            product_data: {
+              name: `Doprava: ${data.shippingMethod === "zasilkovna" ? "Zásilkovna" : "PPL / kurýr"}`,
+            },
+          },
+        } as any);
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: lineItems as any,
+        customer_email: data.customerEmail,
+        success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/checkout`,
+        locale: "cs",
+        metadata: {
+          orderId: order.id,
+          shippingMethod: data.shippingMethod,
+        },
+        payment_intent_data: {
+          metadata: {
+            orderId: order.id,
+          },
+        },
+      });
+
+      return res.json({ url: session.url, orderId: order.id });
+    } catch (err: any) {
+      console.error("[checkout] create-session failed:", err);
+      return res.status(500).json({ error: "failed_to_create_session" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // ADMIN API (protected by x-admin-key)
+  // ─────────────────────────────────────────────────────────
+
+  // Products
+  app.get("/api/admin/products", isAuthenticated, async (_req, res) => {
+    const rows = await storage.getProducts();
+    return res.json(rows.map(normalizeProductImages));
+  });
+
+  app.post("/api/admin/products", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = insertProductSchema.parse(req.body);
+      const created = await storage.createProduct({
+        id: crypto.randomUUID(),
+        ...parsed,
+      } as any);
+      return res.status(201).json(created);
+    } catch (err: any) {
+      return res.status(400).json({ error: "invalid_product", message: err?.message });
+    }
+  });
+
+  app.patch("/api/admin/products/:id", isAuthenticated, async (req, res) => {
+    const updated = await storage.updateProduct(req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: "not_found" });
+    return res.json(updated);
+  });
+
+  app.delete("/api/admin/products/:id", isAuthenticated, async (req, res) => {
+    const ok = await storage.deleteProduct(req.params.id);
+    return res.json({ ok });
+  });
+
+  app.patch("/api/admin/products/:id/stock", isAuthenticated, async (req, res) => {
+    const stock = Number(req.body?.stock);
+    if (!Number.isFinite(stock)) return res.status(400).json({ error: "invalid_stock" });
+    const updated = await storage.setStock(req.params.id, stock);
+    if (!updated) return res.status(404).json({ error: "not_found" });
+    return res.json(updated);
+  });
+
+  // Orders
+  app.get("/api/admin/orders", isAuthenticated, async (_req, res) => {
+    const rows = await storage.getOrders();
+    return res.json(rows);
+  });
+
+  app.patch("/api/admin/orders/:id", isAuthenticated, async (req, res) => {
+    const updated = await storage.updateOrder(req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ error: "not_found" });
+    return res.json(updated);
+  });
+
+  // Users (basic read/update)
+  app.get("/api/admin/users", isAuthenticated, async (_req, res) => {
+    const rows = await db.select().from(users).orderBy(desc(users.createdAt));
+    return res.json(rows);
+  });
+
+  app.patch("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    const [row] = await db
+      .update(users)
+      .set(req.body || {})
+      .where(eq(users.id, req.params.id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "not_found" });
+    return res.json(row);
+  });
+
+  // Stats
+  app.get("/api/admin/stats", isAuthenticated, async (_req, res) => {
+    const [p] = await db.select({ count: sql<number>`count(*)` }).from(products);
+    const [o] = await db.select({ count: sql<number>`count(*)` }).from(orders);
+    const [u] = await db.select({ count: sql<number>`count(*)` }).from(users);
+
+    return res.json({
+      products: Number(p?.count || 0),
+      orders: Number(o?.count || 0),
+      users: Number(u?.count || 0),
+    });
+  });
 
   return httpServer;
 }
