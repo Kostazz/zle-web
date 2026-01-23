@@ -26,6 +26,14 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Credi
   { value: "pi", label: "Pi Network (PI)", icon: Coins },
 ];
 
+type ShippingMethod = "pickup" | "zasilkovna" | "ppl";
+
+const SHIPPING_METHODS: { value: ShippingMethod; label: string; price: number }[] = [
+  { value: "pickup", label: "Osobní odběr", price: 0 },
+  { value: "zasilkovna", label: "Zásilkovna", price: 89 },
+  { value: "ppl", label: "PPL / kurýr", price: 129 },
+];
+
 const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
   usdc: [
     { value: "ethereum", label: "Ethereum (USDC)" },
@@ -59,6 +67,10 @@ export default function Checkout() {
   });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [paymentNetwork, setPaymentNetwork] = useState<string>("");
+  const [shippingMethod, setShippingMethod] = useState<ShippingMethod>("zasilkovna");
+
+  const shippingPrice = SHIPPING_METHODS.find((m) => m.value === shippingMethod)?.price ?? 0;
+  const totalWithShipping = total + shippingPrice;
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
@@ -71,6 +83,7 @@ export default function Checkout() {
       customerAddress: string;
       customerCity: string;
       customerZip: string;
+      shippingMethod: ShippingMethod;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-session", data);
       return response.json();
@@ -108,7 +121,7 @@ export default function Checkout() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.email || !formData.address || !formData.city || !formData.zip) {
       toast({
         title: "Chybí údaje",
@@ -136,7 +149,9 @@ export default function Checkout() {
       customerZip: formData.zip,
       paymentMethod,
       paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
-      total,
+      total: totalWithShipping,
+      shippingMethod,
+      shippingPrice,
       createdAt: new Date().toISOString(),
     };
 
@@ -145,7 +160,9 @@ export default function Checkout() {
     const newOrder: ZleOrder = {
       id: crypto.randomUUID(),
       createdAt: orderData.createdAt,
-      amount: total,
+      amount: totalWithShipping,
+      shippingMethod,
+      shippingPrice,
       currency: "CZK",
       paymentMethod,
       paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
@@ -166,14 +183,16 @@ export default function Checkout() {
         customerAddress: formData.address,
         customerCity: formData.city,
         customerZip: formData.zip,
+        shippingMethod,
       });
     } else {
       clearCart();
       toast({
         title: "Objednávka přijata",
-        description: paymentMethod === "bank" 
-          ? "Platební údaje ti pošleme emailem."
-          : `Krypto platba (${paymentMethod.toUpperCase()}) bude zpracována. Pokyny obdržíš emailem.`,
+        description:
+          paymentMethod === "bank"
+            ? "Platební údaje ti pošleme emailem."
+            : `Krypto platba (${paymentMethod.toUpperCase()}) bude zpracována. Pokyny obdržíš emailem.`,
       });
       window.location.href = "/checkout/success";
     }
@@ -188,16 +207,9 @@ export default function Checkout() {
               <div className="w-20 h-20 mb-6 rounded-full bg-white/5 flex items-center justify-center mx-auto">
                 <ShoppingBag className="h-10 w-10 text-white/30" />
               </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                KOŠÍK JE PRÁZDNÝ
-              </h1>
-              <p className="font-sans text-white/60 mb-8">
-                Přidej něco do košíku a vrať se sem.
-              </p>
-              <Button
-                asChild
-                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-              >
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">KOŠÍK JE PRÁZDNÝ</h1>
+              <p className="font-sans text-white/60 mb-8">Přidej něco do košíku a vrať se sem.</p>
+              <Button asChild className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90">
                 <Link href="/shop" data-testid="link-checkout-to-shop">
                   JÍT DO SHOPU
                 </Link>
@@ -214,24 +226,22 @@ export default function Checkout() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
-            <Link href="/shop" className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-8">
+            <Link
+              href="/shop"
+              className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-8"
+            >
               <ArrowLeft className="h-4 w-4" />
               <span className="font-heading text-sm tracking-wider">ZPĚT DO SHOPU</span>
             </Link>
 
-            <h1 
-              className="font-display text-4xl md:text-5xl text-white tracking-tight mb-12"
-              data-testid="text-checkout-title"
-            >
+            <h1 className="font-display text-4xl md:text-5xl text-white tracking-tight mb-12" data-testid="text-checkout-title">
               OBJEDNÁVKA
             </h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
               <div>
-                <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">
-                  TVOJE ÚDAJE
-                </h2>
-                
+                <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">TVOJE ÚDAJE</h2>
+
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
                     <Label htmlFor="name" className="font-heading text-xs text-white/60 tracking-wider">
@@ -316,10 +326,41 @@ export default function Checkout() {
                   </div>
 
                   <div className="pt-6 border-t border-white/10">
-                    <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">
-                      ZPŮSOB PLATBY *
-                    </h2>
-                    
+                    <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">ZPŮSOB DOPRAVY *</h2>
+
+                    <RadioGroup
+                      value={shippingMethod}
+                      onValueChange={(value) => setShippingMethod(value as ShippingMethod)}
+                      className="space-y-3"
+                      data-testid="radio-shipping-method"
+                    >
+                      {SHIPPING_METHODS.map((method) => (
+                        <div key={method.value} className="flex items-center justify-between gap-4">
+                          <div className="flex items-center">
+                            <RadioGroupItem
+                              value={method.value}
+                              id={`shipping-${method.value}`}
+                              className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
+                              data-testid={`radio-shipping-${method.value}`}
+                            />
+                            <Label
+                              htmlFor={`shipping-${method.value}`}
+                              className="ml-3 cursor-pointer font-sans text-sm text-white/80 hover:text-white transition-colors"
+                            >
+                              {method.label}
+                            </Label>
+                          </div>
+                          <span className="font-sans text-sm font-bold text-white">
+                            {method.price === 0 ? "ZDARMA" : `${method.price} Kč`}
+                          </span>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/10">
+                    <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">ZPŮSOB PLATBY *</h2>
+
                     <RadioGroup
                       value={paymentMethod}
                       onValueChange={(value) => handlePaymentMethodChange(value as PaymentMethod)}
@@ -350,14 +391,9 @@ export default function Checkout() {
 
                     {isCryptoMethod && networkOptions.length > 0 && (
                       <div className="mt-4 ml-6 pl-4 border-l border-white/20">
-                        <Label className="font-heading text-xs text-white/60 tracking-wider block mb-3">
-                          VYBER SÍŤ *
-                        </Label>
-                        <Select
-                          value={paymentNetwork}
-                          onValueChange={setPaymentNetwork}
-                        >
-                          <SelectTrigger 
+                        <Label className="font-heading text-xs text-white/60 tracking-wider block mb-3">VYBER SÍŤ *</Label>
+                        <Select value={paymentNetwork} onValueChange={setPaymentNetwork}>
+                          <SelectTrigger
                             className="bg-white/5 border-white/20 text-white focus:border-white"
                             data-testid="select-payment-network"
                           >
@@ -411,66 +447,57 @@ export default function Checkout() {
                     {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
                       ? "Budeš přesměrován na zabezpečenou platební bránu Stripe"
                       : paymentMethod === "bank"
-                      ? "Po odeslání ti pošleme platební údaje emailem"
-                      : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
+                        ? "Po odeslání ti pošleme platební údaje emailem"
+                        : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
                   </p>
                 </form>
               </div>
 
               <div>
-                <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">
-                  SHRNUTÍ
-                </h2>
-                
+                <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">SHRNUTÍ</h2>
+
                 <div className="border border-white/20 bg-white/5 p-6">
                   <div className="space-y-4 mb-6">
                     {items.map((item) => (
-                      <div
-                        key={`${item.productId}-${item.size}`}
-                        className="flex items-center gap-4"
-                      >
+                      <div key={`${item.productId}-${item.size}`} className="flex items-center gap-4">
                         <div className="w-16 h-16 bg-white flex-shrink-0">
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-heading text-sm font-bold text-white truncate">
-                            {item.name}
-                          </h4>
+                          <h4 className="font-heading text-sm font-bold text-white truncate">{item.name}</h4>
                           <p className="text-xs text-white/60">
                             {item.size} x {item.quantity}
                           </p>
                         </div>
-                        <span className="font-sans text-sm font-bold text-white">
-                          {item.price * item.quantity} Kč
-                        </span>
+                        <span className="font-sans text-sm font-bold text-white">{item.price * item.quantity} Kč</span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="border-t border-white/20 pt-4">
-                    <div className="flex items-center justify-between">
+                  <div className="border-t border-white/20 pt-4 space-y-2">
+                    <div className="flex items-center justify-between text-white/70 text-sm">
+                      <span>Zboží</span>
+                      <span>{total} Kč</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/70 text-sm">
+                      <span>Doprava</span>
+                      <span>{shippingPrice === 0 ? "ZDARMA" : `${shippingPrice} Kč`}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10">
                       <span className="font-heading text-lg text-white">CELKEM</span>
-                      <span 
-                        className="font-sans text-2xl font-bold text-white"
-                        data-testid="text-checkout-total"
-                      >
-                        {total} Kč
+                      <span className="font-sans text-2xl font-bold text-white" data-testid="text-checkout-total">
+                        {totalWithShipping} Kč
                       </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-6 p-4 border border-white/10 bg-white/5">
-                  <h3 className="font-heading text-xs text-white/60 tracking-wider mb-2">
-                    BEZPEČNÁ PLATBA
-                  </h3>
+                  <h3 className="font-heading text-xs text-white/60 tracking-wider mb-2">BEZPEČNÁ PLATBA</h3>
                   <p className="font-sans text-xs text-white/40 leading-relaxed">
-                    Platba je zpracována přes Stripe - světovou jedničku v online platbách. 
-                    Tvoje platební údaje nikdy neukládáme.
+                    Platba je zpracována přes Stripe - světovou jedničku v online platbách. Tvoje platební údaje nikdy
+                    neukládáme.
                   </p>
                 </div>
               </div>
