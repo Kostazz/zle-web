@@ -6,12 +6,15 @@ interface LogoContextType {
 }
 
 const dailyLogo = getTodaysLogo();
+const dailyLogoSrc: string | null = dailyLogo.src ?? null;
 
-const LogoContext = createContext<LogoContextType>({ logoSrc: dailyLogo });
+const LogoContext = createContext<LogoContextType>({
+  logoSrc: dailyLogoSrc,
+});
 
 export function LogoProvider({ children }: { children: ReactNode }) {
   return (
-    <LogoContext.Provider value={{ logoSrc: dailyLogo }}>
+    <LogoContext.Provider value={{ logoSrc: dailyLogoSrc }}>
       {children}
     </LogoContext.Provider>
   );
