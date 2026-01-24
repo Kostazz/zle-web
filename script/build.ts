@@ -1,52 +1,44 @@
-import { build as esbuild } from "esbuild";
-import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+// script/build.ts
+import fs from "fs";
+import path from "path";
+import { build } from "esbuild";
 
-// Minimal allowlist:
-// Keep only deps that are commonly ESM-only or tricky when required from a CJS bundle.
-// Everything else stays external and will be loaded from node_modules at runtime.
+const isProd = process.env.NODE_ENV === "production";
+
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const deps = Object.keys(packageJson.dependencies || {});
+const devDeps = Object.keys(packageJson.devDependencies || {});
+const allDeps = Array.from(new Set([...deps, ...devDeps]));
+
 const allowlist = [
-  "@neondatabase/serverless",
+  "react",
+  "react-dom",
+  "wouter",
+  "lucide-react",
+  "zod",
   "drizzle-orm",
   "drizzle-zod",
-  "express-rate-limit",
-  "helmet",
-  // NOTE: If you ever hit runtime issues with CJS require() for another package,
-  // add it here to bundle it.
+  "@neondatabase/serverless",
+  "ws",
 ];
 
-async function buildAll() {
-  await rm("dist", { recursive: true, force: true });
+const external = allDeps.filter((d) => !allowlist.includes(d));
 
-  console.log("building client...");
-  await viteBuild();
+const outfile = path.resolve("dist", "index.cjs");
 
-  console.log("building server...");
-  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
-  const allDeps = [
-    ...Object.keys(pkg.dependencies || {}),
-    ...Object.keys(pkg.devDependencies || {}),
-  ];
+build({
+  entryPoints: ["server/index.ts"],
+  outfile,
+  platform: "node",
+  format: "cjs",
+  target: "node20",
+  bundle: true,
+  external,
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(isProd ? "production" : "development"),
+  },
 
-  // externalize everything that is NOT in allowlist
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
-
-  await esbuild({
-    entryPoints: ["server/index.ts"],
-    platform: "node",
-    bundle: true,
-    format: "cjs",
-    outfile: "dist/index.cjs",
-    define: {
-      "process.env.NODE_ENV": '"production"',
-    },
-    minify: true,
-    external: externals,
-    logLevel: "info",
-  });
-}
-
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+  // ✅ DEBUG MODE (ať Render ukáže skutečný error)
+  minify: false,
+  sourcemap: true,
+}).catch(() => process.exit(1));
