@@ -1,291 +1,195 @@
 // server/routes.ts
 
-import type { Express, RequestHandler } from "express";
-import type { Server } from "http";
-import type express from "express";
-import crypto from "crypto";
-
-import {
-  insertOrderSchema,
-  insertProductSchema,
-  cartItemSchema,
-  type CartItem,
-  type PaymentMethod,
-  products,
-  orders,
-  users,
-  dailyLines,
-} from "@shared/schema";
-
-import { normalizeProductImages } from "./utils/productImages";
-import { storage } from "./storage";
+import type { Express, Request, Response } from "express";
+import express from "express";
+import Stripe from "stripe";
 import { z } from "zod";
-import { db } from "./db";
-import { eq, desc, sql } from "drizzle-orm";
-import { flags } from "./env";
-import { getUncachableStripeClient } from "./stripeClient";
-import { getPragueYYYYMMDD, generateDailyLineOpenAI } from "./utils/dailyLine";
 
-// ✅ Fallback products (when DB is down)
-// NOTE: This import is intentionally dynamic-ish via JSON to keep bundle stable.
-import fallbackProductsRaw from "../client/src/data/products.json";
+import { storage } from "./storage";
+import type { PaymentMethod } from "../shared/schema";
 
-const fallbackProducts: any[] = Array.isArray(fallbackProductsRaw)
-  ? (fallbackProductsRaw as any[])
-  : [];
+// -----------------------------
+// Stripe setup
+// -----------------------------
 
-const checkoutRequestSchema = z.object({
-  items: z.array(cartItemSchema),
-  customerName: z.string().min(1),
-  customerEmail: z.string().email(),
-  customerAddress: z.string().min(1),
-  customerCity: z.string().min(1),
-  customerPostalCode: z.string().min(1),
-  customerCountry: z.string().min(2),
-  paymentMethod: z.string().min(1),
-  shippingCzk: z.number().optional().default(0),
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const stripe = STRIPE_SECRET_KEY
+  ? new Stripe(STRIPE_SECRET_KEY, {
+      // Match your account setting; safe default.
+      apiVersion: "2025-02-24.acacia",
+    })
+  : null;
+
+// Stripe expects amounts in the smallest currency unit.
+// CZK is shown with decimals in Stripe UI (Kč15.00 minimum => 1500 unit_amount).
+const CZK_TO_STRIPE = (czk: number) => Math.round(czk * 100);
+
+// -----------------------------
+// Shipping (server authority)
+// -----------------------------
+
+type ShippingMethodId = "zasilkovna" | "dpd" | "osobni";
+
+const SHIPPING: Record<ShippingMethodId, { label: string; priceCzk: number }> = {
+  zasilkovna: { label: "Zásilkovna", priceCzk: 89 },
+  dpd: { label: "DPD", priceCzk: 119 },
+  osobni: { label: "Osobní odběr", priceCzk: 0 },
+};
+
+// -----------------------------
+// Helpers
+// -----------------------------
+
+function getBaseUrl(req: Request) {
+  const envBase = process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL;
+  if (envBase) return envBase.replace(/\/$/, "");
+
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol;
+  const host = (req.headers["x-forwarded-host"] as string) || req.get("host");
+  return `${proto}://${host}`.replace(/\/$/, "");
+}
+
+function sendApiError(res: Response, status: number, code: string, detail?: unknown) {
+  return res.status(status).json({ error: code, detail });
+}
+
+// -----------------------------
+// Validation
+// -----------------------------
+
+const CheckoutItemSchema = z.object({
+  productId: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().min(1).max(20),
+  size: z.string().optional().nullable(),
 });
 
-// --- utils ---
+const CreateSessionSchema = z.object({
+  items: z.array(CheckoutItemSchema).min(1),
+  customerName: z.string().min(1).max(120),
+  customerEmail: z.string().email(),
+  customerAddress: z.string().min(1).max(240),
+  customerCity: z.string().min(1).max(120),
+  customerZip: z.string().min(1).max(20),
+  shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+  paymentMethod: z.string().optional(),
+});
 
-function isAdmin(req: any) {
-  const hdr = req.headers["x-admin-token"];
-  return Boolean(flags.ADMIN_TOKEN && hdr && hdr === flags.ADMIN_TOKEN);
-}
+// -----------------------------
+// Routes
+// -----------------------------
 
-function requireAdmin(): RequestHandler {
-  return (req: any, res: any, next: any) => {
-    if (!isAdmin(req)) {
-      return res.status(401).json({ error: "unauthorized" });
-    }
-    next();
-  };
-}
+export async function registerRoutes(app: Express) {
+  app.use(express.json());
 
-function getPublicBaseUrl(req: any) {
-  // Prefer explicit env; fallback to request origin.
-  const env = process.env.PUBLIC_BASE_URL;
-  if (env) return env.replace(/\/$/, "");
-  const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-  return String(origin).replace(/\/$/, "");
-}
-
-// --- routes ---
-
-export function registerRoutes(app: Express, _express: typeof express): Server {
-  // Stripe client
-  const stripe = getUncachableStripeClient();
-
-  // Health
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-  // Products (DB first, fallback JSON if DB down)
+  // Products
   app.get("/api/products", async (_req, res) => {
     try {
-      const list = await storage.getProducts();
-      res.json(list.map(normalizeProductImages));
-    } catch (err) {
-      console.warn("[products] DB down, using fallback JSON:", err);
-      res.json(fallbackProducts.map(normalizeProductImages));
+      const products = await storage.getProducts();
+      return res.json(products);
+    } catch (e) {
+      return sendApiError(res, 500, "failed_to_load_products");
     }
   });
 
-  // Single product
-  app.get("/api/products/:id", async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid_id" });
-
-    try {
-      const product = await storage.getProduct(id);
-      if (!product) return res.status(404).json({ error: "not_found" });
-      res.json(normalizeProductImages(product));
-    } catch (err) {
-      console.warn("[product] DB down, using fallback JSON:", err);
-      const p = fallbackProducts.find((x) => Number(x.id) === id);
-      if (!p) return res.status(404).json({ error: "not_found" });
-      res.json(normalizeProductImages(p));
-    }
-  });
-
-  // ✅ CHECKOUT — SERVER IS PRICE AUTHORITY (no client price trust)
+  // Checkout: create Stripe session (server-authoritative pricing)
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
-      // ✅ Parse body, but server will NOT trust client prices.
-      const parsed = checkoutRequestSchema.parse(req.body);
+      if (!stripe) return sendApiError(res, 500, "stripe_not_configured");
 
-      // ✅ Build line items from DB prices (authoritative)
-      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+      const parsed = CreateSessionSchema.parse(req.body);
 
-      let itemsTotalCzk = 0;
+      // If user selected crypto, we currently don't route through Stripe.
+      const pm = (parsed.paymentMethod || "card") as PaymentMethod;
+      if (pm === "crypto") {
+        return sendApiError(res, 400, "payment_method_not_supported_yet");
+      }
 
-      for (const it of parsed.items) {
-        const product = await storage.getProduct(it.productId);
+      // Server builds line items from DB (never trust client price)
+      const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+      let subtotalCzk = 0;
+
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
         if (!product) {
-          return res.status(400).json({ error: "unknown_product", productId: it.productId });
+          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
         }
 
-        // Size validation (if product has size list)
-        if (Array.isArray((product as any).sizes) && (product as any).sizes.length > 0) {
-          if (!it.size || !(product as any).sizes.includes(it.size)) {
-            return res.status(400).json({
-              error: "invalid_size",
-              productId: it.productId,
-              size: it.size ?? null,
-              allowed: (product as any).sizes,
-            });
-          }
+        const unitPriceCzk = Number(product.price) || 0;
+        if (unitPriceCzk <= 0) {
+          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
         }
 
-        const qty = Math.max(1, Math.min(10, Math.round(it.quantity ?? 1)));
+        subtotalCzk += unitPriceCzk * item.quantity;
 
-        // ✅ Product price in CZK (zero-decimal currency in Stripe)
-        const unitAmountCzk = Math.round((product as any).price);
-
-        if (!Number.isFinite(unitAmountCzk) || unitAmountCzk < 1) {
-          return res.status(400).json({
-            error: "invalid_product_price",
-            productId: it.productId,
-            unitAmountCzk,
-          });
-        }
-
-        itemsTotalCzk += unitAmountCzk * qty;
-
-        lineItems.push({
+        line_items.push({
+          quantity: item.quantity,
           price_data: {
             currency: "czk",
+            unit_amount: CZK_TO_STRIPE(unitPriceCzk),
             product_data: {
               name: product.name,
-              metadata: {
-                productId: String(it.productId),
-                size: it.size ?? "",
-              },
+              // Keep it clean; optional metadata for size:
+              metadata: item.size ? { size: String(item.size) } : undefined,
+              images: product.imageUrl ? [product.imageUrl] : undefined,
             },
-            unit_amount: unitAmountCzk,
           },
-          quantity: qty,
         });
       }
 
-      // ✅ Shipping: keep for now, but validate hard (server still should compute later)
-      const shippingCzk = Math.max(0, Math.round(parsed.shippingCzk ?? 0));
+      const ship = SHIPPING[parsed.shippingMethod];
+      if (!ship) return sendApiError(res, 400, "unknown_shipping_method");
 
-      const totalCzk = itemsTotalCzk + shippingCzk;
-
-      // Stripe minimum for CZK is 15 CZK total
-      if (totalCzk < 15) {
-        return res.status(400).json({
-          error: "amount_too_small",
-          message: "Order total must be at least 15 CZK.",
-          totalCzk,
-        });
-      }
-
-      // Optional: represent shipping as its own line item
-      if (shippingCzk > 0) {
-        lineItems.push({
+      // Add shipping as a line item (simple and transparent)
+      if (ship.priceCzk > 0) {
+        line_items.push({
+          quantity: 1,
           price_data: {
             currency: "czk",
-            product_data: { name: "Doprava" },
-            unit_amount: shippingCzk,
+            unit_amount: CZK_TO_STRIPE(ship.priceCzk),
+            product_data: {
+              name: `Doprava: ${ship.label}`,
+            },
           },
-          quantity: 1,
         });
       }
 
-      const baseUrl = getPublicBaseUrl(req);
+      const totalCzk = subtotalCzk + ship.priceCzk;
+
+      // Stripe minimum guard (avoid ugly 500s)
+      if (totalCzk < 15) {
+        return sendApiError(res, 400, "amount_too_small", { totalCzk });
+      }
+
+      const baseUrl = getBaseUrl(req);
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        success_url: `${baseUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
+        currency: "czk",
+        line_items,
+        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/checkout`,
-        line_items: lineItems,
         customer_email: parsed.customerEmail,
         metadata: {
           customerName: parsed.customerName,
           customerAddress: parsed.customerAddress,
           customerCity: parsed.customerCity,
-          customerPostalCode: parsed.customerPostalCode,
-          customerCountry: parsed.customerCountry,
-          paymentMethod: parsed.paymentMethod,
+          customerZip: parsed.customerZip,
+          shippingMethod: parsed.shippingMethod,
+          subtotalCzk: String(subtotalCzk),
+          shippingCzk: String(ship.priceCzk),
+          totalCzk: String(totalCzk),
         },
       });
 
-      res.json({ url: session.url });
-    } catch (err) {
+      if (!session.url) return sendApiError(res, 500, "missing_session_url");
+      return res.json({ url: session.url });
+    } catch (err: any) {
+      // Make Stripe errors readable in logs + stable JSON to client
+      const message = err?.message || "unknown_error";
       console.error("[checkout] create-session failed:", err);
-      res.status(500).json({ error: "failed_to_create_session", requestId: (req as any).id });
+      return sendApiError(res, 500, "failed_to_create_session", { message });
     }
   });
-
-  // --- Admin: products ---
-  app.post("/api/admin/products", requireAdmin(), async (req, res) => {
-    try {
-      const data = insertProductSchema.parse(req.body);
-      const created = await storage.createProduct(data as any);
-      res.json(created);
-    } catch (err) {
-      console.error("[admin] create product failed:", err);
-      res.status(400).json({ error: "invalid_payload" });
-    }
-  });
-
-  app.put("/api/admin/products/:id", requireAdmin(), async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid_id" });
-
-    try {
-      const data = insertProductSchema.partial().parse(req.body);
-      const updated = await storage.updateProduct(id, data as any);
-      res.json(updated);
-    } catch (err) {
-      console.error("[admin] update product failed:", err);
-      res.status(400).json({ error: "invalid_payload" });
-    }
-  });
-
-  // --- Admin: orders ---
-  app.get("/api/admin/orders", requireAdmin(), async (_req, res) => {
-    try {
-      const list = await db.select().from(orders).orderBy(desc(orders.createdAt));
-      res.json(list);
-    } catch (err) {
-      console.error("[admin] list orders failed:", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // --- Daily line ---
-  app.get("/api/daily-line", async (_req, res) => {
-    try {
-      const today = getPragueYYYYMMDD();
-      const row = await db
-        .select()
-        .from(dailyLines)
-        .where(eq(dailyLines.day, today))
-        .limit(1);
-
-      if (row[0]) return res.json(row[0]);
-
-      // generate if not exists (if enabled)
-      if (!flags.DAILY_LINE_ENABLED) {
-        return res.json({ day: today, line: "Jed to zle." });
-      }
-
-      const line = await generateDailyLineOpenAI();
-      const inserted = await db
-        .insert(dailyLines)
-        .values({ day: today, line })
-        .returning();
-
-      res.json(inserted[0]);
-    } catch (err) {
-      console.error("[daily-line] failed:", err);
-      res.status(500).json({ error: "failed" });
-    }
-  });
-
-  // Server
-  const http = require("http");
-  return http.createServer(app);
 }
