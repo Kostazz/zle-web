@@ -279,20 +279,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const baseUrl = getBaseUrl(req);
 
       // Create a pending order in DB first (webhook expects orderId in metadata)
-      const totalProducts = data.items.reduce((sum, it) => sum + it.price * it.quantity, 0);
-      const total = totalProducts + shippingPrice;
+const totalProducts = data.items.reduce((sum, it) => {
+  const priceCzk = Math.round(it.price); // bezpečně integer
+  return sum + priceCzk * it.quantity;
+}, 0);
 
-      const order = await storage.createOrder({
-        customerName: data.customerName,
-        customerEmail: data.customerEmail,
-        customerAddress: data.customerAddress,
-        customerCity: data.customerCity,
-        customerZip: data.customerZip,
-        items: JSON.stringify(data.items),
-        total,
-        paymentMethod: "card" as PaymentMethod,
-        paymentNetwork: null,
-      } as any);
+const total = Math.round(totalProducts + shippingPrice); // bezpečně integer
+
+const order = await storage.createOrder({
+  customerName: data.customerName,
+  customerEmail: data.customerEmail,
+  customerAddress: data.customerAddress,
+  customerCity: data.customerCity,
+  customerZip: data.customerZip,
+  items: JSON.stringify(data.items),
+  total,
+  paymentMethod: "card" as PaymentMethod,
+  paymentNetwork: null,
+} as any);
 
       const stripe = await getUncachableStripeClient();
 
