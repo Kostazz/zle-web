@@ -321,7 +321,7 @@ const order = await storage.createOrder({
           quantity: 1,
           price_data: {
             currency: "czk",
-            unit_amount: Math.round(shippingPrice * 100),
+            unit_amount: Math.round(shippingPrice),
             product_data: {
               name: `Doprava: ${data.shippingMethod === "zasilkovna" ? "Zásilkovna" : "PPL / kurýr"}`,
             },
