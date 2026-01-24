@@ -24,10 +24,12 @@ export default defineConfig({
     },
   },
 
+  // Vite app je v /client
   root: path.resolve(projectRoot, "client"),
 
   build: {
-    outDir: path.resolve(projectRoot, "dist/public"),
+    // ✅ build do root /dist (aby server našel dist/index.html)
+    outDir: path.resolve(projectRoot, "dist"),
     emptyOutDir: true,
     sourcemap: !isProd,
   },
