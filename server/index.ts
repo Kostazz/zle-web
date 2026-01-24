@@ -190,7 +190,7 @@ function serveStaticProd(app: express.Express) {
     }
   }
 
-  await registerRoutes(httpServer, app);
+  await registerRoutes(app);
 
   if (isProd()) serveStaticProd(app);
   else {
