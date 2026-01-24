@@ -16,7 +16,7 @@ import { env, flags, printEnvStatus, getHealthData } from "./env";
 const app = express();
 app.disable("x-powered-by");
 
-// Project root (CJS build output)
+// Project root (Render + local safe)
 const PROJECT_ROOT = process.cwd();
 
 // ----- helpers -----
@@ -94,10 +94,14 @@ app.post(
   "/api/stripe/webhook/:uuid",
   express.raw({ type: "application/json" }),
   async (req, res) => {
-    if (!flags.ENABLE_STRIPE) return res.status(503).json({ error: "Stripe disabled" });
+    if (!flags.ENABLE_STRIPE) {
+      return res.status(503).json({ error: "Stripe disabled" });
+    }
 
     const signature = req.headers["stripe-signature"];
-    if (!signature) return res.status(400).json({ error: "Missing stripe-signature" });
+    if (!signature) {
+      return res.status(400).json({ error: "Missing stripe-signature" });
+    }
 
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
@@ -123,6 +127,7 @@ app.use(
     },
   })
 );
+
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 // ----- API logging -----
@@ -137,10 +142,7 @@ app.use((req, res, next) => {
     const status = res.statusCode;
 
     if (isProd()) {
-      // ⛔ ignore expected auth noise
       if (p === "/api/auth/user" && status === 401) return;
-
-      // log only real problems
       if (status >= 500 || status === 429) {
         console.warn(`${req.method} ${p} ${status} in ${duration}ms`);
       }
@@ -162,12 +164,12 @@ async function initStripe() {
   log("Stripe enabled", "stripe");
 }
 
-// ----- static prod -----
+// ----- static prod (FIXED FOR VITE) -----
 function serveStaticProd(app: express.Express) {
-  const publicDir = path.resolve(PROJECT_ROOT, "dist", "public");
-  const indexHtml = path.join(publicDir, "index.html");
+  const distDir = path.resolve(PROJECT_ROOT, "dist");
+  const indexHtml = path.join(distDir, "index.html");
 
-  app.use(express.static(publicDir, { maxAge: "1h", etag: true, index: false }));
+  app.use(express.static(distDir, { maxAge: "1h", etag: true, index: false }));
 
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
@@ -192,15 +194,19 @@ function serveStaticProd(app: express.Express) {
 
   await registerRoutes(app);
 
-  if (isProd()) serveStaticProd(app);
-  else {
+  if (isProd()) {
+    serveStaticProd(app);
+  } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
   const PORT = Number(process.env.PORT) || 3000;
   httpServer.listen(PORT, "0.0.0.0", () =>
-    log(`Server listening on 0.0.0.0:${PORT}`, isProd() ? "startup" : "express")
+    log(
+      `Server listening on 0.0.0.0:${PORT}`,
+      isProd() ? "startup" : "express"
+    )
   );
 
   const shutdown = (signal: string) => {
