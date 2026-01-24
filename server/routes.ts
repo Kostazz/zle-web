@@ -351,7 +351,7 @@ const order = await storage.createOrder({
       return res.json({ url: session.url, orderId: order.id });
     } catch (err: any) {
       console.error("[checkout] create-session failed:", err);
-      return res.status(500).json({ error: "failed_to_create_session" });
+      return res.status(500).json({ error: "failed_to_create_session", requestId: req.requestId });
     }
   });
 
