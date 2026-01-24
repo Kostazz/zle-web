@@ -58,7 +58,8 @@ function sendApiError(res: Response, status: number, code: string, detail?: unkn
 // -----------------------------
 
 const CheckoutItemSchema = z.object({
-  productId: z.coerce.number().int().positive(),
+  // ✅ FIX: products.id je u nás string (varchar) -> productId musí být string
+  productId: z.string().min(1).max(80),
   quantity: z.coerce.number().int().min(1).max(20),
   size: z.string().optional().nullable(),
 });
@@ -88,7 +89,7 @@ export async function registerRoutes(app: Express) {
     try {
       const products = await storage.getProducts();
       return res.json(products);
-    } catch (e) {
+    } catch {
       return sendApiError(res, 500, "failed_to_load_products");
     }
   });
@@ -111,6 +112,7 @@ export async function registerRoutes(app: Express) {
       let subtotalCzk = 0;
 
       for (const item of parsed.items) {
+        // ✅ FIX: productId je string
         const product = await storage.getProduct(item.productId);
         if (!product) {
           return sendApiError(res, 400, "unknown_product", { productId: item.productId });
@@ -130,7 +132,6 @@ export async function registerRoutes(app: Express) {
             unit_amount: CZK_TO_STRIPE(unitPriceCzk),
             product_data: {
               name: product.name,
-              // Keep it clean; optional metadata for size:
               metadata: item.size ? { size: String(item.size) } : undefined,
               images: product.imageUrl ? [product.imageUrl] : undefined,
             },
@@ -186,6 +187,11 @@ export async function registerRoutes(app: Express) {
       if (!session.url) return sendApiError(res, 500, "missing_session_url");
       return res.json({ url: session.url });
     } catch (err: any) {
+      // ✅ FIX: Zod validation = 400 (ne 500)
+      if (err instanceof z.ZodError) {
+        return sendApiError(res, 400, "invalid_payload", err.flatten());
+      }
+
       // Make Stripe errors readable in logs + stable JSON to client
       const message = err?.message || "unknown_error";
       console.error("[checkout] create-session failed:", err);
