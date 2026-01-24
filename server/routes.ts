@@ -304,7 +304,7 @@ const order = await storage.createOrder({
         quantity: it.quantity,
         price_data: {
           currency: "czk",
-          unit_amount: Math.round(it.price * 100),
+          unit_amount: Math.round(it.price),
           product_data: {
             name: `${it.name} (${it.size})`,
             images: it.image ? [`${baseUrl}${it.image.startsWith("/") ? it.image : `/${it.image}`}`] : undefined,
