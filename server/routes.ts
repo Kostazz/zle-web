@@ -27,417 +27,265 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { getPragueYYYYMMDD, generateDailyLineOpenAI } from "./utils/dailyLine";
 
 // ✅ Fallback products (when DB is down)
-// NOTE: This import is intentional to keep /shop usable even if DB fails.
-import { products as fallbackProducts } from "../client/src/data/products";
+// NOTE: This import is intentionally dynamic-ish via JSON to keep bundle stable.
+import fallbackProductsRaw from "../client/src/data/products.json";
 
-async function setupAuth(_app: express.Express): Promise<void> {
-  // Render-first: auth wiring disabled here (use ADMIN_API_KEY gate below)
+const fallbackProducts: any[] = Array.isArray(fallbackProductsRaw)
+  ? (fallbackProductsRaw as any[])
+  : [];
+
+const checkoutRequestSchema = z.object({
+  items: z.array(cartItemSchema),
+  customerName: z.string().min(1),
+  customerEmail: z.string().email(),
+  customerAddress: z.string().min(1),
+  customerCity: z.string().min(1),
+  customerPostalCode: z.string().min(1),
+  customerCountry: z.string().min(2),
+  paymentMethod: z.string().min(1),
+  shippingCzk: z.number().optional().default(0),
+});
+
+// --- utils ---
+
+function isAdmin(req: any) {
+  const hdr = req.headers["x-admin-token"];
+  return Boolean(flags.ADMIN_TOKEN && hdr && hdr === flags.ADMIN_TOKEN);
 }
 
-const isAuthenticated: RequestHandler = (req, res, next) => {
-  const expected = process.env.ADMIN_API_KEY || "";
-  if (!expected) return res.status(401).json({ error: "auth_not_configured" });
-
-  const got = req.header("x-admin-key") || "";
-  if (got !== expected) return res.status(403).json({ error: "forbidden" });
-
-  next();
-};
-
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
-function safeProductsFallback() {
-  return (fallbackProducts as any[]).map(normalizeProductImages);
-}
-
-function safeProductFallbackById(id: string) {
-  const found = (fallbackProducts as any[]).find((p) => String(p.id) === String(id));
-  return found ? normalizeProductImages(found as any) : null;
-}
-
-function safeProductsFallbackByCategory(category: string) {
-  const cat = String(category || "").toLowerCase();
-  return (fallbackProducts as any[])
-    .filter((p) => String(p.category || "").toLowerCase() === cat)
-    .map(normalizeProductImages);
-}
-
-function getBaseUrl(req: any) {
-  // Render has proxy + https; trust proxy is enabled in production.
-  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
-  const host = req.get("host");
-  return `${proto}://${host}`;
-}
-
-const ShippingMethodSchema = z.enum(["pickup", "zasilkovna", "ppl"]);
-
-function shippingPriceFor(method: z.infer<typeof ShippingMethodSchema>) {
-  switch (method) {
-    case "pickup":
-      return 0;
-    case "zasilkovna":
-      return 89;
-    case "ppl":
-      return 129;
-    default:
-      return 0;
-  }
-}
-
-export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  await setupAuth(app as any);
-
-  // ─────────────────────────────────────────────────────────
-  // DAILY LINE ENGINE (ZLE v1.0)
-  // ─────────────────────────────────────────────────────────
-
-  // Public read-only
-  app.get("/api/daily-line/today", async (_req, res) => {
-    try {
-      const today = getPragueYYYYMMDD();
-      const rows = await db
-        .select()
-        .from(dailyLines)
-        .where(eq(dailyLines.date, today))
-        .limit(1);
-
-      const row = rows[0];
-      if (!row) return res.status(204).end();
-
-      return res.json({
-        date: row.date,
-        text: row.text,
-        mode: row.mode,
-      });
-    } catch (e) {
-      console.error("[daily-line] read failed:", e);
-      return res.status(500).json({ error: "failed_to_read_daily_line" });
-    }
-  });
-
-  // Cron / manual generate (idempotent, protected)
-  app.post("/api/daily-line/generate", async (req, res) => {
-    const secret = req.header("x-cron-secret") || "";
-    const expected = process.env.DAILY_LINE_CRON_SECRET || "";
-
-    if (!expected || secret !== expected) {
+function requireAdmin(): RequestHandler {
+  return (req: any, res: any, next: any) => {
+    if (!isAdmin(req)) {
       return res.status(401).json({ error: "unauthorized" });
     }
-
-    try {
-      const today = getPragueYYYYMMDD();
-
-      const existing = await db
-        .select()
-        .from(dailyLines)
-        .where(eq(dailyLines.date, today))
-        .limit(1);
-
-      if (existing[0]) {
-        return res.status(200).json({ status: "exists", date: today });
-      }
-
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({ error: "OPENAI_API_KEY missing" });
-      }
-
-      const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-
-      const out = await generateDailyLineOpenAI({
-        apiKey,
-        model,
-        seed: today,
-      });
-
-      await db.insert(dailyLines).values({
-        date: today,
-        text: out.text,
-        mode: "daily",
-        seed: today,
-      });
-
-      return res.status(201).json({ status: "created", date: today });
-} catch (err: any) {
-  console.error("[checkout] create-session failed:", err);
-
-  const message =
-    err?.raw?.message ||
-    err?.message ||
-    "unknown_error";
-
-  const code =
-    err?.raw?.code ||
-    err?.code ||
-    err?.type ||
-    "unknown";
-
-  return res.status(500).json({
-    error: "failed_to_create_session",
-    code,
-    message,
-  });
+    next();
+  };
 }
 
-  });
+function getPublicBaseUrl(req: any) {
+  // Prefer explicit env; fallback to request origin.
+  const env = process.env.PUBLIC_BASE_URL;
+  if (env) return env.replace(/\/$/, "");
+  const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
+  return String(origin).replace(/\/$/, "");
+}
 
-  // ─────────────────────────────────────────────────────────
-  // AUTH / USER (admin gate)
-  // ─────────────────────────────────────────────────────────
+// --- routes ---
 
-  app.get("/api/auth/user", isAuthenticated, async (_req: any, res) => {
-    // Render-first: admin gate only; no session-based user.
-    return res.json({ ok: true });
-  });
+export function registerRoutes(app: Express, _express: typeof express): Server {
+  // Stripe client
+  const stripe = getUncachableStripeClient();
 
-  // ─────────────────────────────────────────────────────────
-  // PRODUCTS (DB-first, fallback-safe)
-  // ─────────────────────────────────────────────────────────
+  // Health
+  app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+  // Products (DB first, fallback JSON if DB down)
   app.get("/api/products", async (_req, res) => {
     try {
-      const dbProducts = await storage.getProducts();
-      return res.json(dbProducts.map(normalizeProductImages));
+      const list = await storage.getProducts();
+      res.json(list.map(normalizeProductImages));
     } catch (err) {
-      console.error("[api/products] DB failed, using fallback:", err);
-      return res.json(safeProductsFallback());
+      console.warn("[products] DB down, using fallback JSON:", err);
+      res.json(fallbackProducts.map(normalizeProductImages));
     }
   });
 
+  // Single product
   app.get("/api/products/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid_id" });
+
     try {
-      const product = await storage.getProduct(req.params.id);
-      if (!product) {
-        const fb = safeProductFallbackById(req.params.id);
-        if (!fb) return res.status(404).json({ error: "Product not found" });
-        return res.json(fb);
-      }
-      return res.json(normalizeProductImages(product));
+      const product = await storage.getProduct(id);
+      if (!product) return res.status(404).json({ error: "not_found" });
+      res.json(normalizeProductImages(product));
     } catch (err) {
-      console.error("[api/products/:id] DB failed, using fallback:", err);
-      const fb = safeProductFallbackById(req.params.id);
-      if (!fb) return res.status(404).json({ error: "Product not found" });
-      return res.json(fb);
+      console.warn("[product] DB down, using fallback JSON:", err);
+      const p = fallbackProducts.find((x) => Number(x.id) === id);
+      if (!p) return res.status(404).json({ error: "not_found" });
+      res.json(normalizeProductImages(p));
     }
   });
 
-  app.get("/api/products/category/:category", async (req, res) => {
-    try {
-      const dbProducts = await storage.getProductsByCategory(req.params.category);
-      return res.json(dbProducts.map(normalizeProductImages));
-    } catch (err) {
-      console.error("[api/products/category] DB failed, using fallback:", err);
-      return res.json(safeProductsFallbackByCategory(req.params.category));
-    }
-  });
-
-  // ─────────────────────────────────────────────────────────
-  // ORDERS (public create)
-  // ─────────────────────────────────────────────────────────
-
-  app.post("/api/orders", async (req, res) => {
-    try {
-      const parsed = insertOrderSchema.parse(req.body);
-      const order = await storage.createOrder(parsed);
-      return res.status(201).json(order);
-    } catch (err: any) {
-      const msg = err?.message || "Invalid order";
-      return res.status(400).json({ error: "invalid_order", message: msg });
-    }
-  });
-
-  // ─────────────────────────────────────────────────────────
-  // CHECKOUT (Stripe)
-  // ─────────────────────────────────────────────────────────
-
+  // ✅ CHECKOUT — SERVER IS PRICE AUTHORITY (no client price trust)
   app.post("/api/checkout/create-session", async (req, res) => {
-    if (!flags.ENABLE_STRIPE) {
-      return res.status(503).json({ error: "stripe_disabled" });
-    }
-
-    const BodySchema = z.object({
-      items: z.array(cartItemSchema).min(1),
-      customerName: z.string().min(1),
-      customerEmail: z.string().email(),
-      customerAddress: z.string().min(1),
-      customerCity: z.string().min(1),
-      customerZip: z.string().min(1),
-      shippingMethod: ShippingMethodSchema,
-    });
-
-    let data: z.infer<typeof BodySchema>;
     try {
-      data = BodySchema.parse(req.body);
-    } catch (e: any) {
-      return res.status(400).json({ error: "invalid_payload", message: e?.message });
-    }
+      // ✅ Parse body, but server will NOT trust client prices.
+      const parsed = checkoutRequestSchema.parse(req.body);
 
-    try {
-      const shippingPrice = shippingPriceFor(data.shippingMethod);
-      const baseUrl = getBaseUrl(req);
+      // ✅ Build line items from DB prices (authoritative)
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
-      // Create a pending order in DB first (webhook expects orderId in metadata)
-const totalProducts = data.items.reduce((sum, it) => {
-  const priceCzk = Math.round(it.price); // bezpečně integer
-  return sum + priceCzk * it.quantity;
-}, 0);
+      let itemsTotalCzk = 0;
 
-const total = Math.round(totalProducts + shippingPrice); // bezpečně integer
+      for (const it of parsed.items) {
+        const product = await storage.getProduct(it.productId);
+        if (!product) {
+          return res.status(400).json({ error: "unknown_product", productId: it.productId });
+        }
 
-const order = await storage.createOrder({
-  customerName: data.customerName,
-  customerEmail: data.customerEmail,
-  customerAddress: data.customerAddress,
-  customerCity: data.customerCity,
-  customerZip: data.customerZip,
-  items: JSON.stringify(data.items),
-  total,
-  paymentMethod: "card" as PaymentMethod,
-  paymentNetwork: null,
-} as any);
-
-      const stripe = await getUncachableStripeClient();
-
-      const lineItems = data.items.map((it: CartItem) => ({
-        quantity: it.quantity,
-        price_data: {
-          currency: "czk",
-          unit_amount: Math.round(it.price),
-          product_data: {
-            name: `${it.name} (${it.size})`,
-            images: it.image ? [`${baseUrl}${it.image.startsWith("/") ? it.image : `/${it.image}`}`] : undefined,
-            metadata: {
+        // Size validation (if product has size list)
+        if (Array.isArray((product as any).sizes) && (product as any).sizes.length > 0) {
+          if (!it.size || !(product as any).sizes.includes(it.size)) {
+            return res.status(400).json({
+              error: "invalid_size",
               productId: it.productId,
-              size: it.size,
-            },
-          },
-        },
-      }));
+              size: it.size ?? null,
+              allowed: (product as any).sizes,
+            });
+          }
+        }
 
-      if (shippingPrice > 0) {
+        const qty = Math.max(1, Math.min(10, Math.round(it.quantity ?? 1)));
+
+        // ✅ Product price in CZK (zero-decimal currency in Stripe)
+        const unitAmountCzk = Math.round((product as any).price);
+
+        if (!Number.isFinite(unitAmountCzk) || unitAmountCzk < 1) {
+          return res.status(400).json({
+            error: "invalid_product_price",
+            productId: it.productId,
+            unitAmountCzk,
+          });
+        }
+
+        itemsTotalCzk += unitAmountCzk * qty;
+
         lineItems.push({
-          quantity: 1,
           price_data: {
             currency: "czk",
-            unit_amount: Math.round(shippingPrice),
             product_data: {
-              name: `Doprava: ${data.shippingMethod === "zasilkovna" ? "Zásilkovna" : "PPL / kurýr"}`,
+              name: product.name,
+              metadata: {
+                productId: String(it.productId),
+                size: it.size ?? "",
+              },
             },
+            unit_amount: unitAmountCzk,
           },
-        } as any);
+          quantity: qty,
+        });
       }
+
+      // ✅ Shipping: keep for now, but validate hard (server still should compute later)
+      const shippingCzk = Math.max(0, Math.round(parsed.shippingCzk ?? 0));
+
+      const totalCzk = itemsTotalCzk + shippingCzk;
+
+      // Stripe minimum for CZK is 15 CZK total
+      if (totalCzk < 15) {
+        return res.status(400).json({
+          error: "amount_too_small",
+          message: "Order total must be at least 15 CZK.",
+          totalCzk,
+        });
+      }
+
+      // Optional: represent shipping as its own line item
+      if (shippingCzk > 0) {
+        lineItems.push({
+          price_data: {
+            currency: "czk",
+            product_data: { name: "Doprava" },
+            unit_amount: shippingCzk,
+          },
+          quantity: 1,
+        });
+      }
+
+      const baseUrl = getPublicBaseUrl(req);
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        payment_method_types: ["card"],
-        line_items: lineItems as any,
-        customer_email: data.customerEmail,
-        success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${baseUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/checkout`,
-        locale: "cs",
+        line_items: lineItems,
+        customer_email: parsed.customerEmail,
         metadata: {
-          orderId: order.id,
-          shippingMethod: data.shippingMethod,
-        },
-        payment_intent_data: {
-          metadata: {
-            orderId: order.id,
-          },
+          customerName: parsed.customerName,
+          customerAddress: parsed.customerAddress,
+          customerCity: parsed.customerCity,
+          customerPostalCode: parsed.customerPostalCode,
+          customerCountry: parsed.customerCountry,
+          paymentMethod: parsed.paymentMethod,
         },
       });
 
-      return res.json({ url: session.url, orderId: order.id });
-    } catch (err: any) {
+      res.json({ url: session.url });
+    } catch (err) {
       console.error("[checkout] create-session failed:", err);
-      return res.status(500).json({ error: "failed_to_create_session", requestId: req.requestId });
+      res.status(500).json({ error: "failed_to_create_session", requestId: (req as any).id });
     }
   });
 
-  // ─────────────────────────────────────────────────────────
-  // ADMIN API (protected by x-admin-key)
-  // ─────────────────────────────────────────────────────────
-
-  // Products
-  app.get("/api/admin/products", isAuthenticated, async (_req, res) => {
-    const rows = await storage.getProducts();
-    return res.json(rows.map(normalizeProductImages));
-  });
-
-  app.post("/api/admin/products", isAuthenticated, async (req, res) => {
+  // --- Admin: products ---
+  app.post("/api/admin/products", requireAdmin(), async (req, res) => {
     try {
-      const parsed = insertProductSchema.parse(req.body);
-      const created = await storage.createProduct({
-        id: crypto.randomUUID(),
-        ...parsed,
-      } as any);
-      return res.status(201).json(created);
-    } catch (err: any) {
-      return res.status(400).json({ error: "invalid_product", message: err?.message });
+      const data = insertProductSchema.parse(req.body);
+      const created = await storage.createProduct(data as any);
+      res.json(created);
+    } catch (err) {
+      console.error("[admin] create product failed:", err);
+      res.status(400).json({ error: "invalid_payload" });
     }
   });
 
-  app.patch("/api/admin/products/:id", isAuthenticated, async (req, res) => {
-    const updated = await storage.updateProduct(req.params.id, req.body || {});
-    if (!updated) return res.status(404).json({ error: "not_found" });
-    return res.json(updated);
+  app.put("/api/admin/products/:id", requireAdmin(), async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid_id" });
+
+    try {
+      const data = insertProductSchema.partial().parse(req.body);
+      const updated = await storage.updateProduct(id, data as any);
+      res.json(updated);
+    } catch (err) {
+      console.error("[admin] update product failed:", err);
+      res.status(400).json({ error: "invalid_payload" });
+    }
   });
 
-  app.delete("/api/admin/products/:id", isAuthenticated, async (req, res) => {
-    const ok = await storage.deleteProduct(req.params.id);
-    return res.json({ ok });
+  // --- Admin: orders ---
+  app.get("/api/admin/orders", requireAdmin(), async (_req, res) => {
+    try {
+      const list = await db.select().from(orders).orderBy(desc(orders.createdAt));
+      res.json(list);
+    } catch (err) {
+      console.error("[admin] list orders failed:", err);
+      res.status(500).json({ error: "failed" });
+    }
   });
 
-  app.patch("/api/admin/products/:id/stock", isAuthenticated, async (req, res) => {
-    const stock = Number(req.body?.stock);
-    if (!Number.isFinite(stock)) return res.status(400).json({ error: "invalid_stock" });
-    const updated = await storage.setStock(req.params.id, stock);
-    if (!updated) return res.status(404).json({ error: "not_found" });
-    return res.json(updated);
+  // --- Daily line ---
+  app.get("/api/daily-line", async (_req, res) => {
+    try {
+      const today = getPragueYYYYMMDD();
+      const row = await db
+        .select()
+        .from(dailyLines)
+        .where(eq(dailyLines.day, today))
+        .limit(1);
+
+      if (row[0]) return res.json(row[0]);
+
+      // generate if not exists (if enabled)
+      if (!flags.DAILY_LINE_ENABLED) {
+        return res.json({ day: today, line: "Jed to zle." });
+      }
+
+      const line = await generateDailyLineOpenAI();
+      const inserted = await db
+        .insert(dailyLines)
+        .values({ day: today, line })
+        .returning();
+
+      res.json(inserted[0]);
+    } catch (err) {
+      console.error("[daily-line] failed:", err);
+      res.status(500).json({ error: "failed" });
+    }
   });
 
-  // Orders
-  app.get("/api/admin/orders", isAuthenticated, async (_req, res) => {
-    const rows = await storage.getOrders();
-    return res.json(rows);
-  });
-
-  app.patch("/api/admin/orders/:id", isAuthenticated, async (req, res) => {
-    const updated = await storage.updateOrder(req.params.id, req.body || {});
-    if (!updated) return res.status(404).json({ error: "not_found" });
-    return res.json(updated);
-  });
-
-  // Users (basic read/update)
-  app.get("/api/admin/users", isAuthenticated, async (_req, res) => {
-    const rows = await db.select().from(users).orderBy(desc(users.createdAt));
-    return res.json(rows);
-  });
-
-  app.patch("/api/admin/users/:id", isAuthenticated, async (req, res) => {
-    const [row] = await db
-      .update(users)
-      .set(req.body || {})
-      .where(eq(users.id, req.params.id))
-      .returning();
-
-    if (!row) return res.status(404).json({ error: "not_found" });
-    return res.json(row);
-  });
-
-  // Stats
-  app.get("/api/admin/stats", isAuthenticated, async (_req, res) => {
-    const [p] = await db.select({ count: sql<number>`count(*)` }).from(products);
-    const [o] = await db.select({ count: sql<number>`count(*)` }).from(orders);
-    const [u] = await db.select({ count: sql<number>`count(*)` }).from(users);
-
-    return res.json({
-      products: Number(p?.count || 0),
-      orders: Number(o?.count || 0),
-      users: Number(u?.count || 0),
-    });
-  });
-
-  return httpServer;
+  // Server
+  const http = require("http");
+  return http.createServer(app);
 }
