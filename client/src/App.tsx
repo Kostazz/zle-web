@@ -45,6 +45,11 @@ function Router() {
         <Route path="/crew" component={Crew} />
         <Route path="/contact" component={Contact} />
         <Route path="/checkout" component={Checkout} />
+
+        {/* Stripe default return URLs */}
+        <Route path="/success" component={CheckoutSuccess} />
+        <Route path="/cancel" component={CheckoutCancel} />
+
         <Route path="/checkout/success" component={CheckoutSuccess} />
         <Route path="/checkout/cancel" component={CheckoutCancel} />
         <Route path="/account/orders" component={Orders} />
