@@ -103,6 +103,12 @@ app.post(
       return res.status(400).json({ error: "Missing stripe-signature" });
     }
 
+    // Optional hardening: require the path uuid to match STRIPE_WEBHOOK_UUID (if set)
+    if (env.STRIPE_WEBHOOK_UUID && req.params.uuid !== env.STRIPE_WEBHOOK_UUID) {
+      // 404 = less information leakage (and avoids Stripe retry spam if someone hits random URLs)
+      return res.status(404).send("Not found");
+    }
+
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
 
@@ -112,7 +118,9 @@ app.post(
 
       await WebhookHandlers.processWebhook(req.body, sig, req.params.uuid);
       return res.status(200).json({ received: true });
-    } catch {
+    } catch (e: any) {
+      // Stripe will retry on non-2xx, so keep this a 400 for signature/uuid errors.
+      if (!isProd()) console.error("[stripe:webhook]", e?.message || e);
       return res.status(400).json({ error: "Webhook processing error" });
     }
   }
