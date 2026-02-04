@@ -119,8 +119,28 @@ app.post(
       await WebhookHandlers.processWebhook(req.body, sig, req.params.uuid);
       return res.status(200).json({ received: true });
     } catch (e: any) {
-      // Stripe will retry on non-2xx, so keep this a 400 for signature/uuid errors.
-      if (!isProd()) console.error("[stripe:webhook]", e?.message || e);
+      // Stripe will retry on non-2xx.
+      // Keep response 400 for signature/uuid/body issues, but ALWAYS log enough to debug in prod.
+      // Do NOT log secrets or full payload.
+      const errType = e?.type || e?.name || "unknown";
+      const errMsg = e?.message || String(e);
+      const requestId = (req as any).id || (req.headers["x-request-id"] as string | undefined);
+
+      console.error("[stripe:webhook]", {
+        requestId,
+        type: errType,
+        message: errMsg,
+        uuidParam: req.params.uuid,
+        uuidExpected: env.STRIPE_WEBHOOK_UUID ? "set" : "not_set",
+        hasWebhookSecret: Boolean(env.STRIPE_WEBHOOK_SECRET),
+        hasSignature: Boolean(signature),
+        isBuffer: Buffer.isBuffer(req.body),
+      });
+
+      // Common root causes:
+      // - STRIPE_WEBHOOK_SECRET mismatch (most common)
+      // - Wrong endpoint URL (uuid mismatch)
+      // - Body parsed before raw handler (would show isBuffer=false)
       return res.status(400).json({ error: "Webhook processing error" });
     }
   }
