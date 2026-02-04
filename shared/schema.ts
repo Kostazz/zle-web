@@ -64,6 +64,7 @@ export type Product = typeof products.$inferSelect;
 export const paymentMethodEnum = z.enum([
   "card",
   "bank",
+  "cod",
   "gpay",
   "applepay",
   "usdc",
