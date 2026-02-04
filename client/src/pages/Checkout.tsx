@@ -26,12 +26,13 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Credi
   { value: "pi", label: "Pi Network (PI)", icon: Coins },
 ];
 
-type ShippingMethod = "pickup" | "zasilkovna" | "ppl";
+// IMPORTANT: must match server authority (server/routes.ts)
+type ShippingMethod = "osobni" | "zasilkovna" | "dpd";
 
 const SHIPPING_METHODS: { value: ShippingMethod; label: string; price: number }[] = [
-  { value: "pickup", label: "Osobní odběr", price: 0 },
+  { value: "osobni", label: "Osobní odběr", price: 0 },
   { value: "zasilkovna", label: "Zásilkovna", price: 89 },
-  { value: "ppl", label: "PPL / kurýr", price: 129 },
+  { value: "dpd", label: "DPD", price: 119 },
 ];
 
 const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
