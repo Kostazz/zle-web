@@ -157,6 +157,11 @@ export async function registerRoutes(app: Express) {
 
         subtotalCzk += unitPriceCzk * item.quantity;
 
+        // ✅ Stripe accepts ONLY absolute URLs in product_data.images
+        const rawImg = (product as any).image;
+        const stripeImages =
+          typeof rawImg === "string" && /^https?:\/\//i.test(rawImg) ? [rawImg] : undefined;
+
         line_items.push({
           quantity: item.quantity,
           price_data: {
@@ -165,8 +170,8 @@ export async function registerRoutes(app: Express) {
             product_data: {
               name: product.name,
               metadata: item.size ? { size: String(item.size) } : undefined,
-              // Use stored image fields (never trust client)
-              images: (product as any).image ? [(product as any).image] : undefined,
+              // Use stored image fields (never trust client) — but only if absolute URL
+              images: stripeImages,
             },
           },
         });
@@ -248,7 +253,9 @@ export async function registerRoutes(app: Express) {
           cancelUrl,
           message: e?.message,
         });
-        return sendApiError(res, 500, "invalid_redirect_url", { message: e?.message || "invalid_url" });
+        return sendApiError(res, 500, "invalid_redirect_url", {
+          message: e?.message || "invalid_url",
+        });
       }
 
       const session = await stripe.checkout.sessions.create({
