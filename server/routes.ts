@@ -7,18 +7,18 @@ import { z } from "zod";
 
 import { storage } from "./storage";
 import type { PaymentMethod } from "../shared/schema";
+import { getUncachableStripeClient } from "./stripeClient";
+import { finalizePaidOrder } from "./paymentPipeline";
+import { atomicStockDeduction } from "./webhookHandlers";
+import { db } from "./db";
+import { orders } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 // -----------------------------
 // Stripe setup
 // -----------------------------
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const stripe = STRIPE_SECRET_KEY
-  ? new Stripe(STRIPE_SECRET_KEY, {
-      // Match your account setting; safe default.
-      apiVersion: "2025-02-24.acacia",
-    })
-  : null;
+// Stripe client is created lazily via stripeClient (Render-first safe)
 
 // Stripe expects amounts in the smallest currency unit.
 // We intentionally store CZK as "xx.xx" in Stripe by multiplying by 100.
@@ -86,6 +86,8 @@ const CreateSessionSchema = z.object({
 // -----------------------------
 
 export async function registerRoutes(app: Express) {
+  // NOTE: server/index.ts already registers express.json() with a rawBody verifier.
+  // Keeping this here is harmless but redundant.
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -103,14 +105,16 @@ export async function registerRoutes(app: Express) {
   // Checkout: create Stripe session (server-authoritative pricing + creates DB order)
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
+      const stripe = await getUncachableStripeClient().catch(() => null);
       if (!stripe) return sendApiError(res, 500, "stripe_not_configured");
 
       const parsed = CreateSessionSchema.parse(req.body);
 
       // If user selected crypto, we currently don't route through Stripe.
       const pm = (parsed.paymentMethod || "card") as PaymentMethod;
-      if (pm === "crypto") {
-        return sendApiError(res, 400, "payment_method_not_supported_yet");
+      // This endpoint only supports Stripe-based methods.
+      if (pm !== "card" && pm !== "gpay" && pm !== "applepay") {
+        return sendApiError(res, 400, "payment_method_not_supported_yet", { paymentMethod: pm });
       }
 
       // Server builds line items from DB (never trust client price)
@@ -138,7 +142,8 @@ export async function registerRoutes(app: Express) {
             product_data: {
               name: product.name,
               metadata: item.size ? { size: String(item.size) } : undefined,
-              images: product.imageUrl ? [product.imageUrl] : undefined,
+              // Use stored image fields (never trust client)
+              images: (product as any).image ? [(product as any).image] : undefined,
             },
           },
         });
@@ -184,8 +189,6 @@ export async function registerRoutes(app: Express) {
         }),
         total: Math.round(totalCzk),
         paymentMethod: pm,
-        paymentStatus: "unpaid",
-        status: "pending",
         // userId is optional (guest checkout)
         userId: null as any,
       });
@@ -226,9 +229,41 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // ✅ Cancel an unpaid order (used by /checkout/cancel page)
+  app.post("/api/checkout/cancel/:orderId", async (req, res) => {
+    try {
+      const orderId = String(req.params.orderId || "");
+      if (!orderId) return sendApiError(res, 400, "missing_order_id");
+
+      const order = await storage.getOrder(orderId);
+      if (!order) return sendApiError(res, 404, "order_not_found");
+
+      // If already paid/confirmed, we do NOT cancel here.
+      if (order.paymentStatus === "paid" || order.status === "confirmed") {
+        return sendApiError(res, 409, "cannot_cancel_paid_order", { orderId });
+      }
+
+      if (order.status === "cancelled") {
+        return res.json({ success: true, orderId, alreadyCancelled: true });
+      }
+
+      await storage.updateOrder(orderId, {
+        status: "cancelled",
+        paymentStatus: order.paymentStatus || "unpaid",
+      });
+
+      return res.json({ success: true, orderId });
+    } catch (err: any) {
+      const message = err?.message || "unknown_error";
+      console.error("[checkout] cancel failed:", err);
+      return sendApiError(res, 500, "failed_to_cancel", { message });
+    }
+  });
+
   // ✅ Verify Stripe session after redirect (unblocks success page)
   app.get("/api/checkout/verify/:sessionId", async (req, res) => {
     try {
+      const stripe = await getUncachableStripeClient().catch(() => null);
       if (!stripe) return sendApiError(res, 500, "stripe_not_configured");
 
       const sessionId = String(req.params.sessionId || "");
@@ -254,18 +289,58 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      // If we have an orderId, mark as paid
+      // If we have an orderId, finalize it (idempotent) as a webhook failsafe.
       if (orderIdFromMeta) {
         const paymentIntentId =
           typeof session.payment_intent === "string"
             ? session.payment_intent
             : session.payment_intent?.id;
 
+        // A) Ensure order is marked paid/confirmed
         await storage.updateOrder(orderIdFromMeta, {
           paymentStatus: "paid",
-          status: "paid",
+          status: "confirmed",
           paymentIntentId: paymentIntentId || null,
           paymentNetwork: null,
+        });
+
+        // B) Stock deduction fallback (only if not already deducted)
+        const [row] = await db
+          .select({ stockDeductedAt: orders.stockDeductedAt })
+          .from(orders)
+          .where(eq(orders.id, orderIdFromMeta))
+          .limit(1);
+
+        if (!row?.stockDeductedAt) {
+          const dbOrder = await storage.getOrder(orderIdFromMeta);
+          if (dbOrder) {
+            const parsedItems = (() => {
+              try {
+                const raw = JSON.parse(dbOrder.items);
+                if (Array.isArray(raw)) return raw;
+                if (raw && Array.isArray(raw.items)) return raw.items;
+                return [];
+              } catch {
+                return [];
+              }
+            })();
+
+            if (parsedItems.length > 0) {
+              await atomicStockDeduction(orderIdFromMeta, parsedItems as any);
+              await db
+                .update(orders)
+                .set({ stockDeductedAt: new Date() })
+                .where(eq(orders.id, orderIdFromMeta));
+            }
+          }
+        }
+
+        // C) Financial + payout pipeline (idempotent)
+        await finalizePaidOrder({
+          orderId: orderIdFromMeta,
+          provider: "stripe",
+          providerEventId: `verify:${session.id}`,
+          meta: { source: "verify", sessionId: session.id },
         });
       }
 
