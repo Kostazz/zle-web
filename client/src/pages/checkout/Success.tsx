@@ -32,6 +32,20 @@ export default function CheckoutSuccess() {
 
   const lastLocalOrder = useMemo(() => getLastOrder(), []);
 
+  const nonStripeStamp = useMemo(() => orderId || lastLocalOrder?.id || null, [orderId, lastLocalOrder]);
+  const isNonStripeCod = !sessionId && pm === "cod";
+
+  const { data: orderSummary } = useQuery({
+    queryKey: ["/api/checkout/order-summary", nonStripeStamp],
+    queryFn: async () => {
+      const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(nonStripeStamp || ""))}`);
+      return response.json();
+    },
+    enabled: isNonStripeCod && !!nonStripeStamp,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
   // Polling settings (fail-safe for Stripe redirect timing + webhook delay)
   const MAX_POLLS = 12; // ~30s if interval 2500ms
   const DEFAULT_RETRY_MS = 2500;
@@ -161,6 +175,9 @@ export default function CheckoutSuccess() {
                     <div className="font-heading text-xs tracking-wider text-white/60 mb-2">DOBÍRKA – JAK TO POJEDE</div>
                     <ul className="text-sm text-white/70 space-y-2 list-disc pl-5">
                       <li>Zaplatíš při převzetí (kurýr / výdejní místo podle dopravy).</li>
+                      {orderSummary?.success && (orderSummary?.codCzk ?? 0) > 0 && (
+                        <li>Dobírka příplatek: {orderSummary.codCzk} Kč (podle dopravce) – už v celkové částce.</li>
+                      )}
                       <li>Měj připravenou hotovost / kartu – podle dopravce.</li>
                       <li>Jakmile to vyrazí, pošleme info do mailu.</li>
                     </ul>
