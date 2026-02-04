@@ -15,7 +15,6 @@ import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
 import type { PaymentMethod } from "@shared/schema";
 import { SHIPPING_METHODS, type ShippingMethodId } from "@shared/config/shipping";
 
-
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
   { value: "cod", label: "Dobírka (platíš při převzetí)", icon: HandCoins },
@@ -34,18 +33,10 @@ const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
     { value: "ethereum", label: "Ethereum (USDC)" },
     { value: "solana", label: "Solana (USDC)" },
   ],
-  btc: [
-    { value: "bitcoin", label: "Bitcoin mainnet" },
-  ],
-  eth: [
-    { value: "ethereum-mainnet", label: "Ethereum mainnet" },
-  ],
-  sol: [
-    { value: "solana-mainnet", label: "Solana mainnet" },
-  ],
-  pi: [
-    { value: "pi-mainnet", label: "Pi Network (Mainnet)" },
-  ],
+  btc: [{ value: "bitcoin", label: "Bitcoin mainnet" }],
+  eth: [{ value: "ethereum-mainnet", label: "Ethereum mainnet" }],
+  sol: [{ value: "solana-mainnet", label: "Solana mainnet" }],
+  pi: [{ value: "pi-mainnet", label: "Pi Network (Mainnet)" }],
 };
 
 const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
@@ -79,7 +70,6 @@ export default function Checkout() {
   const quoteTimerRef = useRef<number | null>(null);
   const quoteAbortRef = useRef<AbortController | null>(null);
   const quoteToastCooldownRef = useRef<number>(0);
-
 
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [quote, setQuote] = useState<null | {
@@ -170,9 +160,12 @@ export default function Checkout() {
   }, [itemsKey, shippingMethod, paymentMethod]);
 
   const shippingPrice = quote?.shippingCzk ?? 0;
-  const codFee = paymentMethod === "cod" ? quote?.codCzk ?? 0 : 0;
-  const totalWithShipping = quote?.totalCzk ?? (total + shippingPrice + codFee);
 
+  // COD surcharge (computed by server, depends on shipping carrier)
+  const codFee = paymentMethod === "cod" ? quote?.codCzk ?? 0 : 0;
+
+  // Prefer server total if available, fallback to client total + extras
+  const totalWithShipping = quote?.totalCzk ?? (total + shippingPrice + codFee);
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
@@ -387,7 +380,10 @@ export default function Checkout() {
               <span className="font-heading text-sm tracking-wider">ZPĚT DO SHOPU</span>
             </Link>
 
-            <h1 className="font-display text-4xl md:text-5xl text-white tracking-tight mb-12" data-testid="text-checkout-title">
+            <h1
+              className="font-display text-4xl md:text-5xl text-white tracking-tight mb-12"
+              data-testid="text-checkout-title"
+            >
               OBJEDNÁVKA
             </h1>
 
@@ -607,9 +603,9 @@ export default function Checkout() {
                       ? "Budeš přesměrován na zabezpečenou platební bránu Stripe"
                       : paymentMethod === "cod"
                         ? "Zaplatíš až při převzetí (dobírka)"
-                      : paymentMethod === "bank"
-                        ? "Po odeslání ti pošleme platební údaje emailem"
-                        : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
+                        : paymentMethod === "bank"
+                          ? "Po odeslání ti pošleme platební údaje emailem"
+                          : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
                   </p>
                 </form>
               </div>
@@ -644,6 +640,14 @@ export default function Checkout() {
                       <span>Doprava</span>
                       <span>{shippingPrice === 0 ? "ZDARMA" : `${shippingPrice} Kč`}</span>
                     </div>
+
+                    {/* ✅ COD surcharge row */}
+                    {paymentMethod === "cod" && codFee > 0 && (
+                      <div className="flex items-center justify-between text-white/70 text-sm">
+                        <span>Dobírka</span>
+                        <span>{codFee} Kč</span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between pt-2 border-t border-white/10">
                       <span className="font-heading text-lg text-white">CELKEM</span>
