@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin, Coins } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin, Coins, HandCoins } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
@@ -16,6 +16,7 @@ import type { PaymentMethod } from "@shared/schema";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
+  { value: "cod", label: "Dobírka (platíš při převzetí)", icon: HandCoins },
   { value: "bank", label: "Bankovní převod", icon: Landmark },
   { value: "gpay", label: "Google Pay", icon: Wallet },
   { value: "applepay", label: "Apple Pay", icon: Wallet },
@@ -110,6 +111,43 @@ export default function Checkout() {
     },
   });
 
+  const codMutation = useMutation({
+    mutationFn: async (data: {
+      items: typeof items;
+      customerName: string;
+      customerEmail: string;
+      customerAddress: string;
+      customerCity: string;
+      customerZip: string;
+      shippingMethod: ShippingMethod;
+    }) => {
+      const response = await apiRequest("POST", "/api/checkout/create-cod-order", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const orderId = data?.orderId;
+      if (!orderId) {
+        toast({
+          title: "Chyba",
+          description: "Dobírku se nepodařilo založit. Zkus to znovu.",
+          variant: "destructive",
+        });
+        return;
+      }
+      clearCart();
+      window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=cod`;
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Chyba",
+        description: error.message || "Dobírku se nepodařilo založit. Zkus to znovu.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isSubmitting = checkoutMutation.isPending || codMutation.isPending;
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -186,6 +224,16 @@ export default function Checkout() {
         customerZip: formData.zip,
         shippingMethod,
       });
+    } else if (paymentMethod === "cod") {
+      codMutation.mutate({
+        items,
+        customerName: formData.name,
+        customerEmail: formData.email,
+        customerAddress: formData.address,
+        customerCity: formData.city,
+        customerZip: formData.zip,
+        shippingMethod,
+      });
     } else {
       clearCart();
       toast({
@@ -195,7 +243,7 @@ export default function Checkout() {
             ? "Platební údaje ti pošleme emailem."
             : `Krypto platba (${paymentMethod.toUpperCase()}) bude zpracována. Pokyny obdržíš emailem.`,
       });
-      window.location.href = "/checkout/success";
+      window.location.href = `/checkout/success?pm=${encodeURIComponent(paymentMethod)}`;
     }
   };
 
@@ -419,14 +467,14 @@ export default function Checkout() {
 
                   <Button
                     type="submit"
-                    disabled={checkoutMutation.isPending}
+                    disabled={isSubmitting}
                     className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 mt-8"
                     data-testid="button-submit-order"
                   >
-                    {checkoutMutation.isPending ? (
+                    {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        PŘESMĚROVÁVÁM NA PLATBU...
+                        {paymentMethod === "cod" ? "ZAKLÁDÁM DOBÍRKU…" : "PŘESMĚROVÁVÁM NA PLATBU…"}
                       </>
                     ) : (
                       <>
@@ -447,6 +495,8 @@ export default function Checkout() {
                   <p className="font-sans text-xs text-white/40 text-center mt-4">
                     {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
                       ? "Budeš přesměrován na zabezpečenou platební bránu Stripe"
+                      : paymentMethod === "cod"
+                        ? "Zaplatíš až při převzetí (dobírka)"
                       : paymentMethod === "bank"
                         ? "Po odeslání ti pošleme platební údaje emailem"
                         : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
