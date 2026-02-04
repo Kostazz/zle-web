@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
 import type { PaymentMethod } from "@shared/schema";
+import { SHIPPING_METHODS, type ShippingMethodId } from "@shared/config/shipping";
+
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
@@ -25,15 +27,6 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Credi
   { value: "eth", label: "Ethereum (ETH)", icon: Coins },
   { value: "sol", label: "Solana (SOL)", icon: Coins },
   { value: "pi", label: "Pi Network (PI)", icon: Coins },
-];
-
-// IMPORTANT: must match server authority (server/routes.ts)
-type ShippingMethod = "osobni" | "zasilkovna" | "dpd";
-
-const SHIPPING_METHODS: { value: ShippingMethod; label: string; price: number }[] = [
-  { value: "osobni", label: "Osobní odběr", price: 0 },
-  { value: "zasilkovna", label: "Zásilkovna", price: 89 },
-  { value: "dpd", label: "DPD", price: 119 },
 ];
 
 const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
@@ -69,10 +62,82 @@ export default function Checkout() {
   });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [paymentNetwork, setPaymentNetwork] = useState<string>("");
-  const [shippingMethod, setShippingMethod] = useState<ShippingMethod>("zasilkovna");
+  const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("zasilkovna");
 
-  const shippingPrice = SHIPPING_METHODS.find((m) => m.value === shippingMethod)?.price ?? 0;
-  const totalWithShipping = total + shippingPrice;
+  const shippingOptions = useMemo(() => {
+    return SHIPPING_METHODS.map((m) => ({ id: m.id, label: m.label, priceCzk: m.priceCzk }));
+  }, []);
+
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [quote, setQuote] = useState<null | {
+    currency: string;
+    subtotalCzk: number;
+    shippingMethodId: ShippingMethodId;
+    shippingLabel: string;
+    shippingCzk: number;
+    codAvailable: boolean;
+    codFeeCzk: number;
+    codCzk: number;
+    totalCzk: number;
+  }>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      setIsRecalculating(true);
+      try {
+        const res = await apiRequest("POST", "/api/checkout/quote", {
+          items,
+          shippingMethod,
+          paymentMethod,
+        });
+        const data = await res.json();
+        if (!alive) return;
+        if (!data?.success) throw new Error(data?.error || "quote_failed");
+
+        // If COD selected but not available for current shipping -> switch away
+        if (paymentMethod === "cod" && data.codAvailable === false) {
+          setPaymentMethod("card");
+          toast({
+            title: "Dobírka není dostupná",
+            description: "Pro tuhle dopravu dobírka nejede. Přepínám tě na kartu.",
+            variant: "destructive",
+          });
+        }
+
+        setQuote({
+          currency: data.currency,
+          subtotalCzk: data.subtotalCzk,
+          shippingMethodId: data.shippingMethodId,
+          shippingLabel: data.shippingLabel,
+          shippingCzk: data.shippingCzk,
+          codAvailable: data.codAvailable,
+          codFeeCzk: data.codFeeCzk,
+          codCzk: data.codCzk,
+          totalCzk: data.totalCzk,
+        });
+      } catch (e: any) {
+        if (!alive) return;
+        toast({
+          title: "Přepočet selhal",
+          description: "Nepodařilo se ověřit ceny. Zkus to znovu.",
+          variant: "destructive",
+        });
+      } finally {
+        if (alive) setIsRecalculating(false);
+      }
+    };
+    run();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, shippingMethod, paymentMethod]);
+
+  const shippingPrice = quote?.shippingCzk ?? 0;
+  const codFee = paymentMethod === "cod" ? quote?.codCzk ?? 0 : 0;
+  const totalWithShipping = quote?.totalCzk ?? (total + shippingPrice + codFee);
+
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
@@ -85,7 +150,8 @@ export default function Checkout() {
       customerAddress: string;
       customerCity: string;
       customerZip: string;
-      shippingMethod: ShippingMethod;
+      shippingMethod: ShippingMethodId;
+      paymentMethod: PaymentMethod;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-session", data);
       return response.json();
@@ -119,7 +185,7 @@ export default function Checkout() {
       customerAddress: string;
       customerCity: string;
       customerZip: string;
-      shippingMethod: ShippingMethod;
+      shippingMethod: ShippingMethodId;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-cod-order", data);
       return response.json();
@@ -191,6 +257,7 @@ export default function Checkout() {
       total: totalWithShipping,
       shippingMethod,
       shippingPrice,
+      codFee,
       createdAt: new Date().toISOString(),
     };
 
@@ -202,6 +269,7 @@ export default function Checkout() {
       amount: totalWithShipping,
       shippingMethod,
       shippingPrice,
+      codFee,
       currency: "CZK",
       paymentMethod,
       paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
@@ -223,6 +291,7 @@ export default function Checkout() {
         customerCity: formData.city,
         customerZip: formData.zip,
         shippingMethod,
+        paymentMethod,
       });
     } else if (paymentMethod === "cod") {
       codMutation.mutate({
@@ -379,32 +448,36 @@ export default function Checkout() {
 
                     <RadioGroup
                       value={shippingMethod}
-                      onValueChange={(value) => setShippingMethod(value as ShippingMethod)}
+                      onValueChange={(value) => setShippingMethod(value as ShippingMethodId)}
                       className="space-y-3"
                       data-testid="radio-shipping-method"
                     >
-                      {SHIPPING_METHODS.map((method) => (
-                        <div key={method.value} className="flex items-center justify-between gap-4">
+                      {shippingOptions.map((method) => (
+                        <div key={method.id} className="flex items-center justify-between gap-4">
                           <div className="flex items-center">
                             <RadioGroupItem
-                              value={method.value}
-                              id={`shipping-${method.value}`}
+                              value={method.id}
+                              id={`shipping-${method.id}`}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
-                              data-testid={`radio-shipping-${method.value}`}
+                              data-testid={`radio-shipping-${method.id}`}
                             />
                             <Label
-                              htmlFor={`shipping-${method.value}`}
+                              htmlFor={`shipping-${method.id}`}
                               className="ml-3 cursor-pointer font-sans text-sm text-white/80 hover:text-white transition-colors"
                             >
                               {method.label}
                             </Label>
                           </div>
                           <span className="font-sans text-sm font-bold text-white">
-                            {method.price === 0 ? "ZDARMA" : `${method.price} Kč`}
+                            {method.priceCzk === 0 ? "ZDARMA" : `${method.priceCzk} Kč`}
                           </span>
                         </div>
                       ))}
                     </RadioGroup>
+
+                    {isRecalculating && (
+                      <div className="mt-3 text-xs text-white/50">Ověřujeme dostupnost dobírky…</div>
+                    )}
                   </div>
 
                   <div className="pt-6 border-t border-white/10">
@@ -419,9 +492,9 @@ export default function Checkout() {
                       {PAYMENT_METHODS.map((method) => {
                         const Icon = method.icon;
                         return (
-                          <div key={method.value} className="flex items-center">
+                          <div key={method.id} className="flex items-center">
                             <RadioGroupItem
-                              value={method.value}
+                              value={method.id}
                               id={`payment-${method.value}`}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
                               data-testid={`radio-payment-${method.value}`}
