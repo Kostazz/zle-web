@@ -42,13 +42,36 @@ const SHIPPING: Record<ShippingMethodId, { label: string; priceCzk: number }> = 
 // Helpers
 // -----------------------------
 
-function getBaseUrl(req: Request) {
-  const envBase = process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL;
-  if (envBase) return envBase.replace(/\/$/, "");
+function normalizeBaseUrl(raw: string) {
+  let v = String(raw ?? "").trim();
 
-  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol;
-  const host = (req.headers["x-forwarded-host"] as string) || req.get("host");
-  return `${proto}://${host}`.replace(/\/$/, "");
+  // remove any trailing slashes
+  v = v.replace(/\/+$/, "");
+
+  // If someone accidentally stored "zle-web.onrender.com" without scheme, fix it.
+  if (v && !/^https?:\/\//i.test(v)) {
+    v = `https://${v}`;
+  }
+
+  // Hard validation: Stripe requires a valid absolute URL
+  // (this throws if invalid)
+  // eslint-disable-next-line no-new
+  new URL(v);
+
+  return v;
+}
+
+function getBaseUrl(req: Request) {
+  const envBaseRaw = process.env.PUBLIC_BASE_URL || process.env.PUBLIC_URL;
+  if (envBaseRaw) {
+    return normalizeBaseUrl(envBaseRaw);
+  }
+
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+  const host = (req.headers["x-forwarded-host"] as string) || req.get("host") || "";
+
+  // Build and validate
+  return normalizeBaseUrl(`${proto}://${host}`);
 }
 
 function sendApiError(res: Response, status: number, code: string, detail?: unknown) {
@@ -193,14 +216,47 @@ export async function registerRoutes(app: Express) {
         userId: null as any,
       });
 
-      const baseUrl = getBaseUrl(req);
+      // ✅ baseUrl must be a VALID absolute URL for Stripe redirects
+      let baseUrl: string;
+      try {
+        baseUrl = getBaseUrl(req);
+      } catch (e: any) {
+        console.error("[checkout] invalid base url for Stripe:", {
+          PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
+          PUBLIC_URL: process.env.PUBLIC_URL,
+          host: req.get("host"),
+          xfh: req.headers["x-forwarded-host"],
+          xfp: req.headers["x-forwarded-proto"],
+          message: e?.message,
+        });
+        return sendApiError(res, 500, "invalid_base_url", { message: e?.message || "invalid_url" });
+      }
+
+      const successUrl = `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`;
+      const cancelUrl = `${baseUrl}/cancel?order_id=${order.id}`;
+
+      // hard check (prevents Stripe "Not a valid URL" mystery)
+      try {
+        // eslint-disable-next-line no-new
+        new URL(successUrl);
+        // eslint-disable-next-line no-new
+        new URL(cancelUrl);
+      } catch (e: any) {
+        console.error("[checkout] computed redirect URLs invalid:", {
+          baseUrl,
+          successUrl,
+          cancelUrl,
+          message: e?.message,
+        });
+        return sendApiError(res, 500, "invalid_redirect_url", { message: e?.message || "invalid_url" });
+      }
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         currency: "czk",
         line_items,
-        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`,
-        cancel_url: `${baseUrl}/cancel?order_id=${order.id}`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         customer_email: parsed.customerEmail,
         client_reference_id: order.id,
         metadata: {
