@@ -1,29 +1,119 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Flame, Loader2, Package } from "lucide-react";
 
+type VerifyResponse =
+  | {
+      success: true;
+      orderId?: string | null;
+      paymentStatus?: string | null;
+      amountTotalCzk?: number | null;
+      currency?: string | null;
+    }
+  | {
+      success: false;
+      reason?: string;
+      paymentStatus?: string | null;
+      orderId?: string | null;
+      retryAfterMs?: number | null;
+    };
+
 export default function CheckoutSuccess() {
   const searchString = useSearch();
-  const params = new URLSearchParams(searchString);
+  const params = useMemo(() => new URLSearchParams(searchString), [searchString]);
+
   const sessionId = params.get("session_id");
   const orderId = params.get("order_id");
 
-  const { data, isLoading, error } = useQuery({
+  // Polling settings (fail-safe for Stripe redirect timing + webhook delay)
+  const MAX_POLLS = 12; // ~30s if interval 2500ms
+  const DEFAULT_RETRY_MS = 2500;
+
+  const pollsRef = useRef(0);
+
+  const { data, isLoading, error, refetch, isFetching } = useQuery<VerifyResponse>({
     queryKey: ["/api/checkout/verify", sessionId],
     queryFn: async () => {
       const response = await fetch(`/api/checkout/verify/${sessionId}`);
       return response.json();
     },
     enabled: !!sessionId,
+    retry: false,
+    refetchInterval: (query) => {
+      const d = query.state.data as VerifyResponse | undefined;
+      if (!d) return false;
+
+      // Done
+      if (d.success) return false;
+
+      // Only poll on "not_paid" (common timing issue)
+      if (d.reason === "not_paid") {
+        if (pollsRef.current >= MAX_POLLS) return false;
+        const suggested = typeof d.retryAfterMs === "number" ? d.retryAfterMs : DEFAULT_RETRY_MS;
+        return suggested;
+      }
+
+      return false;
+    },
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
-    // no-op: keep for future client-side side effects (analytics / order storage)
+    // Count polls while we're in the "not_paid" waiting state.
+    if (data && !data.success && data.reason === "not_paid") {
+      pollsRef.current += 1;
+    }
   }, [data]);
 
+  const isWaitingForStripe =
+    !!sessionId &&
+    !!data &&
+    !data.success &&
+    data.reason === "not_paid" &&
+    pollsRef.current < MAX_POLLS;
+
+  const timedOutWaiting =
+    !!sessionId &&
+    !!data &&
+    !data.success &&
+    data.reason === "not_paid" &&
+    pollsRef.current >= MAX_POLLS;
+
+  if (!sessionId) {
+    return (
+      <Layout>
+        <section className="py-16 md:py-24">
+          <div className="container mx-auto px-4">
+            <div className="max-w-md mx-auto text-center">
+              <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
+                <Package className="h-10 w-10 text-red-400" />
+              </div>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
+                CHYBÍ SESSION ID
+              </h1>
+              <p className="font-sans text-white/60 mb-8">
+                Tenhle odkaz je neúplný. Pokud jsi platil, napiš nám a pošli co nejvíc detailů.
+              </p>
+
+              <Button
+                asChild
+                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+              >
+                <Link href="/" data-testid="link-missing-session-to-home">
+                  ZPĚT NA HLAVNÍ STRÁNKU
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  // Initial load
   if (isLoading) {
     return (
       <Layout>
@@ -46,7 +136,54 @@ export default function CheckoutSuccess() {
     );
   }
 
+  // Waiting state (polling not_paid)
+  if (isWaitingForStripe) {
+    return (
+      <Layout>
+        <section className="py-16 md:py-24">
+          <div className="container mx-auto px-4">
+            <div className="max-w-md mx-auto text-center">
+              <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
+                <Loader2 className="h-10 w-10 text-white animate-spin" />
+              </div>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
+                JEŠTĚ TO DOBÍHÁ…
+              </h1>
+              <p className="font-sans text-white/60 mb-6">
+                Stripe občas potvrzuje platbu s malým zpožděním. Chvilku vydrž.
+              </p>
+
+              <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
+                <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
+                  SESSION STAMP
+                </div>
+                <div className="font-mono text-xs text-white/80 break-all">
+                  {sessionId}
+                </div>
+                <div className="mt-3 text-xs text-white/45">
+                  pokus {Math.min(pollsRef.current, MAX_POLLS)} / {MAX_POLLS}{" "}
+                  {isFetching ? "· ověřuju…" : ""}
+                </div>
+              </div>
+
+              <Button
+                onClick={() => refetch()}
+                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+                data-testid="btn-success-manual-refetch"
+              >
+                ZKONTROLOVAT ZNOVU
+              </Button>
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  // Hard fail OR timed out waiting
   if (error || !data?.success) {
+    const showTimedOutCopy = timedOutWaiting;
+
     return (
       <Layout>
         <section className="py-16 md:py-24">
@@ -56,11 +193,15 @@ export default function CheckoutSuccess() {
                 <Package className="h-10 w-10 text-red-400" />
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                NĚCO SE POKAZILO
+                {showTimedOutCopy ? "PLATBA SE JEŠTĚ POTVRZUJE" : "NĚCO SE POKAZILO"}
               </h1>
+
               <p className="font-sans text-white/60 mb-4">
-                Platba možná proběhla, ale nepodařilo se ji ověřit.
+                {showTimedOutCopy
+                  ? "Možná to jen trvá déle. Zkus to za chvíli znovu – nebo nám pošli stamp."
+                  : "Platba možná proběhla, ale nepodařilo se ji ověřit."}
               </p>
+
               <div className="border border-white/15 bg-black/30 p-4 mb-8 text-left">
                 <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
                   DEBUG STAMP
@@ -68,19 +209,36 @@ export default function CheckoutSuccess() {
                 <div className="font-mono text-xs text-white/80 break-all">
                   session_id: {sessionId ?? "(missing)"}
                 </div>
+                <div className="font-mono text-xs text-white/80 break-all">
+                  order_id: {orderId ?? "(missing)"}
+                </div>
+                <div className="font-mono text-xs text-white/70 break-all mt-2">
+                  reason: {"success" in (data || {}) ? "unknown" : (data as any)?.reason ?? "unknown"}
+                </div>
               </div>
+
               <p className="font-sans text-white/55 mb-8">
-                Kdyžtak napiš na <span className="text-white">info@zle.cz</span>{" "}
-                a pošli nám tenhle stamp.
+                Kdyžtak napiš na <span className="text-white">info@zle.cz</span> a pošli nám tenhle stamp.
               </p>
-              <Button
-                asChild
-                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-              >
-                <Link href="/" data-testid="link-error-to-home">
-                  ZPĚT NA HLAVNÍ STRÁNKU
-                </Link>
-              </Button>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  onClick={() => refetch()}
+                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+                  data-testid="btn-error-refetch"
+                >
+                  ZKONTROLOVAT ZNOVU
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="font-heading text-sm tracking-wider border-white/20 text-white hover:bg-white/10"
+                >
+                  <Link href="/" data-testid="link-error-to-home">
+                    ZPĚT NA HLAVNÍ STRÁNKU
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
         </section>
@@ -88,6 +246,7 @@ export default function CheckoutSuccess() {
     );
   }
 
+  // Success (paid + finalized via verify/webhook)
   return (
     <Layout>
       <section className="py-10 md:py-16">
@@ -124,7 +283,7 @@ export default function CheckoutSuccess() {
                     ORDER TAG
                   </div>
                   <div className="font-mono text-sm text-white">
-                    {orderId ? orderId.slice(0, 8).toUpperCase() : "ZLE-NEW"}
+                    {orderId ? orderId.slice(0, 8).toUpperCase() : (data.orderId ? String(data.orderId).slice(0, 8).toUpperCase() : "ZLE-NEW")}
                   </div>
                 </div>
                 <div className="border border-white/15 bg-white/5 p-4">
