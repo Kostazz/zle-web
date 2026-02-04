@@ -10,6 +10,7 @@ export interface ZleOrder {
   currency: string;
   shippingMethod?: string;
   shippingPrice?: number;
+  codFee?: number;
   paymentMethod: string;
   paymentNetwork?: string;
   items: any[];
