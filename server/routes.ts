@@ -104,6 +104,16 @@ const CreateSessionSchema = z.object({
   paymentMethod: z.string().optional(),
 });
 
+const CreateCodOrderSchema = z.object({
+  items: z.array(CheckoutItemSchema).min(1),
+  customerName: z.string().min(1).max(120),
+  customerEmail: z.string().email(),
+  customerAddress: z.string().min(1).max(240),
+  customerCity: z.string().min(1).max(120),
+  customerZip: z.string().min(1).max(20),
+  shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+});
+
 // -----------------------------
 // Routes
 // -----------------------------
@@ -289,6 +299,84 @@ export async function registerRoutes(app: Express) {
       const message = err?.message || "unknown_error";
       console.error("[checkout] create-session failed:", err);
       return sendApiError(res, 500, "failed_to_create_session", { message });
+    }
+  });
+
+  // ✅ Dobírka (COD): create DB order without Stripe
+  app.post("/api/checkout/create-cod-order", async (req, res) => {
+    try {
+      const parsed = CreateCodOrderSchema.parse(req.body);
+
+      // Server authoritative pricing (same logic as Stripe flow, but no session)
+      let subtotalCzk = 0;
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
+        }
+
+        const unitPriceCzk = Number(product.price) || 0;
+        if (unitPriceCzk <= 0) {
+          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
+        }
+
+        subtotalCzk += unitPriceCzk * item.quantity;
+      }
+
+      const ship = SHIPPING[parsed.shippingMethod];
+      if (!ship) return sendApiError(res, 400, "unknown_shipping_method");
+
+      const totalCzk = subtotalCzk + ship.priceCzk;
+      if (totalCzk < 15) {
+        return sendApiError(res, 400, "amount_too_small", { totalCzk });
+      }
+
+      // Create order in DB (pending/unpaid)
+      const order = await storage.createOrder({
+        customerName: parsed.customerName,
+        customerEmail: parsed.customerEmail,
+        customerAddress: parsed.customerAddress,
+        customerCity: parsed.customerCity,
+        customerZip: parsed.customerZip,
+        items: JSON.stringify({
+          items: parsed.items,
+          shippingMethod: parsed.shippingMethod,
+          shippingLabel: ship.label,
+          subtotalCzk,
+          shippingCzk: ship.priceCzk,
+          totalCzk,
+        }),
+        total: Math.round(totalCzk),
+        paymentMethod: "cod" as PaymentMethod,
+        userId: null as any,
+      });
+
+      // Reserve/deduct stock immediately for COD (keeps inventory consistent)
+      try {
+        await atomicStockDeduction(order.id, parsed.items as any);
+        await db
+          .update(orders)
+          .set({ stockDeductedAt: new Date() })
+          .where(eq(orders.id, order.id));
+      } catch (e) {
+        // If stock deduction fails, cancel the order to avoid phantom reservations
+        await storage.updateOrder(order.id, {
+          status: "cancelled",
+          paymentStatus: "unpaid",
+        });
+        console.error("[cod] stock deduction failed; order cancelled", { orderId: order.id, error: (e as any)?.message });
+        return sendApiError(res, 409, "out_of_stock_or_reservation_failed", { orderId: order.id });
+      }
+
+      return res.json({ success: true, orderId: order.id });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return sendApiError(res, 400, "invalid_payload", err.flatten());
+      }
+
+      const message = err?.message || "unknown_error";
+      console.error("[cod] create order failed:", err);
+      return sendApiError(res, 500, "failed_to_create_cod_order", { message });
     }
   });
 
