@@ -76,7 +76,7 @@ const apiLimiter = rateLimit({
 
 const checkoutLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: isProd() ? 10 : 200,
+  max: isProd() ? 60 : 400,
   standardHeaders: true,
   legacyHeaders: false,
 });
