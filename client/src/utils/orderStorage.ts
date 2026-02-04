@@ -52,6 +52,12 @@ export function appendOrder(order: ZleOrder) {
   saveOrders(current);
 }
 
+export function getLastOrder(): ZleOrder | null {
+  const all = loadOrders();
+  if (!all.length) return null;
+  return all[all.length - 1] || null;
+}
+
 export function clearOrders() {
   if (typeof window === "undefined") return;
   try {
