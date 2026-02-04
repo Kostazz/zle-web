@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -52,14 +52,6 @@ const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
 
 export default function Checkout() {
   const { items, total, clearCart } = useCart();
-
-  const itemsKey = useMemo(() => {
-    // Stable key to avoid quote spam when items array reference changes
-    return items
-      .map((i) => `${i.productId}:${i.quantity}`)
-      .sort()
-      .join("|");
-  }, [items]);
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
@@ -73,8 +65,21 @@ export default function Checkout() {
   const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("zasilkovna");
 
   const shippingOptions = useMemo(() => {
-    return SHIPPING_METHODS.map((m) => ({ value: m.id, id: m.id, label: m.label, priceCzk: m.priceCzk }));
+    return SHIPPING_METHODS.map((m) => ({ id: m.id, value: m.id, label: m.label, priceCzk: m.priceCzk }));
   }, []);
+
+  // Stable key to avoid quote spam (items reference can change on re-render)
+  const itemsKey = useMemo(() => {
+    return (items || [])
+      .map((it) => `${it.productId}:${it.quantity}`)
+      .sort()
+      .join("|");
+  }, [items]);
+
+  const quoteTimerRef = useRef<number | null>(null);
+  const quoteAbortRef = useRef<AbortController | null>(null);
+  const quoteToastCooldownRef = useRef<number>(0);
+
 
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [quote, setQuote] = useState<null | {
@@ -90,22 +95,34 @@ export default function Checkout() {
   }>(null);
 
   useEffect(() => {
-    let alive = true;
-    let t: any = null;
-    let inFlight = false;
+    if (!items || items.length === 0) {
+      setQuote(null);
+      return;
+    }
 
-    const run = async () => {
-      if (inFlight) return;
-      inFlight = true;
+    // Debounce to prevent rate-limit (and UI jitter) when switching options fast
+    if (quoteTimerRef.current) window.clearTimeout(quoteTimerRef.current);
+    quoteTimerRef.current = window.setTimeout(async () => {
+      // cancel previous in-flight request
+      if (quoteAbortRef.current) quoteAbortRef.current.abort();
+      const controller = new AbortController();
+      quoteAbortRef.current = controller;
+
       setIsRecalculating(true);
       try {
-        const res = await apiRequest("POST", "/api/checkout/quote", {
-          items,
-          shippingMethod,
-          paymentMethod,
-        });
+        const res = await apiRequest(
+          "POST",
+          "/api/checkout/quote",
+          { items, shippingMethod, paymentMethod },
+          { signal: controller.signal } as any
+        );
+
+        // 429 = rate limit: keep UX quiet (no toast spam), just stop recalculating
+        if (res.status === 429) {
+          return;
+        }
+
         const data = await res.json();
-        if (!alive) return;
         if (!data?.success) throw new Error(data?.error || "quote_failed");
 
         // If COD selected but not available for current shipping -> switch away
@@ -130,23 +147,26 @@ export default function Checkout() {
           totalCzk: data.totalCzk,
         });
       } catch (e: any) {
-        if (!alive) return;
-        toast({
-          title: "Přepočet selhal",
-          description: "Nepodařilo se ověřit ceny. Zkus to znovu.",
-          variant: "destructive",
-        });
+        // Ignore aborted requests
+        if (e?.name === "AbortError") return;
+        const now = Date.now();
+        if (now - quoteToastCooldownRef.current > 4000) {
+          quoteToastCooldownRef.current = now;
+          toast({
+            title: "Přepočet selhal",
+            description: "Nepodařilo se ověřit ceny. Zkus to znovu.",
+            variant: "destructive",
+          });
+        }
       } finally {
-        if (alive) setIsRecalculating(false);
-        inFlight = false;
+        setIsRecalculating(false);
       }
-    };
-    t = setTimeout(run, 250);
+    }, 250);
+
     return () => {
-      alive = false;
-      if (t) clearTimeout(t);
+      if (quoteTimerRef.current) window.clearTimeout(quoteTimerRef.current);
+      if (quoteAbortRef.current) quoteAbortRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemsKey, shippingMethod, paymentMethod]);
 
   const shippingPrice = quote?.shippingCzk ?? 0;
@@ -490,9 +510,11 @@ export default function Checkout() {
                       ))}
                     </RadioGroup>
 
-                    {isRecalculating && (
-                      <div className="mt-3 text-xs text-white/50">Ověřujeme dostupnost dobírky…</div>
-                    )}
+                    <div className="mt-3 text-xs text-white/50 min-h-[16px]">
+                      <span className={isRecalculating ? "opacity-100" : "opacity-0"}>
+                        Ověřujeme dostupnost dobírky…
+                      </span>
+                    </div>
                   </div>
 
                   <div className="pt-6 border-t border-white/10">
