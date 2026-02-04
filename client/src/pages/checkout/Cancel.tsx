@@ -31,16 +31,16 @@ export default function CheckoutCancel() {
             <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
               <XCircle className="h-10 w-10 text-white/60" />
             </div>
-            <h1 
+            <h1
               className="font-display text-3xl text-white tracking-tight mb-4"
               data-testid="text-cancel-title"
             >
-              PLATBA ZRUŠENA
+              STOP. NIC SE NESTRHLO.
             </h1>
             <p className="font-sans text-white/60 mb-8">
-              Tvoje objednávka nebyla dokončena. Žádné peníze nebyly strženy.
+              Platba neprošla / byla zrušena. Žádný peníze pryč. Žádný drama.
             </p>
-            
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
                 asChild
