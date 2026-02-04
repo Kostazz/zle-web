@@ -92,10 +92,10 @@ export default function CheckoutSuccess() {
                 <Package className="h-10 w-10 text-red-400" />
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                CHYBÍ SESSION ID
+                CHYBÍ STAMP
               </h1>
               <p className="font-sans text-white/60 mb-8">
-                Tenhle odkaz je neúplný. Pokud jsi platil, napiš nám a pošli co nejvíc detailů.
+                Tenhle odkaz je neúplný. Pokud jsi platil, pošli nám stamp a mrkneme na to.
               </p>
 
               <Button
@@ -124,10 +124,10 @@ export default function CheckoutSuccess() {
                 <Loader2 className="h-10 w-10 text-white animate-spin" />
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                OVĚŘUJI PLATBU...
+                DRŽ. KONTROLUJEME PLATBU.
               </h1>
               <p className="font-sans text-white/60">
-                Prosím počkej, ověřujeme tvoji platbu.
+                Systémy si to právě mezi sebou vyřizují.
               </p>
             </div>
           </div>
@@ -150,7 +150,11 @@ export default function CheckoutSuccess() {
                 JEŠTĚ TO DOBÍHÁ…
               </h1>
               <p className="font-sans text-white/60 mb-6">
-                Stripe občas potvrzuje platbu s malým zpožděním. Chvilku vydrž.
+                Platba proběhla. Potvrzení je na cestě.
+                <br />
+                Nikdo nikam neutíká. Hlídáme to.
+                <br />
+                Většinou do ~30 s.
               </p>
 
               <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
@@ -193,13 +197,13 @@ export default function CheckoutSuccess() {
                 <Package className="h-10 w-10 text-red-400" />
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                {showTimedOutCopy ? "PLATBA SE JEŠTĚ POTVRZUJE" : "NĚCO SE POKAZILO"}
+                {showTimedOutCopy ? "JEŠTĚ TO NEDOSKOČILO" : "ROZSYPALO SE TO"}
               </h1>
 
               <p className="font-sans text-white/60 mb-4">
                 {showTimedOutCopy
-                  ? "Možná to jen trvá déle. Zkus to za chvíli znovu – nebo nám pošli stamp."
-                  : "Platba možná proběhla, ale nepodařilo se ji ověřit."}
+                  ? "Potvrzení je ještě na cestě. Dej tomu chvilku a zkus to znovu – nebo nám pošli stamp."
+                  : "Ne u tebe. Někde po cestě. Zkus to znovu – nebo nám pošli stamp."}
               </p>
 
               <div className="border border-white/15 bg-black/30 p-4 mb-8 text-left">
@@ -218,7 +222,7 @@ export default function CheckoutSuccess() {
               </div>
 
               <p className="font-sans text-white/55 mb-8">
-                Kdyžtak napiš na <span className="text-white">info@zle.cz</span> a pošli nám tenhle stamp.
+                Když se to sekne, napiš na <span className="text-white">info@zle.cz</span> a pošli nám tenhle stamp.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -266,14 +270,15 @@ export default function CheckoutSuccess() {
                     className="font-display text-3xl md:text-5xl text-white tracking-tight leading-tight"
                     data-testid="text-success-title"
                   >
-                    OBJEDNÁVKA JE HOTOVÁ.
+                    HOTOVO.
+                    <span className="block text-white/85">OBJEDNÁVKA JE TVOJE.</span>
                     <span className="block text-white/70">JEĎ TO ZLE.</span>
                   </h1>
                 </div>
               </div>
 
               <p className="font-sans text-white/65 mb-6">
-                Platba prošla. Teď to bereme my — balíme, lepíme, posíláme.
+                Zaplaceno. Teď makáme my — balíme, lepíme, posíláme.
               </p>
 
               {/* STAMP */}
@@ -283,7 +288,11 @@ export default function CheckoutSuccess() {
                     ORDER TAG
                   </div>
                   <div className="font-mono text-sm text-white">
-                    {orderId ? orderId.slice(0, 8).toUpperCase() : (data.orderId ? String(data.orderId).slice(0, 8).toUpperCase() : "ZLE-NEW")}
+                    {orderId
+                      ? orderId.slice(0, 8).toUpperCase()
+                      : data.orderId
+                        ? String(data.orderId).slice(0, 8).toUpperCase()
+                        : "ZLE-NEW"}
                   </div>
                 </div>
                 <div className="border border-white/15 bg-white/5 p-4">
