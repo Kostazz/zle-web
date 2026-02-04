@@ -52,6 +52,14 @@ const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
 
 export default function Checkout() {
   const { items, total, clearCart } = useCart();
+
+  const itemsKey = useMemo(() => {
+    // Stable key to avoid quote spam when items array reference changes
+    return items
+      .map((i) => `${i.productId}:${i.quantity}`)
+      .sort()
+      .join("|");
+  }, [items]);
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
@@ -65,7 +73,7 @@ export default function Checkout() {
   const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("zasilkovna");
 
   const shippingOptions = useMemo(() => {
-    return SHIPPING_METHODS.map((m) => ({ id: m.id, label: m.label, priceCzk: m.priceCzk }));
+    return SHIPPING_METHODS.map((m) => ({ value: m.id, id: m.id, label: m.label, priceCzk: m.priceCzk }));
   }, []);
 
   const [isRecalculating, setIsRecalculating] = useState(false);
@@ -83,7 +91,12 @@ export default function Checkout() {
 
   useEffect(() => {
     let alive = true;
+    let t: any = null;
+    let inFlight = false;
+
     const run = async () => {
+      if (inFlight) return;
+      inFlight = true;
       setIsRecalculating(true);
       try {
         const res = await apiRequest("POST", "/api/checkout/quote", {
@@ -125,14 +138,16 @@ export default function Checkout() {
         });
       } finally {
         if (alive) setIsRecalculating(false);
+        inFlight = false;
       }
     };
-    run();
+    t = setTimeout(run, 250);
     return () => {
       alive = false;
+      if (t) clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, shippingMethod, paymentMethod]);
+  }, [itemsKey, shippingMethod, paymentMethod]);
 
   const shippingPrice = quote?.shippingCzk ?? 0;
   const codFee = paymentMethod === "cod" ? quote?.codCzk ?? 0 : 0;
