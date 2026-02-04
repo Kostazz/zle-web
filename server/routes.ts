@@ -5,6 +5,8 @@ import express from "express";
 import Stripe from "stripe";
 import { z } from "zod";
 
+import { calculateTotals, getShippingMeta, type ShippingMethodId } from "@shared/config/shipping";
+
 import { storage } from "./storage";
 import type { PaymentMethod } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
@@ -30,13 +32,7 @@ const STRIPE_TO_CZK = (unitAmount: number | null | undefined) =>
 // Shipping (server authority)
 // -----------------------------
 
-type ShippingMethodId = "zasilkovna" | "dpd" | "osobni";
-
-const SHIPPING: Record<ShippingMethodId, { label: string; priceCzk: number }> = {
-  zasilkovna: { label: "Zásilkovna", priceCzk: 89 },
-  dpd: { label: "DPD", priceCzk: 119 },
-  osobni: { label: "Osobní odběr", priceCzk: 0 },
-};
+// SSOT lives in @shared/config/shipping
 
 // -----------------------------
 // Helpers
@@ -125,6 +121,50 @@ export async function registerRoutes(app: Express) {
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+
+  // Checkout: quote totals (shipping + COD availability/fee) — used for micro-UX recalculation
+  app.post("/api/checkout/quote", async (req, res) => {
+    try {
+      const QuoteSchema = z.object({
+        items: z.array(CheckoutItemSchema).min(1),
+        shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+        paymentMethod: z.string().optional(),
+      });
+
+      const parsed = QuoteSchema.parse(req.body);
+
+      let subtotalCzk = 0;
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
+        }
+
+        const unitPriceCzk = Number(product.price) || 0;
+        if (unitPriceCzk <= 0) {
+          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
+        }
+
+        subtotalCzk += unitPriceCzk * item.quantity;
+      }
+
+      const totals = calculateTotals({
+        subtotalCzk,
+        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: parsed.paymentMethod || null,
+      });
+      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
+
+      return res.json({ success: true, ...totals });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return sendApiError(res, 400, "invalid_payload", err.flatten());
+      }
+
+      const message = err?.message || "unknown_error";
+      return sendApiError(res, 400, "invalid_request", { message });
+    }
+  });
   // Products
   app.get("/api/products", async (_req, res) => {
     try {
@@ -187,23 +227,30 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      const ship = SHIPPING[parsed.shippingMethod];
-      if (!ship) return sendApiError(res, 400, "unknown_shipping_method");
+      const shipMeta = getShippingMeta(parsed.shippingMethod as ShippingMethodId);
+      if (!shipMeta) return sendApiError(res, 400, "unknown_shipping_method");
 
-      if (ship.priceCzk > 0) {
+      const totals = calculateTotals({
+        subtotalCzk,
+        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: pm,
+      });
+      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
+
+      if (shipMeta.shippingCzk > 0) {
         line_items.push({
           quantity: 1,
           price_data: {
             currency: "czk",
-            unit_amount: CZK_TO_STRIPE(ship.priceCzk),
+            unit_amount: CZK_TO_STRIPE(shipMeta.shippingCzk),
             product_data: {
-              name: `Doprava: ${ship.label}`,
+              name: `Doprava: ${shipMeta.shippingLabel}`,
             },
           },
         });
       }
 
-      const totalCzk = subtotalCzk + ship.priceCzk;
+      const totalCzk = totals.totalCzk;
 
       // Stripe minimum guard (avoid ugly 500s)
       if (totalCzk < 15) {
@@ -220,9 +267,12 @@ export async function registerRoutes(app: Express) {
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
-          shippingLabel: ship.label,
+          shippingLabel: shipMeta.shippingLabel,
           subtotalCzk,
-          shippingCzk: ship.priceCzk,
+          shippingCzk: shipMeta.shippingCzk,
+          codAvailable: shipMeta.codAvailable,
+          codFeeCzk: shipMeta.codFeeCzk,
+          codCzk: totals.codCzk,
           totalCzk,
         }),
         total: Math.round(totalCzk),
@@ -284,7 +334,7 @@ export async function registerRoutes(app: Express) {
           customerZip: parsed.customerZip,
           shippingMethod: parsed.shippingMethod,
           subtotalCzk: String(subtotalCzk),
-          shippingCzk: String(ship.priceCzk),
+          shippingCzk: String(shipMeta.shippingCzk),
           totalCzk: String(totalCzk),
         },
       });
@@ -323,10 +373,23 @@ export async function registerRoutes(app: Express) {
         subtotalCzk += unitPriceCzk * item.quantity;
       }
 
-      const ship = SHIPPING[parsed.shippingMethod];
-      if (!ship) return sendApiError(res, 400, "unknown_shipping_method");
+      const shipMeta = getShippingMeta(parsed.shippingMethod as ShippingMethodId);
+      if (!shipMeta) return sendApiError(res, 400, "unknown_shipping_method");
 
-      const totalCzk = subtotalCzk + ship.priceCzk;
+      const totals = calculateTotals({
+        subtotalCzk,
+        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: "cod",
+      });
+      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
+
+      if (!totals.codAvailable) {
+        return sendApiError(res, 400, "cod_not_available_for_shipping", {
+          shippingMethod: parsed.shippingMethod,
+        });
+      }
+
+      const totalCzk = totals.totalCzk;
       if (totalCzk < 15) {
         return sendApiError(res, 400, "amount_too_small", { totalCzk });
       }
@@ -341,9 +404,12 @@ export async function registerRoutes(app: Express) {
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
-          shippingLabel: ship.label,
+          shippingLabel: shipMeta.shippingLabel,
           subtotalCzk,
-          shippingCzk: ship.priceCzk,
+          shippingCzk: shipMeta.shippingCzk,
+          codAvailable: shipMeta.codAvailable,
+          codFeeCzk: shipMeta.codFeeCzk,
+          codCzk: totals.codCzk,
           totalCzk,
         }),
         total: Math.round(totalCzk),
@@ -408,6 +474,41 @@ export async function registerRoutes(app: Express) {
       const message = err?.message || "unknown_error";
       console.error("[checkout] cancel failed:", err);
       return sendApiError(res, 500, "failed_to_cancel", { message });
+    }
+  });
+
+  // Checkout: order summary (used by non-Stripe success pages: COD / bank / crypto)
+  app.get("/api/checkout/order-summary/:orderId", async (req, res) => {
+    try {
+      const orderId = String(req.params.orderId || "").trim();
+      if (!orderId) return sendApiError(res, 400, "missing_order_id");
+
+      const order = await storage.getOrder(orderId);
+      if (!order) return sendApiError(res, 404, "order_not_found");
+
+      let payload: any = null;
+      try {
+        payload = order.items ? JSON.parse(order.items as any) : null;
+      } catch {
+        payload = null;
+      }
+
+      return res.json({
+        success: true,
+        orderId: order.id,
+        paymentMethod: order.paymentMethod,
+        totalCzk: typeof (order as any).total === "number" ? (order as any).total : Number((order as any).total),
+        shippingMethod: payload?.shippingMethod ?? null,
+        shippingLabel: payload?.shippingLabel ?? null,
+        shippingCzk: payload?.shippingCzk ?? null,
+        codFeeCzk: payload?.codFeeCzk ?? null,
+        codCzk: payload?.codCzk ?? null,
+        subtotalCzk: payload?.subtotalCzk ?? null,
+      });
+    } catch (err: any) {
+      const message = err?.message || "unknown_error";
+      console.error("[checkout] order-summary failed:", err);
+      return sendApiError(res, 500, "failed_to_get_order_summary", { message });
     }
   });
 
