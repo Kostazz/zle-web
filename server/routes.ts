@@ -349,6 +349,7 @@ export async function registerRoutes(app: Express) {
           reason: "not_paid",
           paymentStatus,
           orderId: orderIdFromMeta,
+          retryAfterMs: 2500,
         });
       }
 
