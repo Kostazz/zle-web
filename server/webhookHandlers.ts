@@ -3,7 +3,7 @@
  * ZLE v1.2.2: Idempotent via order_events + atomic stock deduction + transactional integrity
  * Do not reorder middleware — Stripe signature requires raw body
  */
-import { getStripeSync } from './stripeClient';
+import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { sendOrderConfirmationEmail } from './emailService';
 import { db } from './db';
@@ -12,9 +12,7 @@ import { eq, and, sql, gte } from 'drizzle-orm';
 import { emitOrderEvent, OpsEventType } from './ops/events';
 import { handleChargeback } from './refunds';
 import { finalizePaidOrder } from './paymentPipeline';
-type StripeSyncLike = {
-  processWebhook: (payload: Buffer, signature: string, uuid: string) => Promise<any>;
-};
+import { env } from './env';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string, uuid: string): Promise<void> {
@@ -28,17 +26,14 @@ export class WebhookHandlers {
       );
     }
 
-    const sync: StripeSyncLike | null = await getStripeSync().catch(() => null);
-  
-    
+    // Render-first: verify using Stripe's built-in signature verification.
+    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error("STRIPE_WEBHOOK_SECRET is missing");
+    }
 
-// Render-first: StripeSync may be unavailable/disabled
-if (!sync || typeof (sync as any).processWebhook !== "function") {
-  throw new Error("Stripe webhook processing is disabled (StripeSync unavailable).");
-}
-
-// processWebhook returns the verified event - use it instead of re-constructing
-const event = await (sync as any).processWebhook(payload, signature, uuid);
+    const stripe = await getUncachableStripeClient();
+    const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 
     
     // Handle specific events for our e-commerce flow
@@ -184,7 +179,8 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
 
   if (!stockAlreadyDeducted) {
     // Atomic stock deduction with fail-safe
-    const items: CartItem[] = JSON.parse(order.items);
+    const raw = JSON.parse(order.items);
+    const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
     const stockResult = await atomicStockDeduction(orderId, items);
     
     // Mark stock as deducted
@@ -275,7 +271,8 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
   const stockAlreadyDeducted = currentOrder[0]?.stockDeductedAt !== null;
 
   if (!stockAlreadyDeducted) {
-    const items: CartItem[] = JSON.parse(order.items);
+    const raw = JSON.parse(order.items);
+    const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
     const stockResult = await atomicStockDeduction(orderId, items);
     
     await db.update(orders).set({
