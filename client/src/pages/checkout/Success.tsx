@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Flame, Loader2, Package } from "lucide-react";
+import { getLastOrder } from "@/utils/orderStorage";
 
 type VerifyResponse =
   | {
@@ -27,6 +28,9 @@ export default function CheckoutSuccess() {
 
   const sessionId = params.get("session_id");
   const orderId = params.get("order_id");
+  const pm = params.get("pm") || null;
+
+  const lastLocalOrder = useMemo(() => getLastOrder(), []);
 
   // Polling settings (fail-safe for Stripe redirect timing + webhook delay)
   const MAX_POLLS = 12; // ~30s if interval 2500ms
@@ -82,30 +86,107 @@ export default function CheckoutSuccess() {
     data.reason === "not_paid" &&
     pollsRef.current >= MAX_POLLS;
 
+  // Non-Stripe flows (dobírka / bank / crypto)
   if (!sessionId) {
+    const stamp = orderId || lastLocalOrder?.id || null;
+    const isCod = pm === "cod";
+    const isBank = pm === "bank";
+    const isCrypto = pm && ["usdc", "btc", "eth", "sol", "pi"].includes(pm);
+
+    // If we still don't have any usable stamp, show the hard error.
+    if (!stamp) {
+      return (
+        <Layout>
+          <section className="py-16 md:py-24">
+            <div className="container mx-auto px-4">
+              <div className="max-w-md mx-auto text-center">
+                <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
+                  <Package className="h-10 w-10 text-red-400" />
+                </div>
+                <h1 className="font-display text-3xl text-white tracking-tight mb-4">
+                  CHYBÍ STAMP
+                </h1>
+                <p className="font-sans text-white/60 mb-8">
+                  Tenhle odkaz je neúplný. Pokud jsi objednával, pošli nám stamp a mrkneme na to.
+                </p>
+
+                <Button
+                  asChild
+                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+                >
+                  <Link href="/" data-testid="link-missing-session-to-home">
+                    ZPĚT NA HLAVNÍ STRÁNKU
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </section>
+        </Layout>
+      );
+    }
+
     return (
       <Layout>
-        <section className="py-16 md:py-24">
+        <section className="py-10 md:py-16">
           <div className="container mx-auto px-4">
-            <div className="max-w-md mx-auto text-center">
-              <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                <Package className="h-10 w-10 text-red-400" />
-              </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                CHYBÍ STAMP
-              </h1>
-              <p className="font-sans text-white/60 mb-8">
-                Tenhle odkaz je neúplný. Pokud jsi platil, pošli nám stamp a mrkneme na to.
-              </p>
+            <div className="max-w-2xl mx-auto">
+              <div className="border border-white/15 bg-black/35 p-6 md:p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    {isCod ? <Flame className="h-5 w-5 text-white" /> : <Check className="h-5 w-5 text-white" />}
+                  </div>
+                  <div>
+                    <h1 className="font-display text-3xl text-white tracking-tight">
+                      {isCod ? "DOBÍRKA ZAPNUTÁ" : "OBJEDNÁVKA PŘIJATÁ"}
+                    </h1>
+                    <p className="font-sans text-white/60">
+                      {isCod
+                        ? "Zaplatíš až u dveří. Zbytek je na nás."
+                        : isBank
+                          ? "Pošleme ti instrukce. Bez stresu."
+                          : isCrypto
+                            ? "Pošleme ti instrukce pro krypto platbu."
+                            : "Jsme v tom. Dali jsme tomu číslo. A jedeme."}
+                    </p>
+                  </div>
+                </div>
 
-              <Button
-                asChild
-                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-              >
-                <Link href="/" data-testid="link-missing-session-to-home">
-                  ZPĚT NA HLAVNÍ STRÁNKU
-                </Link>
-              </Button>
+                <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
+                  <div className="font-heading text-xs tracking-wider text-white/60 mb-2">ORDER STAMP</div>
+                  <div className="font-mono text-xs text-white/80 break-all">{stamp}</div>
+                </div>
+
+                {isCod && (
+                  <div className="border border-white/15 bg-black/25 p-4 mb-6">
+                    <div className="font-heading text-xs tracking-wider text-white/60 mb-2">DOBÍRKA – JAK TO POJEDE</div>
+                    <ul className="text-sm text-white/70 space-y-2 list-disc pl-5">
+                      <li>Zaplatíš při převzetí (kurýr / výdejní místo podle dopravy).</li>
+                      <li>Měj připravenou hotovost / kartu – podle dopravce.</li>
+                      <li>Jakmile to vyrazí, pošleme info do mailu.</li>
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Button
+                    asChild
+                    className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+                  >
+                    <Link href="/" data-testid="link-nonstripe-success-to-home">
+                      ZPĚT NA HLAVNÍ STRÁNKU
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="font-heading text-sm tracking-wider border-white/20 text-white hover:bg-white/10"
+                  >
+                    <Link href="/shop" data-testid="link-nonstripe-success-to-shop">
+                      JÍT DO SHOPU
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
