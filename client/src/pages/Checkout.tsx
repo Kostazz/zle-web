@@ -453,10 +453,10 @@ export default function Checkout() {
                       data-testid="radio-shipping-method"
                     >
                       {shippingOptions.map((method) => (
-                        <div key={method.id} className="flex items-center justify-between gap-4">
+                        <div key={method.value} className="flex items-center justify-between gap-4">
                           <div className="flex items-center">
                             <RadioGroupItem
-                              value={method.id}
+                              value={method.value}
                               id={`shipping-${method.id}`}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
                               data-testid={`radio-shipping-${method.id}`}
@@ -492,9 +492,9 @@ export default function Checkout() {
                       {PAYMENT_METHODS.map((method) => {
                         const Icon = method.icon;
                         return (
-                          <div key={method.id} className="flex items-center">
+                          <div key={method.value} className="flex items-center">
                             <RadioGroupItem
-                              value={method.id}
+                              value={method.value}
                               id={`payment-${method.value}`}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
                               data-testid={`radio-payment-${method.value}`}
