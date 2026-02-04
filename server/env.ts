@@ -24,22 +24,22 @@ const isReplit = Boolean(process.env.REPL_ID);
 export const flags = {
   // Auth: enabled on Replit by default, disabled elsewhere unless explicitly enabled
   ENABLE_AUTH: isReplit || isTruthy(process.env.ENABLE_AUTH),
-  
+
   // Stripe: enabled if key exists and not explicitly disabled
   ENABLE_STRIPE: process.env.ENABLE_STRIPE !== "false" && Boolean(
-    process.env.STRIPE_SECRET_KEY || 
+    process.env.STRIPE_SECRET_KEY ||
     (isReplit && (process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL))
   ),
-  
+
   // Email: enabled if RESEND_API_KEY exists
   ENABLE_EMAIL: Boolean(process.env.RESEND_API_KEY) && process.env.ENABLE_EMAIL !== "false",
-  
+
   // OPS webhooks: disabled by default in dev
   ENABLE_OPS: isTruthy(process.env.ENABLE_OPS),
-  
+
   // Seed on start: disabled by default
   SEED_ON_START: isTruthy(process.env.SEED_ON_START),
-  
+
   // DB available
   HAS_DATABASE: Boolean(process.env.DATABASE_URL),
 };
@@ -50,23 +50,26 @@ export const env = {
   PORT: parseInt(process.env.PORT || "5000", 10),
   DATABASE_URL: process.env.DATABASE_URL,
   SESSION_SECRET: getSessionSecret(),
-  
+
   // Stripe
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
-  
+  // Optional hardening for the webhook route: /api/stripe/webhook/:uuid
+  // If set, the incoming :uuid must match this value.
+  STRIPE_WEBHOOK_UUID: process.env.STRIPE_WEBHOOK_UUID,
+
   // Email
   RESEND_API_KEY: process.env.RESEND_API_KEY,
-  
+
   // OPS
   OPS_WEBHOOK_URL: process.env.OPS_WEBHOOK_URL,
   OPS_EMAIL_TO: process.env.OPS_EMAIL_TO,
-  
+
   // Replit auth
   REPL_ID: process.env.REPL_ID,
   REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
-  
+
   // Computed
   isDev,
   isReplit,
