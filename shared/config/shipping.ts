@@ -3,7 +3,8 @@
 
 export const SHIPPING_CURRENCY = "CZK";
 
-export type ShippingMethodId = "osobni" | "zasilkovna" | "dpd";
+// D3: Zjednodušený distribučák (Michal / TotalBoardShop) — 1 dopravce: GLS
+export type ShippingMethodId = "gls";
 
 export type ShippingMethod = {
   id: ShippingMethodId;
@@ -17,23 +18,9 @@ export type ShippingMethod = {
 
 export const SHIPPING_METHODS: ShippingMethod[] = [
   {
-    id: "osobni",
-    label: "Osobní odběr",
-    priceCzk: 0,
-    codAvailable: false,
-    codFeeCzk: 0,
-  },
-  {
-    id: "zasilkovna",
-    label: "Zásilkovna",
-    priceCzk: 89,
-    codAvailable: true,
-    codFeeCzk: 39,
-  },
-  {
-    id: "dpd",
-    label: "DPD",
-    priceCzk: 119,
+    id: "gls",
+    label: "GLS",
+    priceCzk: 109,
     codAvailable: true,
     codFeeCzk: 49,
   },
