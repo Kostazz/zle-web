@@ -10,8 +10,10 @@ import { calculateTotals, getShippingMeta, type ShippingMethodId } from "@shared
 import { storage } from "./storage";
 import type { PaymentMethod } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
+import { sendFulfillmentNewOrderEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { atomicStockDeduction } from "./webhookHandlers";
+import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { db } from "./db";
 import { orders } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -96,7 +98,7 @@ const CreateSessionSchema = z.object({
   customerAddress: z.string().min(1).max(240),
   customerCity: z.string().min(1).max(120),
   customerZip: z.string().min(1).max(20),
-  shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+  shippingMethod: z.enum(["gls"]).default("gls"),
   paymentMethod: z.string().optional(),
 });
 
@@ -107,7 +109,7 @@ const CreateCodOrderSchema = z.object({
   customerAddress: z.string().min(1).max(240),
   customerCity: z.string().min(1).max(120),
   customerZip: z.string().min(1).max(20),
-  shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+  shippingMethod: z.enum(["gls"]).default("gls"),
 });
 
 // -----------------------------
@@ -120,6 +122,49 @@ export async function registerRoutes(app: Express) {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  // Accounting exports (D3) — minimal paper / monthly invoices
+  // Protect with EXPORT_TOKEN (header: x-export-token or query: ?token=...)
+  function requireExportToken(req: Request, res: Response): boolean {
+    const expected = process.env.EXPORT_TOKEN;
+    if (!expected) return sendApiError(res, 503, "exports_not_configured");
+    const provided = (req.headers["x-export-token"] as string | undefined) || (req.query.token as string | undefined);
+    if (!provided || provided !== expected) return sendApiError(res, 401, "unauthorized");
+    return true;
+  }
+
+  app.get("/api/exports/orders.csv", async (req, res) => {
+    try {
+      if (!requireExportToken(req, res)) return;
+      const csv = await exportOrdersCsv();
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      return res.status(200).send(csv);
+    } catch (e: any) {
+      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+    }
+  });
+
+  app.get("/api/exports/payouts.csv", async (req, res) => {
+    try {
+      if (!requireExportToken(req, res)) return;
+      const csv = await exportPayoutsCsv();
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      return res.status(200).send(csv);
+    } catch (e: any) {
+      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+    }
+  });
+
+  app.get("/api/exports/ledger.csv", async (req, res) => {
+    try {
+      if (!requireExportToken(req, res)) return;
+      const csv = await exportLedgerCsv();
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      return res.status(200).send(csv);
+    } catch (e: any) {
+      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+    }
+  });
+
 
 
   // Checkout: quote totals (shipping + COD availability/fee) — used for micro-UX recalculation
@@ -127,7 +172,7 @@ export async function registerRoutes(app: Express) {
     try {
       const QuoteSchema = z.object({
         items: z.array(CheckoutItemSchema).min(1),
-        shippingMethod: z.enum(["zasilkovna", "dpd", "osobni"]).default("zasilkovna"),
+        shippingMethod: z.enum(["gls"]).default("gls"),
         paymentMethod: z.string().optional(),
       });
 
@@ -433,6 +478,11 @@ export async function registerRoutes(app: Express) {
         console.error("[cod] stock deduction failed; order cancelled", { orderId: order.id, error: (e as any)?.message });
         return sendApiError(res, 409, "out_of_stock_or_reservation_failed", { orderId: order.id });
       }
+
+      // Notify fulfillment immediately (COD is created without Stripe)
+      sendFulfillmentNewOrderEmail(order).catch((err) =>
+        console.error('[cod] Failed to send fulfillment email:', err)
+      );
 
       return res.json({ success: true, orderId: order.id });
     } catch (err: any) {
