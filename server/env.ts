@@ -31,8 +31,8 @@ export const flags = {
     (isReplit && (process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL))
   ),
 
-  // Email: enabled if RESEND_API_KEY exists
-  ENABLE_EMAIL: Boolean(process.env.RESEND_API_KEY) && process.env.ENABLE_EMAIL !== "false",
+  // Email: enabled if RESEND_API_KEY exists (prod) OR on Replit (connector)
+  ENABLE_EMAIL: process.env.ENABLE_EMAIL !== "false" && (Boolean(process.env.RESEND_API_KEY) || isReplit),
 
   // OPS webhooks: disabled by default in dev
   ENABLE_OPS: isTruthy(process.env.ENABLE_OPS),
@@ -61,6 +61,11 @@ export const env = {
 
   // Email
   RESEND_API_KEY: process.env.RESEND_API_KEY,
+  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+  FULFILLMENT_EMAIL_TO: process.env.FULFILLMENT_EMAIL_TO,
+
+  // Exports (accounting)
+  EXPORT_TOKEN: process.env.EXPORT_TOKEN,
 
   // OPS
   OPS_WEBHOOK_URL: process.env.OPS_WEBHOOK_URL,
