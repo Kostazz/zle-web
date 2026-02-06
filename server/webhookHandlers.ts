@@ -5,7 +5,7 @@
  */
 import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
-import { sendOrderConfirmationEmail } from './emailService';
+import { sendOrderConfirmationEmail, sendFulfillmentNewOrderEmail } from './emailService';
 import { db } from './db';
 import { orders, orderEvents, products, auditLog, type CartItem } from '@shared/schema';
 import { eq, and, sql, gte } from 'drizzle-orm';
@@ -233,10 +233,15 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   
   emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
   
-  // Send order confirmation email
+  // Send order confirmation email (customer)
   if (updatedOrder) {
-    sendOrderConfirmationEmail(updatedOrder).catch(err => 
+    sendOrderConfirmationEmail(updatedOrder).catch((err) =>
       console.error('Failed to send confirmation email:', err)
+    );
+
+    // Send fulfillment email (Michal / TotalBoardShop)
+    sendFulfillmentNewOrderEmail(updatedOrder).catch((err) =>
+      console.error('Failed to send fulfillment email:', err)
     );
   }
 }
