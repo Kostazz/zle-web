@@ -53,7 +53,7 @@ export default function Checkout() {
   });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [paymentNetwork, setPaymentNetwork] = useState<string>("");
-  const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("zasilkovna");
+  const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("gls");
 
   const shippingOptions = useMemo(() => {
     return SHIPPING_METHODS.map((m) => ({ id: m.id, value: m.id, label: m.label, priceCzk: m.priceCzk }));
