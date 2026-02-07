@@ -3,8 +3,8 @@
 
 export const SHIPPING_CURRENCY = "CZK";
 
-// D3: Zjednodušený distribučák (Michal / TotalBoardShop) — 1 dopravce: GLS
-export type ShippingMethodId = "gls";
+// D3: jednoduchý provozní model (Michal) — GLS + osobní vyzvednutí
+export type ShippingMethodId = "gls" | "pickup";
 
 export type ShippingMethod = {
   id: ShippingMethodId;
@@ -23,6 +23,14 @@ export const SHIPPING_METHODS: ShippingMethod[] = [
     priceCzk: 109,
     codAvailable: true,
     codFeeCzk: 49,
+  },
+  {
+    id: "pickup",
+    label: "Osobní vyzvednutí na krámě",
+    priceCzk: 0,
+    // platba na místě = bez dobírkového příplatku
+    codAvailable: true,
+    codFeeCzk: 0,
   },
 ];
 
