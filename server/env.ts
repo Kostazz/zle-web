@@ -61,6 +61,7 @@ export const env = {
 
   // Email
   RESEND_API_KEY: process.env.RESEND_API_KEY,
+  // IMPORTANT (production): set to an address on a VERIFIED domain in Resend (otherwise you're stuck in test mode).
   RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
   FULFILLMENT_EMAIL_TO: process.env.FULFILLMENT_EMAIL_TO,
 
@@ -69,61 +70,17 @@ export const env = {
 
   // OPS
   OPS_WEBHOOK_URL: process.env.OPS_WEBHOOK_URL,
+  OPS_WEBHOOK_SECRET: process.env.OPS_WEBHOOK_SECRET,
   OPS_EMAIL_TO: process.env.OPS_EMAIL_TO,
 
-  // Replit auth
-  REPL_ID: process.env.REPL_ID,
-  REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
+  // Cron / jobs
+  DAILY_LINE_CRON_SECRET: process.env.DAILY_LINE_CRON_SECRET,
+  DAILY_LINE_ENABLE: process.env.DAILY_LINE_ENABLE,
 
-  // Computed
-  isDev,
-  isReplit,
+  // Client URL (optional)
+  PUBLIC_URL: process.env.PUBLIC_URL,
+
+  // Dev helpers
+  IS_DEV: isDev,
+  IS_REPLIT: isReplit,
 };
-
-// Print startup status table
-export function printEnvStatus(): void {
-  const status = (enabled: boolean, configured: boolean) => {
-    if (!enabled) return "disabled";
-    return configured ? "enabled ✓" : "enabled but missing config ⚠";
-  };
-
-  console.log("\n┌─────────────────────────────────────────┐");
-  console.log("│           ZLE Environment Status         │");
-  console.log("├─────────────────────────────────────────┤");
-  console.log(`│  Mode:     ${env.isDev ? "development" : "production"}`.padEnd(42) + "│");
-  console.log(`│  Platform: ${env.isReplit ? "Replit" : "Local/Codespaces"}`.padEnd(42) + "│");
-  console.log("├─────────────────────────────────────────┤");
-  console.log(`│  Database: ${flags.HAS_DATABASE ? "configured ✓" : "not configured ⚠"}`.padEnd(42) + "│");
-  console.log(`│  Auth:     ${status(flags.ENABLE_AUTH, Boolean(env.REPL_ID))}`.padEnd(42) + "│");
-  console.log(`│  Stripe:   ${status(flags.ENABLE_STRIPE, Boolean(env.STRIPE_SECRET_KEY) || env.isReplit)}`.padEnd(42) + "│");
-  console.log(`│  Email:    ${status(flags.ENABLE_EMAIL, Boolean(env.RESEND_API_KEY))}`.padEnd(42) + "│");
-  console.log(`│  OPS:      ${status(flags.ENABLE_OPS, Boolean(env.OPS_WEBHOOK_URL))}`.padEnd(42) + "│");
-  console.log("└─────────────────────────────────────────┘\n");
-
-  // Warnings for common issues
-  if (!flags.HAS_DATABASE) {
-    console.warn("[env] ⚠ DATABASE_URL not set - running in no-db mode (limited functionality)");
-  }
-  if (flags.ENABLE_AUTH && !env.REPL_ID) {
-    console.warn("[env] ⚠ ENABLE_AUTH=true but REPL_ID missing - auth will be disabled");
-  }
-  if (flags.ENABLE_STRIPE && !env.STRIPE_SECRET_KEY && !env.isReplit) {
-    console.warn("[env] ⚠ ENABLE_STRIPE=true but STRIPE_SECRET_KEY missing - payments disabled");
-  }
-}
-
-// Health check data
-export function getHealthData() {
-  return {
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    environment: env.NODE_ENV,
-    flags: {
-      auth: flags.ENABLE_AUTH && Boolean(env.REPL_ID),
-      stripe: flags.ENABLE_STRIPE,
-      email: flags.ENABLE_EMAIL,
-      ops: flags.ENABLE_OPS,
-      database: flags.HAS_DATABASE,
-    },
-  };
-}
