@@ -1,10 +1,20 @@
 // server/emailService.ts
 // Email service for ZLE e-commerce - customer confirmations + fulfillment notifications
 import { getUncachableResendClient } from "./resendClient";
-import type { Order, CartItem } from "@shared/schema";
+import { storage } from "./storage";
+import type { Order } from "@shared/schema";
+
+type EmailLineItem = {
+  productId?: string;
+  name: string;
+  size?: string;
+  quantity: number;
+  unitPriceCzk: number;
+};
 
 type ParsedOrderItems = {
-  items: CartItem[];
+  // Can be legacy CartItem[] OR current CheckoutItem[] ({ productId, quantity, size })
+  items: any[];
   shippingMethod?: string;
   shippingLabel?: string;
   subtotalCzk?: number;
@@ -17,13 +27,13 @@ function parseOrderItems(raw: string): ParsedOrderItems {
   try {
     const parsed = JSON.parse(raw);
 
-    // Legacy: stored as plain CartItem[]
+    // Legacy: stored as plain array (either CartItem[] OR CheckoutItem[])
     if (Array.isArray(parsed)) {
-      return { items: parsed as CartItem[] };
+      return { items: parsed as any[] };
     }
 
     // Current: stored as object { items, shipping..., totals... }
-    const items = Array.isArray(parsed?.items) ? (parsed.items as CartItem[]) : [];
+    const items = Array.isArray(parsed?.items) ? (parsed.items as any[]) : [];
     return {
       items,
       shippingMethod: parsed?.shippingMethod,
@@ -38,21 +48,123 @@ function parseOrderItems(raw: string): ParsedOrderItems {
   }
 }
 
-function formatItemsHtml(items: CartItem[]) {
+function safeStr(v: unknown, fallback = "-") {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length ? s : fallback;
+}
+
+function safeNum(v: unknown, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getCustomerFromOrder(order: Order) {
+  // Current DB schema
+  const name = (order as any).customerName ?? (order as any).name;
+  const email = (order as any).customerEmail ?? (order as any).email;
+  const address = (order as any).customerAddress ?? (order as any).address;
+  const city = (order as any).customerCity ?? (order as any).city;
+  const zip = (order as any).customerZip ?? (order as any).zip;
+  const phone = (order as any).customerPhone ?? (order as any).phone;
+
+  return {
+    name: safeStr(name),
+    email: safeStr(email),
+    address: safeStr(address),
+    city: safeStr(city),
+    zip: safeStr(zip),
+    phone: safeStr(phone),
+  };
+}
+
+async function normalizeEmailItems(rawItems: any[]): Promise<EmailLineItem[]> {
+  // Supports:
+  // A) legacy CartItem[] { name, price, size, quantity, productId? }
+  // B) current checkout items { productId, quantity, size? }
+  if (!Array.isArray(rawItems) || rawItems.length === 0) return [];
+
+  const productCache = new Map<string, { name: string; price: number }>();
+
+  return Promise.all(
+    rawItems.map(async (raw) => {
+      const productId = typeof raw?.productId === "string" ? raw.productId : undefined;
+
+      // If we already have full data, keep it (legacy)
+      const legacyName = typeof raw?.name === "string" ? raw.name : undefined;
+      const legacyPrice = raw?.price;
+
+      const quantity = Math.max(1, Math.min(99, Math.floor(safeNum(raw?.quantity, 1))));
+      const sizeRaw = typeof raw?.size === "string" ? raw.size : raw?.size == null ? "" : String(raw.size);
+      const size = safeStr(sizeRaw, "-");
+
+      if (legacyName) {
+        return {
+          productId,
+          name: safeStr(legacyName, productId ? `Produkt (${productId})` : "Produkt"),
+          size: size === "-" ? undefined : size,
+          quantity,
+          unitPriceCzk: Math.max(0, Math.round(safeNum(legacyPrice, 0))),
+        };
+      }
+
+      if (!productId) {
+        return {
+          name: "Produkt",
+          size: size === "-" ? undefined : size,
+          quantity,
+          unitPriceCzk: 0,
+        };
+      }
+
+      // Fetch product details (server-side truth)
+      try {
+        if (!productCache.has(productId)) {
+          const product = await storage.getProduct(productId);
+          productCache.set(productId, {
+            name: product?.name ? String(product.name) : `Neznámý produkt (${productId})`,
+            price: Math.max(0, Math.round(safeNum((product as any)?.price, 0))),
+          });
+        }
+      } catch {
+        if (!productCache.has(productId)) {
+          productCache.set(productId, {
+            name: `Neznámý produkt (${productId})`,
+            price: 0,
+          });
+        }
+      }
+
+      const p = productCache.get(productId)!;
+      return {
+        productId,
+        name: safeStr(p.name, `Produkt (${productId})`),
+        size: size === "-" ? undefined : size,
+        quantity,
+        unitPriceCzk: p.price,
+      };
+    }),
+  );
+}
+
+function formatItemsHtml(items: EmailLineItem[]) {
   return items
-    .map(
-      (item) =>
-        `${item.quantity}× <b>${item.name}</b> (${item.size}) — ${(item.price || 0).toLocaleString()} Kč`
-    )
+    .map((item) => {
+      const sizePart = item.size ? ` (${item.size})` : "";
+      return `${item.quantity}× <b>${safeStr(item.name, "Produkt")}</b>${sizePart} — ${(
+        item.unitPriceCzk || 0
+      ).toLocaleString()} Kč`;
+    })
     .join("<br />");
 }
 
-function formatItemsText(items: CartItem[]) {
+function formatItemsText(items: EmailLineItem[]) {
   return items
-    .map(
-      (item) =>
-        `${item.quantity}x ${item.name} (${item.size}) - ${(item.price || 0).toLocaleString()} Kč`
-    )
+    .map((item) => {
+      const sizePart = item.size ? ` (${item.size})` : "";
+      return `${item.quantity}x ${safeStr(item.name, "Produkt")}${sizePart} - ${(
+        item.unitPriceCzk || 0
+      ).toLocaleString()} Kč`;
+    })
     .join("\n");
 }
 
@@ -88,7 +200,7 @@ export async function sendOrderConfirmationEmail(order: Order): Promise<boolean>
     }
 
     const parsed = parseOrderItems(order.items);
-    const items = parsed.items;
+    const items = await normalizeEmailItems(parsed.items);
 
     const itemsList = formatItemsHtml(items);
 
@@ -145,7 +257,8 @@ export async function sendOrderConfirmationEmail(order: Order): Promise<boolean>
 
     const subject = `ZLE • Objednávka přijatá #${order.id.slice(0, 8)} • ${shippingLabel}`;
 
-    const to = order.email;
+    const customer = getCustomerFromOrder(order);
+    const to = customer.email;
     if (!to) return false;
 
     await client.emails.send({
@@ -181,7 +294,7 @@ export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolea
     }
 
     const parsed = parseOrderItems(order.items);
-    const items = parsed.items;
+    const items = await normalizeEmailItems(parsed.items);
 
     const shippingLabel = parsed.shippingLabel || "Doprava";
     const paymentMethod = (order.paymentMethod || "card").toUpperCase();
@@ -200,16 +313,19 @@ export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolea
 
     const itemsText = formatItemsText(items);
 
+    const customer = getCustomerFromOrder(order);
+
     const itemsRowsHtml = items
       .map((item) => {
-        const qty = item.quantity || 0;
-        const unit = item.price || 0;
+        const qty = Math.max(0, item.quantity || 0);
+        const unit = Math.max(0, item.unitPriceCzk || 0);
         const lineTotal = unit * qty;
+        const sizeLabel = item.size ? safeStr(item.size, "-") : "-";
         return `
           <tr>
             <td style="padding:10px 12px;border-bottom:1px solid #e8e8e8;">
-              <div style="font-weight:800;color:#111;">${item.name}</div>
-              <div style="font-size:12px;color:#666;margin-top:2px;">Velikost: ${item.size}</div>
+              <div style="font-weight:800;color:#111;">${safeStr(item.name, "Produkt")}</div>
+              <div style="font-size:12px;color:#666;margin-top:2px;">Velikost: ${sizeLabel}</div>
               <div style="font-size:12px;color:#666;margin-top:2px;">Cena/ks: ${unit.toLocaleString()} Kč</div>
             </td>
             <td style="padding:10px 12px;border-bottom:1px solid #e8e8e8;text-align:center;color:#111;font-weight:700;">${qty}×</td>
@@ -229,9 +345,9 @@ export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolea
       `ID: ${order.id}`,
       `Stav: ${orderStatus} / platba: ${paymentStatus}`,
       "",
-      `Zákazník: ${order.name || "-"} (${order.email || "-"})`,
-      `Telefon: ${order.phone || "-"}`,
-      `Adresa: ${order.address || "-"}, ${order.city || "-"} ${order.zip || "-"}`,
+      `Zákazník: ${customer.name} (${customer.email})`,
+      `Telefon: ${customer.phone}`,
+      `Adresa: ${customer.address}, ${customer.city} ${customer.zip}`,
       "",
       `Doprava: ${shippingLabel}`,
       `Platba: ${paymentMethod}`,
@@ -303,16 +419,16 @@ export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolea
                   <td valign="top" style="padding-right:12px;">
                     <div style="font-family:Arial, sans-serif;font-size:12px;color:#666;letter-spacing:1px;text-transform:uppercase;">Zákazník</div>
                     <div style="font-family:Arial, sans-serif;font-size:14px;color:#111;margin-top:6px;line-height:1.5;">
-                      <b>${order.name || "-"}</b><br/>
-                      ${order.email || "-"}<br/>
-                      ${order.phone || "-"}
+                      <b>${customer.name}</b><br/>
+                      ${customer.email}<br/>
+                      ${customer.phone}
                     </div>
                   </td>
                   <td valign="top" style="padding-left:12px;border-left:1px solid #eeeeee;">
                     <div style="font-family:Arial, sans-serif;font-size:12px;color:#666;letter-spacing:1px;text-transform:uppercase;">Doručení</div>
                     <div style="font-family:Arial, sans-serif;font-size:14px;color:#111;margin-top:6px;line-height:1.5;">
-                      ${order.address || "-"}<br/>
-                      ${order.city || "-"} ${order.zip || "-"}
+                      ${customer.address}<br/>
+                      ${customer.city} ${customer.zip}
                     </div>
                   </td>
                 </tr>
