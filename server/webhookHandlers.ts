@@ -111,6 +111,7 @@ export async function atomicStockDeduction(
   const failures: string[] = [];
   
   for (const item of items) {
+    const itemLabel = item.name ?? item.productId;
     try {
       // Atomic conditional update: only deduct if stock >= quantity
       const result = await db
@@ -126,11 +127,11 @@ export async function atomicStockDeduction(
       
       if (result.length === 0) {
         // Stock was insufficient - this is an oversell situation
-        failures.push(`${item.name} (${item.productId}): requested ${item.quantity}`);
+        failures.push(`${itemLabel} (${item.productId}): requested ${item.quantity}`);
         console.warn(`[stock] Oversell detected for ${item.productId}, order ${orderId}`);
       }
     } catch (error) {
-      failures.push(`${item.name} (${item.productId}): deduction failed`);
+      failures.push(`${itemLabel} (${item.productId}): deduction failed`);
       console.error(`[stock] Failed to deduct stock for ${item.productId}:`, error);
     }
   }

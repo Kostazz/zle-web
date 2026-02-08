@@ -10,10 +10,11 @@ import { calculateTotals, getShippingMeta, type ShippingMethodId } from "@shared
 import { storage } from "./storage";
 import type { PaymentMethod } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
-import { sendFulfillmentNewOrderEmail } from "./emailService";
+import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { atomicStockDeduction } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
+import { registerOpsRoutes } from "./opsRoutes";
 import { db } from "./db";
 import { orders } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -124,6 +125,7 @@ export async function registerRoutes(app: Express) {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  registerOpsRoutes(app);
   // Accounting exports (D3) — minimal paper / monthly invoices
   // Protect with EXPORT_TOKEN (header: x-export-token or query: ?token=...)
   function requireExportToken(req: Request, res: Response): boolean {
@@ -366,26 +368,40 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        currency: "czk",
-        line_items,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        customer_email: parsed.customerEmail,
-        client_reference_id: order.id,
-        metadata: {
-          orderId: order.id,
-          customerName: parsed.customerName,
-          customerAddress: parsed.customerAddress,
-          customerCity: parsed.customerCity,
-          customerZip: parsed.customerZip,
-          shippingMethod: parsed.shippingMethod,
-          subtotalCzk: String(subtotalCzk),
-          shippingCzk: String(shipMeta.shippingCzk),
-          totalCzk: String(totalCzk),
-        },
-      });
+      let session: Stripe.Checkout.Session;
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          currency: "czk",
+          line_items,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          customer_email: parsed.customerEmail,
+          client_reference_id: order.id,
+          metadata: {
+            orderId: order.id,
+            customerName: parsed.customerName,
+            customerAddress: parsed.customerAddress,
+            customerCity: parsed.customerCity,
+            customerZip: parsed.customerZip,
+            shippingMethod: parsed.shippingMethod,
+            subtotalCzk: String(subtotalCzk),
+            shippingCzk: String(shipMeta.shippingCzk),
+            totalCzk: String(totalCzk),
+          },
+        });
+      } catch (e) {
+        // Prevent orphan orders if Stripe session creation fails
+        try {
+          await storage.updateOrder(order.id, { status: "cancelled", paymentStatus: "unpaid" });
+        } catch (updateErr) {
+          console.error("[checkout] failed to cancel order after Stripe error:", {
+            orderId: order.id,
+            error: (updateErr as any)?.message,
+          });
+        }
+        throw e;
+      }
 
       if (!session.url) return sendApiError(res, 500, "missing_session_url");
       return res.json({ url: session.url, orderId: order.id });
@@ -472,6 +488,12 @@ export async function registerRoutes(app: Express) {
           .update(orders)
           .set({ stockDeductedAt: new Date() })
           .where(eq(orders.id, order.id));
+
+        // Mark COD order as confirmed (stock reserved) but unpaid
+        await storage.updateOrder(order.id, {
+          status: "confirmed",
+          paymentStatus: "unpaid",
+        });
       } catch (e) {
         // If stock deduction fails, cancel the order to avoid phantom reservations
         await storage.updateOrder(order.id, {
@@ -483,8 +505,15 @@ export async function registerRoutes(app: Express) {
       }
 
       // Notify fulfillment immediately (COD is created without Stripe)
-      sendFulfillmentNewOrderEmail(order).catch((err) =>
-        console.error('[cod] Failed to send fulfillment email:', err)
+      const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+
+      sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+        console.error("[cod] Failed to send fulfillment email:", err)
+      );
+
+      // Customer confirmation email (best-effort)
+      sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+        console.error("[cod] Failed to send customer confirmation email:", err)
       );
 
       return res.json({ success: true, orderId: order.id });
@@ -511,6 +540,10 @@ export async function registerRoutes(app: Express) {
       // If already paid/confirmed, we do NOT cancel here.
       if (order.paymentStatus === "paid" || order.status === "confirmed") {
         return sendApiError(res, 409, "cannot_cancel_paid_order", { orderId });
+      }
+
+      if (order.stockDeductedAt) {
+        console.warn("[cancel] Stock was already deducted; no automatic stock return", { orderId });
       }
 
       if (order.status === "cancelled") {
