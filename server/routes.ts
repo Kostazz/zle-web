@@ -540,6 +540,10 @@ export async function registerRoutes(app: Express) {
         return sendApiError(res, 409, "cannot_cancel_paid_order", { orderId });
       }
 
+      if (order.stockDeductedAt) {
+        console.warn("[cancel] Stock was already deducted; no automatic stock return", { orderId });
+      }
+
       if (order.status === "cancelled") {
         return res.json({ success: true, orderId, alreadyCancelled: true });
       }
