@@ -17,6 +17,7 @@ const Contact = lazy(() => import("@/pages/Contact"));
 const Checkout = lazy(() => import("@/pages/Checkout"));
 const CheckoutSuccess = lazy(() => import("@/pages/checkout/Success"));
 const CheckoutCancel = lazy(() => import("@/pages/checkout/Cancel"));
+const OpsDashboard = lazy(() => import("@/pages/ops/OpsDashboard"));
 const Orders = lazy(() => import("@/pages/account/Orders"));
 const Addresses = lazy(() => import("@/pages/account/Addresses"));
 const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard"));
@@ -52,6 +53,7 @@ function Router() {
 
         <Route path="/checkout/success" component={CheckoutSuccess} />
         <Route path="/checkout/cancel" component={CheckoutCancel} />
+        <Route path="/ops" component={OpsDashboard} />
         <Route path="/account/orders" component={Orders} />
         <Route path="/account/addresses" component={Addresses} />
         <Route path="/admin" component={AdminDashboard} />

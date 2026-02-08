@@ -67,6 +67,7 @@ export const env = {
   EXPORT_TOKEN: process.env.EXPORT_TOKEN,
 
   // OPS
+  OPS_TOKEN: process.env.OPS_TOKEN,
   OPS_WEBHOOK_URL: process.env.OPS_WEBHOOK_URL,
   OPS_WEBHOOK_SECRET: process.env.OPS_WEBHOOK_SECRET,
   OPS_EMAIL_TO: process.env.OPS_EMAIL_TO,

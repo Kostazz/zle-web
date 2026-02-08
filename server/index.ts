@@ -12,6 +12,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
+import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 
 const app = express();
 app.disable("x-powered-by");
@@ -221,6 +222,7 @@ function serveStaticProd(app: express.Express) {
   }
 
   await registerRoutes(app);
+  startAbandonedOrderSweeper();
 
   if (isProd()) {
     serveStaticProd(app);

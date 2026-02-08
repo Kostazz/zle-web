@@ -14,6 +14,7 @@ import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emai
 import { finalizePaidOrder } from "./paymentPipeline";
 import { atomicStockDeduction } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
+import { registerOpsRoutes } from "./opsRoutes";
 import { db } from "./db";
 import { orders } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -124,6 +125,7 @@ export async function registerRoutes(app: Express) {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  registerOpsRoutes(app);
   // Accounting exports (D3) — minimal paper / monthly invoices
   // Protect with EXPORT_TOKEN (header: x-export-token or query: ?token=...)
   function requireExportToken(req: Request, res: Response): boolean {
