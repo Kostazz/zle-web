@@ -60,6 +60,53 @@ if (isProd()) {
   app.set("trust proxy", 1);
 }
 
+// ----- canonical domain + HTTPS (SEO hardening) -----
+// Enforces: https + non-www (based on PUBLIC_BASE_URL)
+if (isProd()) {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    // Skip health/API: keep it simple and avoid surprises for webhooks/calls
+    if (req.path.startsWith("/api") || req.path === "/health") return next();
+
+    const base = process.env.PUBLIC_BASE_URL;
+    if (!base) return next();
+
+    let canonicalHost = "";
+    let canonicalProto = "https";
+    try {
+      const u = new URL(base);
+      canonicalHost = u.host;
+      canonicalProto = u.protocol.replace(":", "") || "https";
+    } catch {
+      return next();
+    }
+
+    const xfProto = (req.headers["x-forwarded-proto"] as string | undefined) || req.protocol;
+    const xfHost = (req.headers["x-forwarded-host"] as string | undefined) || req.get("host") || "";
+    const reqProto = (xfProto || "https").split(",")[0].trim();
+    const reqHost = (xfHost || "").split(",")[0].trim();
+
+    // Normalize target URL (keep path + query)
+    const targetProto = canonicalProto || "https";
+    const targetHost = canonicalHost;
+
+    const needsProto = reqProto && targetProto && reqProto !== targetProto;
+    const needsHost = reqHost && targetHost && reqHost !== targetHost;
+
+    if (needsProto || needsHost) {
+      const target = `${targetProto}://${targetHost}${req.originalUrl}`;
+      return res.redirect(301, target);
+    }
+
+    // Extra safety: if canonicalHost is non-www, kill accidental www even without PUBLIC_BASE_URL mismatch
+    if (!targetHost.startsWith("www.") && reqHost.startsWith("www.")) {
+      const target = `${targetProto}://${targetHost}${req.originalUrl}`;
+      return res.redirect(301, target);
+    }
+
+    return next();
+  });
+}
+
 app.use(
   helmet({
     contentSecurityPolicy: false,

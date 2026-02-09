@@ -13,6 +13,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://zleshop.cz/story</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://zleshop.cz/crew</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -26,5 +31,30 @@
     <loc>https://zleshop.cz/legal</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/legal/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/legal/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/legal/cookies</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/legal/returns</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/legal/contact</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
   </url>
 </urlset>
