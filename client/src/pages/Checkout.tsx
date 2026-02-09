@@ -265,6 +265,7 @@ export default function Checkout() {
       customerCity: string;
       customerZip: string;
       shippingMethod: ShippingMethodId;
+      paymentMethod: PaymentMethod;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-cod-order", data);
       return response.json();
@@ -291,7 +292,47 @@ export default function Checkout() {
     },
   });
 
-  const isSubmitting = checkoutMutation.isPending || codMutation.isPending;
+  const inPersonMutation = useMutation({
+    mutationFn: async (data: {
+      items: typeof items;
+      customerName: string;
+      customerEmail: string;
+      customerAddress: string;
+      customerCity: string;
+      customerZip: string;
+      shippingMethod: ShippingMethodId;
+      paymentMethod: PaymentMethod;
+    }) => {
+      const response = await apiRequest("POST", "/api/checkout/create-in-person-order", data);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.reason || "Platbu na místě se nepodařilo založit.");
+      }
+      return payload;
+    },
+    onSuccess: (data) => {
+      const orderId = data?.orderId;
+      if (!orderId) {
+        toast({
+          title: "Chyba",
+          description: "Platbu na místě se nepodařilo založit. Zkus to znovu.",
+          variant: "destructive",
+        });
+        return;
+      }
+      clearCart();
+      window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=in_person`;
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Chyba",
+        description: error.message || "Platbu na místě se nepodařilo založit. Zkus to znovu.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isSubmitting = checkoutMutation.isPending || codMutation.isPending || inPersonMutation.isPending;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -338,14 +379,6 @@ export default function Checkout() {
         title: "Platba není dostupná",
         description: selectedPaymentReason ?? "Zvolená platba není dostupná pro vybranou dopravu.",
         variant: "destructive",
-      });
-      return;
-    }
-
-    if (isInPersonPayment) {
-      toast({
-        title: "Platba na místě",
-        description: "Platba na místě bude potvrzena v dalším kroku.",
       });
       return;
     }
@@ -407,6 +440,18 @@ export default function Checkout() {
         customerCity: formData.city,
         customerZip: formData.zip,
         shippingMethod,
+        paymentMethod: "cod",
+      });
+    } else if (paymentMethod === "in_person") {
+      inPersonMutation.mutate({
+        items,
+        customerName: formData.name,
+        customerEmail: formData.email,
+        customerAddress: formData.address,
+        customerCity: formData.city,
+        customerZip: formData.zip,
+        shippingMethod,
+        paymentMethod: "in_person",
       });
     } else {
       clearCart();

@@ -80,6 +80,37 @@ export function getShippingOptionsForApi() {
   }));
 }
 
+export function getPaymentConstraintsForShipping(shippingId: ShippingMethodId) {
+  const shipping = SHIPPING_METHODS[shippingId];
+
+  if (!shipping) {
+    throw new Error("invalid_shipping_method");
+  }
+
+  return {
+    allowedPaymentMethods: shipping.allowedPaymentMethods,
+    disallowedPaymentReasons: shipping.disallowedPaymentReasons,
+  };
+}
+
+export function validatePaymentForShipping(shippingId: ShippingMethodId, paymentMethod: PaymentMethod) {
+  const constraints = getPaymentConstraintsForShipping(shippingId);
+
+  if (constraints.allowedPaymentMethods.includes(paymentMethod)) {
+    return { ok: true } as const;
+  }
+
+  const reason =
+    constraints.disallowedPaymentReasons[paymentMethod] ??
+    "Zvolená platba není pro tento způsob dopravy dostupná.";
+
+  return {
+    ok: false,
+    code: "payment_not_allowed_for_shipping",
+    reason,
+  } as const;
+}
+
 export function calculateTotals({
   subtotalCzk,
   shippingId,

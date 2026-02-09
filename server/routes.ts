@@ -8,8 +8,10 @@ import { z } from "zod";
 import {
   calculateTotals,
   getShippingOptionsForApi,
+  getPaymentConstraintsForShipping,
   SHIPPING_METHODS,
   type ShippingMethodId,
+  validatePaymentForShipping,
 } from "@shared/config/shipping";
 
 import { storage } from "./storage";
@@ -78,8 +80,12 @@ function getBaseUrl(req: Request) {
   return normalizeBaseUrl(`${proto}://${host}`);
 }
 
-function sendApiError(res: Response, status: number, code: string, detail?: unknown) {
-  return res.status(status).json({ error: code, detail });
+function sendApiError(
+  res: Response,
+  status: number,
+  payload: { code: string; reason: string; details?: unknown }
+) {
+  return res.status(status).json(payload);
 }
 
 function isCheckoutSessionId(value: string) {
@@ -118,6 +124,18 @@ const CreateCodOrderSchema = z.object({
   customerZip: z.string().min(1).max(20),
   // ✅ FIX: allow pickup too
   shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
+  paymentMethod: paymentMethodEnum.optional(),
+});
+
+const CreateInPersonOrderSchema = z.object({
+  items: z.array(CheckoutItemSchema).min(1),
+  customerName: z.string().min(1).max(120),
+  customerEmail: z.string().email(),
+  customerAddress: z.string().min(1).max(240),
+  customerCity: z.string().min(1).max(120),
+  customerZip: z.string().min(1).max(20),
+  shippingMethod: z.enum(["gls", "pickup"]).default("pickup"),
+  paymentMethod: paymentMethodEnum.optional(),
 });
 
 // -----------------------------
@@ -135,9 +153,19 @@ export async function registerRoutes(app: Express) {
   // Protect with EXPORT_TOKEN (header: x-export-token or query: ?token=...)
   function requireExportToken(req: Request, res: Response): boolean {
     const expected = process.env.EXPORT_TOKEN;
-    if (!expected) return sendApiError(res, 503, "exports_not_configured");
+    if (!expected) {
+      return sendApiError(res, 503, {
+        code: "exports_not_configured",
+        reason: "exports_not_configured",
+      });
+    }
     const provided = (req.headers["x-export-token"] as string | undefined) || (req.query.token as string | undefined);
-    if (!provided || provided !== expected) return sendApiError(res, 401, "unauthorized");
+    if (!provided || provided !== expected) {
+      return sendApiError(res, 401, {
+        code: "unauthorized",
+        reason: "unauthorized",
+      });
+    }
     return true;
   }
 
@@ -148,7 +176,11 @@ export async function registerRoutes(app: Express) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       return res.status(200).send(csv);
     } catch (e: any) {
-      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+      return sendApiError(res, 500, {
+        code: "export_failed",
+        reason: "export_failed",
+        details: { message: e?.message || "unknown" },
+      });
     }
   });
 
@@ -159,7 +191,11 @@ export async function registerRoutes(app: Express) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       return res.status(200).send(csv);
     } catch (e: any) {
-      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+      return sendApiError(res, 500, {
+        code: "export_failed",
+        reason: "export_failed",
+        details: { message: e?.message || "unknown" },
+      });
     }
   });
 
@@ -170,7 +206,11 @@ export async function registerRoutes(app: Express) {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       return res.status(200).send(csv);
     } catch (e: any) {
-      return sendApiError(res, 500, "export_failed", { message: e?.message || "unknown" });
+      return sendApiError(res, 500, {
+        code: "export_failed",
+        reason: "export_failed",
+        details: { message: e?.message || "unknown" },
+      });
     }
   });
 
@@ -196,12 +236,20 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
+          return sendApiError(res, 400, {
+            code: "unknown_product",
+            reason: "unknown_product",
+            details: { productId: item.productId },
+          });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
+          return sendApiError(res, 400, {
+            code: "invalid_product_price",
+            reason: "invalid_product_price",
+            details: { productId: product.id },
+          });
         }
 
         subtotalCzk += unitPriceCzk * item.quantity;
@@ -209,20 +257,27 @@ export async function registerRoutes(app: Express) {
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       if (!shipping) {
-        return sendApiError(res, 400, "invalid_shipping_method");
+        return sendApiError(res, 400, {
+          code: "invalid_shipping_method",
+          reason: "invalid_shipping_method",
+        });
       }
 
-      if (parsed.paymentMethod && !shipping.allowedPaymentMethods.includes(parsed.paymentMethod)) {
-        const reason = shipping.disallowedPaymentReasons[parsed.paymentMethod];
-        return res.status(400).json({
-          code: "payment_not_allowed_for_shipping",
-          reason,
-          details: {
-            shippingMethod: parsed.shippingMethod,
-            paymentMethod: parsed.paymentMethod,
-            allowedPaymentMethods: shipping.allowedPaymentMethods,
-          },
-        });
+      if (parsed.paymentMethod) {
+        const paymentCheck = validatePaymentForShipping(
+          parsed.shippingMethod as ShippingMethodId,
+          parsed.paymentMethod
+        );
+        if (!paymentCheck.ok) {
+          return sendApiError(res, 400, {
+            code: paymentCheck.code,
+            reason: paymentCheck.reason,
+            details: {
+              shippingMethod: parsed.shippingMethod,
+              paymentMethod: parsed.paymentMethod,
+            },
+          });
+        }
       }
 
       const normalizedPaymentMethod = parsed.paymentMethod === "cod" ? "cod" : "card";
@@ -232,21 +287,28 @@ export async function registerRoutes(app: Express) {
         paymentMethod: normalizedPaymentMethod,
       });
 
+      const paymentConstraints = getPaymentConstraintsForShipping(parsed.shippingMethod as ShippingMethodId);
+
       return res.json({
         totals,
         shippingOptions: getShippingOptionsForApi(),
-        paymentConstraints: {
-          allowedPaymentMethods: shipping.allowedPaymentMethods,
-          disallowedPaymentReasons: shipping.disallowedPaymentReasons,
-        },
+        paymentConstraints,
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        return sendApiError(res, 400, "invalid_payload", err.flatten());
+        return sendApiError(res, 400, {
+          code: "invalid_payload",
+          reason: "invalid_payload",
+          details: err.flatten(),
+        });
       }
 
       const message = err?.message || "unknown_error";
-      return sendApiError(res, 400, "invalid_request", { message });
+      return sendApiError(res, 400, {
+        code: "invalid_request",
+        reason: "invalid_request",
+        details: { message },
+      });
     }
   });
   // Products
@@ -255,7 +317,10 @@ export async function registerRoutes(app: Express) {
       const products = await storage.getProducts();
       return res.json(products);
     } catch {
-      return sendApiError(res, 500, "failed_to_load_products");
+      return sendApiError(res, 500, {
+        code: "failed_to_load_products",
+        reason: "failed_to_load_products",
+      });
     }
   });
 
@@ -263,15 +328,38 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
       const stripe = await getUncachableStripeClient().catch(() => null);
-      if (!stripe) return sendApiError(res, 500, "stripe_not_configured");
+      if (!stripe) {
+        return sendApiError(res, 500, {
+          code: "stripe_not_configured",
+          reason: "stripe_not_configured",
+        });
+      }
 
       const parsed = CreateSessionSchema.parse(req.body);
 
       // If user selected crypto, we currently don't route through Stripe.
       const pm = (parsed.paymentMethod || "card") as PaymentMethod;
+      const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
+      if (!paymentCheck.ok) {
+        return sendApiError(res, 400, {
+          code: paymentCheck.code,
+          reason: paymentCheck.reason,
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod: pm,
+          },
+        });
+      }
       // This endpoint only supports Stripe-based methods.
       if (pm !== "card" && pm !== "gpay" && pm !== "applepay") {
-        return sendApiError(res, 400, "payment_method_not_supported_yet", { paymentMethod: pm });
+        return sendApiError(res, 400, {
+          code: "payment_not_allowed_for_shipping",
+          reason: "Zvolená platba není pro Stripe dostupná.",
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod: pm,
+          },
+        });
       }
 
       // Server builds line items from DB (never trust client price)
@@ -281,12 +369,20 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
+          return sendApiError(res, 400, {
+            code: "unknown_product",
+            reason: "unknown_product",
+            details: { productId: item.productId },
+          });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
+          return sendApiError(res, 400, {
+            code: "invalid_product_price",
+            reason: "invalid_product_price",
+            details: { productId: product.id },
+          });
         }
 
         subtotalCzk += unitPriceCzk * item.quantity;
@@ -312,7 +408,12 @@ export async function registerRoutes(app: Express) {
       }
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
-      if (!shipping) return sendApiError(res, 400, "unknown_shipping_method");
+      if (!shipping) {
+        return sendApiError(res, 400, {
+          code: "unknown_shipping_method",
+          reason: "unknown_shipping_method",
+        });
+      }
 
       const totals = calculateTotals({
         subtotalCzk,
@@ -337,7 +438,11 @@ export async function registerRoutes(app: Express) {
 
       // Stripe minimum guard (avoid ugly 500s)
       if (totalCzk < 15) {
-        return sendApiError(res, 400, "amount_too_small", { totalCzk });
+        return sendApiError(res, 400, {
+          code: "amount_too_small",
+          reason: "amount_too_small",
+          details: { totalCzk },
+        });
       }
 
       // ✅ Create order in DB FIRST (pending/unpaid)
@@ -377,7 +482,11 @@ export async function registerRoutes(app: Express) {
           xfp: req.headers["x-forwarded-proto"],
           message: e?.message,
         });
-        return sendApiError(res, 500, "invalid_base_url", { message: e?.message || "invalid_url" });
+        return sendApiError(res, 500, {
+          code: "invalid_base_url",
+          reason: "invalid_base_url",
+          details: { message: e?.message || "invalid_url" },
+        });
       }
 
       const successUrl = `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`;
@@ -396,8 +505,10 @@ export async function registerRoutes(app: Express) {
           cancelUrl,
           message: e?.message,
         });
-        return sendApiError(res, 500, "invalid_redirect_url", {
-          message: e?.message || "invalid_url",
+        return sendApiError(res, 500, {
+          code: "invalid_redirect_url",
+          reason: "invalid_redirect_url",
+          details: { message: e?.message || "invalid_url" },
         });
       }
 
@@ -436,16 +547,29 @@ export async function registerRoutes(app: Express) {
         throw e;
       }
 
-      if (!session.url) return sendApiError(res, 500, "missing_session_url");
+      if (!session.url) {
+        return sendApiError(res, 500, {
+          code: "missing_session_url",
+          reason: "missing_session_url",
+        });
+      }
       return res.json({ url: session.url, orderId: order.id });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        return sendApiError(res, 400, "invalid_payload", err.flatten());
+        return sendApiError(res, 400, {
+          code: "invalid_payload",
+          reason: "invalid_payload",
+          details: err.flatten(),
+        });
       }
 
       const message = err?.message || "unknown_error";
       console.error("[checkout] create-session failed:", err);
-      return sendApiError(res, 500, "failed_to_create_session", { message });
+      return sendApiError(res, 500, {
+        code: "failed_to_create_session",
+        reason: "failed_to_create_session",
+        details: { message },
+      });
     }
   });
 
@@ -453,25 +577,62 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-cod-order", async (req, res) => {
     try {
       const parsed = CreateCodOrderSchema.parse(req.body);
+      const paymentMethod = parsed.paymentMethod;
+
+      if (paymentMethod !== "cod" || parsed.shippingMethod !== "gls") {
+        return sendApiError(res, 400, {
+          code: "payment_not_allowed_for_shipping",
+          reason: "Dobírka je dostupná jen pro doručení GLS.",
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod: paymentMethod ?? null,
+          },
+        });
+      }
+
+      const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, paymentMethod);
+      if (!paymentCheck.ok) {
+        return sendApiError(res, 400, {
+          code: paymentCheck.code,
+          reason: paymentCheck.reason,
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod,
+          },
+        });
+      }
 
       // Server authoritative pricing (same logic as Stripe flow, but no session)
       let subtotalCzk = 0;
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, "unknown_product", { productId: item.productId });
+          return sendApiError(res, 400, {
+            code: "unknown_product",
+            reason: "unknown_product",
+            details: { productId: item.productId },
+          });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, "invalid_product_price", { productId: product.id });
+          return sendApiError(res, 400, {
+            code: "invalid_product_price",
+            reason: "invalid_product_price",
+            details: { productId: product.id },
+          });
         }
 
         subtotalCzk += unitPriceCzk * item.quantity;
       }
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
-      if (!shipping) return sendApiError(res, 400, "unknown_shipping_method");
+      if (!shipping) {
+        return sendApiError(res, 400, {
+          code: "unknown_shipping_method",
+          reason: "unknown_shipping_method",
+        });
+      }
 
       const totals = calculateTotals({
         subtotalCzk,
@@ -479,16 +640,13 @@ export async function registerRoutes(app: Express) {
         paymentMethod: "cod",
       });
 
-      if (!totals.codAvailable) {
-        return res.status(400).json({
-          code: "cod_not_available_for_shipping",
-          reason: "Dobírka není pro zvolenou dopravu dostupná. Zvol jiný způsob platby.",
-        });
-      }
-
       const totalCzk = totals.totalCzk;
       if (totalCzk < 15) {
-        return sendApiError(res, 400, "amount_too_small", { totalCzk });
+        return sendApiError(res, 400, {
+          code: "amount_too_small",
+          reason: "amount_too_small",
+          details: { totalCzk },
+        });
       }
 
       // Create order in DB (pending/unpaid)
@@ -534,7 +692,11 @@ export async function registerRoutes(app: Express) {
           paymentStatus: "unpaid",
         });
         console.error("[cod] stock deduction failed; order cancelled", { orderId: order.id, error: (e as any)?.message });
-        return sendApiError(res, 409, "out_of_stock_or_reservation_failed", { orderId: order.id });
+        return sendApiError(res, 409, {
+          code: "out_of_stock_or_reservation_failed",
+          reason: "out_of_stock_or_reservation_failed",
+          details: { orderId: order.id },
+        });
       }
 
       // Notify fulfillment immediately (COD is created without Stripe)
@@ -552,12 +714,175 @@ export async function registerRoutes(app: Express) {
       return res.json({ success: true, orderId: order.id });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        return sendApiError(res, 400, "invalid_payload", err.flatten());
+        return sendApiError(res, 400, {
+          code: "invalid_payload",
+          reason: "invalid_payload",
+          details: err.flatten(),
+        });
       }
 
       const message = err?.message || "unknown_error";
       console.error("[cod] create order failed:", err);
-      return sendApiError(res, 500, "failed_to_create_cod_order", { message });
+      return sendApiError(res, 500, {
+        code: "failed_to_create_cod_order",
+        reason: "failed_to_create_cod_order",
+        details: { message },
+      });
+    }
+  });
+
+  // ✅ Platba na místě (in-person): create DB order without Stripe
+  app.post("/api/checkout/create-in-person-order", async (req, res) => {
+    try {
+      const parsed = CreateInPersonOrderSchema.parse(req.body);
+      const paymentMethod = parsed.paymentMethod;
+
+      if (paymentMethod !== "in_person" || parsed.shippingMethod !== "pickup") {
+        return sendApiError(res, 400, {
+          code: "payment_not_allowed_for_shipping",
+          reason: "Platba na místě je dostupná jen pro osobní odběr.",
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod: paymentMethod ?? null,
+          },
+        });
+      }
+
+      const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, paymentMethod);
+      if (!paymentCheck.ok) {
+        return sendApiError(res, 400, {
+          code: paymentCheck.code,
+          reason: paymentCheck.reason,
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod,
+          },
+        });
+      }
+
+      // Server authoritative pricing (same logic as Stripe flow, but no session)
+      let subtotalCzk = 0;
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) {
+          return sendApiError(res, 400, {
+            code: "unknown_product",
+            reason: "unknown_product",
+            details: { productId: item.productId },
+          });
+        }
+
+        const unitPriceCzk = Number(product.price) || 0;
+        if (unitPriceCzk <= 0) {
+          return sendApiError(res, 400, {
+            code: "invalid_product_price",
+            reason: "invalid_product_price",
+            details: { productId: product.id },
+          });
+        }
+
+        subtotalCzk += unitPriceCzk * item.quantity;
+      }
+
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      if (!shipping) {
+        return sendApiError(res, 400, {
+          code: "unknown_shipping_method",
+          reason: "unknown_shipping_method",
+        });
+      }
+
+      const totals = calculateTotals({
+        subtotalCzk,
+        shippingId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: "card",
+      });
+
+      const totalCzk = totals.totalCzk;
+      if (totalCzk < 15) {
+        return sendApiError(res, 400, {
+          code: "amount_too_small",
+          reason: "amount_too_small",
+          details: { totalCzk },
+        });
+      }
+
+      const order = await storage.createOrder({
+        customerName: parsed.customerName,
+        customerEmail: parsed.customerEmail,
+        customerAddress: parsed.customerAddress,
+        customerCity: parsed.customerCity,
+        customerZip: parsed.customerZip,
+        items: JSON.stringify({
+          items: parsed.items,
+          shippingMethod: parsed.shippingMethod,
+          shippingLabel: shipping.label,
+          subtotalCzk,
+          shippingCzk: shipping.priceCzk,
+          codAvailable: shipping.codAvailable,
+          codFeeCzk: shipping.codFeeCzk ?? 0,
+          codCzk: totals.codFeeCzk,
+          totalCzk,
+        }),
+        total: Math.round(totalCzk),
+        paymentMethod: "in_person" as PaymentMethod,
+        userId: null as any,
+      });
+
+      try {
+        await atomicStockDeduction(order.id, parsed.items as any);
+        await db
+          .update(orders)
+          .set({ stockDeductedAt: new Date() })
+          .where(eq(orders.id, order.id));
+
+        await storage.updateOrder(order.id, {
+          status: "confirmed",
+          paymentStatus: "unpaid",
+        });
+      } catch (e) {
+        await storage.updateOrder(order.id, {
+          status: "cancelled",
+          paymentStatus: "unpaid",
+        });
+        console.error("[in-person] stock deduction failed; order cancelled", {
+          orderId: order.id,
+          error: (e as any)?.message,
+        });
+        return sendApiError(res, 409, {
+          code: "out_of_stock_or_reservation_failed",
+          reason: "out_of_stock_or_reservation_failed",
+          details: { orderId: order.id },
+        });
+      }
+
+      const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+
+      sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+        console.error("[in-person] Failed to send fulfillment email:", err)
+      );
+
+      sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+        console.error("[in-person] Failed to send customer confirmation email:", err)
+      );
+
+      return res.json({ success: true, orderId: order.id });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return sendApiError(res, 400, {
+          code: "invalid_payload",
+          reason: "invalid_payload",
+          details: err.flatten(),
+        });
+      }
+
+      const message = err?.message || "unknown_error";
+      console.error("[in-person] create order failed:", err);
+      return sendApiError(res, 500, {
+        code: "failed_to_create_in_person_order",
+        reason: "failed_to_create_in_person_order",
+        details: { message },
+      });
     }
   });
 
@@ -565,14 +890,28 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/cancel/:orderId", async (req, res) => {
     try {
       const orderId = String(req.params.orderId || "");
-      if (!orderId) return sendApiError(res, 400, "missing_order_id");
+      if (!orderId) {
+        return sendApiError(res, 400, {
+          code: "missing_order_id",
+          reason: "missing_order_id",
+        });
+      }
 
       const order = await storage.getOrder(orderId);
-      if (!order) return sendApiError(res, 404, "order_not_found");
+      if (!order) {
+        return sendApiError(res, 404, {
+          code: "order_not_found",
+          reason: "order_not_found",
+        });
+      }
 
       // If already paid/confirmed, we do NOT cancel here.
       if (order.paymentStatus === "paid" || order.status === "confirmed") {
-        return sendApiError(res, 409, "cannot_cancel_paid_order", { orderId });
+        return sendApiError(res, 409, {
+          code: "cannot_cancel_paid_order",
+          reason: "cannot_cancel_paid_order",
+          details: { orderId },
+        });
       }
 
       if (order.stockDeductedAt) {
@@ -592,7 +931,11 @@ export async function registerRoutes(app: Express) {
     } catch (err: any) {
       const message = err?.message || "unknown_error";
       console.error("[checkout] cancel failed:", err);
-      return sendApiError(res, 500, "failed_to_cancel", { message });
+      return sendApiError(res, 500, {
+        code: "failed_to_cancel",
+        reason: "failed_to_cancel",
+        details: { message },
+      });
     }
   });
 
@@ -600,10 +943,20 @@ export async function registerRoutes(app: Express) {
   app.get("/api/checkout/order-summary/:orderId", async (req, res) => {
     try {
       const orderId = String(req.params.orderId || "").trim();
-      if (!orderId) return sendApiError(res, 400, "missing_order_id");
+      if (!orderId) {
+        return sendApiError(res, 400, {
+          code: "missing_order_id",
+          reason: "missing_order_id",
+        });
+      }
 
       const order = await storage.getOrder(orderId);
-      if (!order) return sendApiError(res, 404, "order_not_found");
+      if (!order) {
+        return sendApiError(res, 404, {
+          code: "order_not_found",
+          reason: "order_not_found",
+        });
+      }
 
       let payload: any = null;
       try {
@@ -627,7 +980,11 @@ export async function registerRoutes(app: Express) {
     } catch (err: any) {
       const message = err?.message || "unknown_error";
       console.error("[checkout] order-summary failed:", err);
-      return sendApiError(res, 500, "failed_to_get_order_summary", { message });
+      return sendApiError(res, 500, {
+        code: "failed_to_get_order_summary",
+        reason: "failed_to_get_order_summary",
+        details: { message },
+      });
     }
   });
 
@@ -635,11 +992,19 @@ export async function registerRoutes(app: Express) {
   app.get("/api/checkout/verify/:sessionId", async (req, res) => {
     try {
       const stripe = await getUncachableStripeClient().catch(() => null);
-      if (!stripe) return sendApiError(res, 500, "stripe_not_configured");
+      if (!stripe) {
+        return sendApiError(res, 500, {
+          code: "stripe_not_configured",
+          reason: "stripe_not_configured",
+        });
+      }
 
       const sessionId = String(req.params.sessionId || "");
       if (!isCheckoutSessionId(sessionId)) {
-        return sendApiError(res, 400, "invalid_session_id");
+        return sendApiError(res, 400, {
+          code: "invalid_session_id",
+          reason: "invalid_session_id",
+        });
       }
 
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
@@ -726,7 +1091,11 @@ export async function registerRoutes(app: Express) {
     } catch (err: any) {
       const message = err?.message || "unknown_error";
       console.error("[checkout] verify failed:", err);
-      return sendApiError(res, 500, "failed_to_verify_session", { message });
+      return sendApiError(res, 500, {
+        code: "failed_to_verify_session",
+        reason: "failed_to_verify_session",
+        details: { message },
+      });
     }
   });
 }
