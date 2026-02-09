@@ -303,6 +303,27 @@ export type OrderEvent = typeof orderEvents.$inferSelect;
 export type InsertOrderEvent = typeof orderEvents.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ORDER IDEMPOTENCY KEYS (ZLE v1.2.4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const orderIdempotencyKeys = pgTable("order_idempotency_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  orderId: varchar("order_id").references(() => orders.id),
+  paymentMethod: text("payment_method"),
+  stripeSessionId: text("stripe_session_id"),
+  stripeSessionUrl: text("stripe_session_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("UQ_order_idempotency_key").on(table.idempotencyKey),
+  index("IDX_order_idempotency_order").on(table.orderId),
+]);
+
+export type OrderIdempotencyKey = typeof orderIdempotencyKeys.$inferSelect;
+export type InsertOrderIdempotencyKey = typeof orderIdempotencyKeys.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CONSENTS LOG - GDPR COOKIES/MARKETING (ZLE v1.2.2)
 // ═══════════════════════════════════════════════════════════════════════════
 
