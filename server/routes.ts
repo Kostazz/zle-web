@@ -93,6 +93,57 @@ function isCheckoutSessionId(value: string) {
   return value.startsWith("cs_") && value.length > 10;
 }
 
+function resolveCustomerDetails(parsed: {
+  customerName?: string | undefined;
+  customerEmail?: string | undefined;
+  customerAddress?: string | undefined;
+  customerCity?: string | undefined;
+  customerZip?: string | undefined;
+  name?: string | undefined;
+  email?: string | undefined;
+  address?: { line1: string; city: string; zip: string; country?: string | undefined } | undefined;
+}) {
+  const name = parsed.customerName ?? parsed.name ?? "";
+  const email = parsed.customerEmail ?? parsed.email ?? "";
+  const addressLine1 = parsed.customerAddress ?? parsed.address?.line1 ?? "";
+  const city = parsed.customerCity ?? parsed.address?.city ?? "";
+  const zip = parsed.customerZip ?? parsed.address?.zip ?? "";
+
+  return {
+    customerName: name,
+    customerEmail: email,
+    customerAddress: addressLine1,
+    customerCity: city,
+    customerZip: zip,
+  };
+}
+
+function requireCustomerDetails(
+  res: Response,
+  details: ReturnType<typeof resolveCustomerDetails>
+): details is {
+  customerName: string;
+  customerEmail: string;
+  customerAddress: string;
+  customerCity: string;
+  customerZip: string;
+} {
+  const missing = Object.entries(details)
+    .filter(([, value]) => !String(value || "").trim())
+    .map(([key]) => key);
+
+  if (missing.length === 0) {
+    return true;
+  }
+
+  sendApiError(res, 400, {
+    code: "invalid_customer_details",
+    reason: "invalid_customer_details",
+    details: { missing },
+  });
+  return false;
+}
+
 // -----------------------------
 // Validation
 // -----------------------------
@@ -103,40 +154,49 @@ const CheckoutItemSchema = z.object({
   size: z.string().optional().nullable(),
 });
 
-const CreateSessionSchema = z.object({
-  items: z.array(CheckoutItemSchema).min(1),
-  customerName: z.string().min(1).max(120),
-  customerEmail: z.string().email(),
-  customerAddress: z.string().min(1).max(240),
-  customerCity: z.string().min(1).max(120),
-  customerZip: z.string().min(1).max(20),
-  // ✅ FIX: allow pickup too
-  shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
-  paymentMethod: paymentMethodEnum.optional(),
+const CustomerDetailsSchema = z.object({
+  customerName: z.string().min(1).max(120).optional(),
+  customerEmail: z.string().email().optional(),
+  customerAddress: z.string().min(1).max(240).optional(),
+  customerCity: z.string().min(1).max(120).optional(),
+  customerZip: z.string().min(1).max(20).optional(),
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email().optional(),
+  address: z
+    .object({
+      line1: z.string().min(1).max(240),
+      city: z.string().min(1).max(120),
+      zip: z.string().min(1).max(20),
+      country: z.string().optional(),
+    })
+    .optional(),
 });
 
-const CreateCodOrderSchema = z.object({
-  items: z.array(CheckoutItemSchema).min(1),
-  customerName: z.string().min(1).max(120),
-  customerEmail: z.string().email(),
-  customerAddress: z.string().min(1).max(240),
-  customerCity: z.string().min(1).max(120),
-  customerZip: z.string().min(1).max(20),
-  // ✅ FIX: allow pickup too
-  shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
-  paymentMethod: paymentMethodEnum.optional(),
-});
+const CreateSessionSchema = z
+  .object({
+    items: z.array(CheckoutItemSchema).min(1),
+    // ✅ FIX: allow pickup too
+    shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
+    paymentMethod: paymentMethodEnum.optional(),
+  })
+  .and(CustomerDetailsSchema);
 
-const CreateInPersonOrderSchema = z.object({
-  items: z.array(CheckoutItemSchema).min(1),
-  customerName: z.string().min(1).max(120),
-  customerEmail: z.string().email(),
-  customerAddress: z.string().min(1).max(240),
-  customerCity: z.string().min(1).max(120),
-  customerZip: z.string().min(1).max(20),
-  shippingMethod: z.enum(["gls", "pickup"]).default("pickup"),
-  paymentMethod: paymentMethodEnum.optional(),
-});
+const CreateCodOrderSchema = z
+  .object({
+    items: z.array(CheckoutItemSchema).min(1),
+    // ✅ FIX: allow pickup too
+    shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
+    paymentMethod: paymentMethodEnum.optional(),
+  })
+  .and(CustomerDetailsSchema);
+
+const CreateInPersonOrderSchema = z
+  .object({
+    items: z.array(CheckoutItemSchema).min(1),
+    shippingMethod: z.enum(["gls", "pickup"]).default("pickup"),
+    paymentMethod: paymentMethodEnum.optional(),
+  })
+  .and(CustomerDetailsSchema);
 
 // -----------------------------
 // Routes
@@ -336,6 +396,10 @@ export async function registerRoutes(app: Express) {
       }
 
       const parsed = CreateSessionSchema.parse(req.body);
+      const customerDetails = resolveCustomerDetails(parsed);
+      if (!requireCustomerDetails(res, customerDetails)) {
+        return;
+      }
 
       // If user selected crypto, we currently don't route through Stripe.
       const pm = (parsed.paymentMethod || "card") as PaymentMethod;
@@ -447,11 +511,11 @@ export async function registerRoutes(app: Express) {
 
       // ✅ Create order in DB FIRST (pending/unpaid)
       const order = await storage.createOrder({
-        customerName: parsed.customerName,
-        customerEmail: parsed.customerEmail,
-        customerAddress: parsed.customerAddress,
-        customerCity: parsed.customerCity,
-        customerZip: parsed.customerZip,
+        customerName: customerDetails.customerName,
+        customerEmail: customerDetails.customerEmail,
+        customerAddress: customerDetails.customerAddress,
+        customerCity: customerDetails.customerCity,
+        customerZip: customerDetails.customerZip,
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
@@ -520,14 +584,14 @@ export async function registerRoutes(app: Express) {
           line_items,
           success_url: successUrl,
           cancel_url: cancelUrl,
-          customer_email: parsed.customerEmail,
+          customer_email: customerDetails.customerEmail,
           client_reference_id: order.id,
           metadata: {
             orderId: order.id,
-            customerName: parsed.customerName,
-            customerAddress: parsed.customerAddress,
-            customerCity: parsed.customerCity,
-            customerZip: parsed.customerZip,
+            customerName: customerDetails.customerName,
+            customerAddress: customerDetails.customerAddress,
+            customerCity: customerDetails.customerCity,
+            customerZip: customerDetails.customerZip,
             shippingMethod: parsed.shippingMethod,
             subtotalCzk: String(subtotalCzk),
             shippingCzk: String(shipping.priceCzk),
@@ -577,6 +641,10 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-cod-order", async (req, res) => {
     try {
       const parsed = CreateCodOrderSchema.parse(req.body);
+      const customerDetails = resolveCustomerDetails(parsed);
+      if (!requireCustomerDetails(res, customerDetails)) {
+        return;
+      }
       const paymentMethod = parsed.paymentMethod;
 
       if (paymentMethod !== "cod" || parsed.shippingMethod !== "gls") {
@@ -651,11 +719,11 @@ export async function registerRoutes(app: Express) {
 
       // Create order in DB (pending/unpaid)
       const order = await storage.createOrder({
-        customerName: parsed.customerName,
-        customerEmail: parsed.customerEmail,
-        customerAddress: parsed.customerAddress,
-        customerCity: parsed.customerCity,
-        customerZip: parsed.customerZip,
+        customerName: customerDetails.customerName,
+        customerEmail: customerDetails.customerEmail,
+        customerAddress: customerDetails.customerAddress,
+        customerCity: customerDetails.customerCity,
+        customerZip: customerDetails.customerZip,
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
@@ -735,6 +803,10 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-in-person-order", async (req, res) => {
     try {
       const parsed = CreateInPersonOrderSchema.parse(req.body);
+      const customerDetails = resolveCustomerDetails(parsed);
+      if (!requireCustomerDetails(res, customerDetails)) {
+        return;
+      }
       const paymentMethod = parsed.paymentMethod;
 
       if (paymentMethod !== "in_person" || parsed.shippingMethod !== "pickup") {
@@ -808,11 +880,11 @@ export async function registerRoutes(app: Express) {
       }
 
       const order = await storage.createOrder({
-        customerName: parsed.customerName,
-        customerEmail: parsed.customerEmail,
-        customerAddress: parsed.customerAddress,
-        customerCity: parsed.customerCity,
-        customerZip: parsed.customerZip,
+        customerName: customerDetails.customerName,
+        customerEmail: customerDetails.customerEmail,
+        customerAddress: customerDetails.customerAddress,
+        customerCity: customerDetails.customerCity,
+        customerZip: customerDetails.customerZip,
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
