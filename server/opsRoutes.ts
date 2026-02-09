@@ -3,7 +3,6 @@ import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "./db";
 import { orders } from "@shared/schema";
-import { runAbandonedOrderSweep } from "./jobs/abandonedSweeper";
 
 function requireOpsToken(req: Request, res: Response): boolean {
   const expected = process.env.OPS_TOKEN;
@@ -11,7 +10,9 @@ function requireOpsToken(req: Request, res: Response): boolean {
     res.status(503).json({ error: "ops_not_configured" });
     return false;
   }
+
   const provided = req.headers["x-ops-token"] as string | undefined;
+
   if (!provided || provided !== expected) {
     res.status(401).json({ error: "unauthorized" });
     return false;
@@ -121,13 +122,7 @@ export function registerOpsRoutes(app: Express) {
 
       if (q) {
         const like = `%${q}%`;
-        filters.push(
-          or(
-            ilike(orders.id, like),
-            ilike(orders.customerEmail, like),
-            ilike(orders.customerName, like)
-          )
-        );
+        filters.push(or(ilike(orders.id, like), ilike(orders.customerEmail, like), ilike(orders.customerName, like)));
       }
 
       const orderBy =
@@ -183,34 +178,6 @@ export function registerOpsRoutes(app: Express) {
       });
     } catch (err: any) {
       return res.status(500).json({ error: "ops_order_failed", message: err?.message || "unknown" });
-    }
-  });
-
-  app.post("/api/ops/sweeper/abandoned/run", async (req, res) => {
-    if (!requireOpsToken(req, res)) return;
-
-    try {
-      const dryRun = Boolean(req.body?.dryRun);
-      const result = await runAbandonedOrderSweep({ dryRun });
-
-      console.log("[ops] ran abandoned sweeper", {
-        ttlMinutes: result.ttlMinutes,
-        intervalMs: result.intervalMs,
-        matched: result.matched,
-        cancelled: result.cancelled,
-        dryRun: result.dryRun,
-      });
-
-      return res.json({
-        ok: true,
-        ttlMinutes: result.ttlMinutes,
-        intervalMs: result.intervalMs,
-        dryRun: result.dryRun,
-        matched: result.matched,
-        cancelled: result.cancelled,
-      });
-    } catch {
-      return res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }
