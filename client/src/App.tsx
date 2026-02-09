@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart-context";
 import { LogoProvider } from "@/lib/logoContext";
 import { ScrollToTop } from "@/components/layout/ScrollToTop";
+import { Canonical } from "@/components/seo/Canonical";
 import Home from "@/pages/Home";
 
 // Route-level code splitting (mobile speed): keep Home eager, lazy-load the rest.
@@ -77,6 +78,7 @@ function App() {
         <LogoProvider>
           <CartProvider>
             <ScrollToTop />
+            <Canonical />
             <Toaster />
             <Router />
           </CartProvider>
