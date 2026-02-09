@@ -7,7 +7,7 @@ import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { sendOrderConfirmationEmail, sendFulfillmentNewOrderEmail } from './emailService';
 import { db } from './db';
-import { orders, orderEvents, products, auditLog, type CartItem } from '@shared/schema';
+import { orders, orderEvents, products, auditLog, orderIdempotencyKeys, type CartItem } from '@shared/schema';
 import { eq, and, sql, gte } from 'drizzle-orm';
 import { emitOrderEvent, OpsEventType } from './ops/events';
 import { handleChargeback } from './refunds';
@@ -143,7 +143,17 @@ export async function atomicStockDeduction(
 }
 
 async function handleCheckoutCompleted(session: any, stripeEventId: string) {
-  const orderId = session.metadata?.orderId;
+  let orderId = session.metadata?.orderId;
+  const idempotencyKey = session.metadata?.idempotencyKey;
+
+  if (!orderId && idempotencyKey) {
+    const [row] = await db
+      .select()
+      .from(orderIdempotencyKeys)
+      .where(eq(orderIdempotencyKeys.idempotencyKey, String(idempotencyKey)))
+      .limit(1);
+    orderId = row?.orderId ?? null;
+  }
   console.log(`Checkout session completed for order: ${orderId}`);
   
   if (!orderId) {

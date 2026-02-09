@@ -15,7 +15,7 @@ import {
 } from "@shared/config/shipping";
 
 import { storage } from "./storage";
-import { paymentMethodEnum, type PaymentMethod } from "../shared/schema";
+import { paymentMethodEnum, type PaymentMethod, orders, orderIdempotencyKeys, type Order, type InsertOrder } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
@@ -23,7 +23,6 @@ import { atomicStockDeduction } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { db } from "./db";
-import { orders } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 // -----------------------------
@@ -78,6 +77,87 @@ function getBaseUrl(req: Request) {
 
   // Build and validate
   return normalizeBaseUrl(`${proto}://${host}`);
+}
+
+async function fetchOrderByIdempotencyKey(key: string) {
+  const [row] = await db
+    .select()
+    .from(orderIdempotencyKeys)
+    .where(eq(orderIdempotencyKeys.idempotencyKey, key))
+    .limit(1);
+
+  if (!row?.orderId) {
+    return { row, order: null as Order | null };
+  }
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, row.orderId)).limit(1);
+  return { row, order: order ?? null };
+}
+
+async function createOrderWithIdempotency(params: {
+  idempotencyKey: string;
+  paymentMethod: PaymentMethod;
+  values: InsertOrder;
+}) {
+  return db.transaction(async (tx) => {
+    const [existingRow] = await tx
+      .select()
+      .from(orderIdempotencyKeys)
+      .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
+      .limit(1);
+
+    if (existingRow?.orderId) {
+      const [existingOrder] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, existingRow.orderId))
+        .limit(1);
+
+      if (existingOrder) {
+        return { order: existingOrder, idempotencyHit: true, row: existingRow };
+      }
+    }
+
+    const [insertedRow] = await tx
+      .insert(orderIdempotencyKeys)
+      .values({
+        idempotencyKey: params.idempotencyKey,
+        paymentMethod: params.paymentMethod,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!insertedRow) {
+      const [conflictRow] = await tx
+        .select()
+        .from(orderIdempotencyKeys)
+        .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
+        .limit(1);
+
+      if (conflictRow?.orderId) {
+        const [conflictOrder] = await tx
+          .select()
+          .from(orders)
+          .where(eq(orders.id, conflictRow.orderId))
+          .limit(1);
+
+        if (conflictOrder) {
+          return { order: conflictOrder, idempotencyHit: true, row: conflictRow };
+        }
+      }
+
+      return { order: null, idempotencyHit: true, row: conflictRow ?? null };
+    }
+
+    const [createdOrder] = await tx.insert(orders).values(params.values).returning();
+
+    await tx
+      .update(orderIdempotencyKeys)
+      .set({ orderId: createdOrder.id, updatedAt: new Date() })
+      .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey));
+
+    return { order: createdOrder, idempotencyHit: false, row: insertedRow };
+  });
 }
 
 function sendApiError(
@@ -178,6 +258,7 @@ const CreateSessionSchema = z
     // ✅ FIX: allow pickup too
     shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
     paymentMethod: paymentMethodEnum.optional(),
+    idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/i),
   })
   .and(CustomerDetailsSchema);
 
@@ -187,6 +268,7 @@ const CreateCodOrderSchema = z
     // ✅ FIX: allow pickup too
     shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
     paymentMethod: paymentMethodEnum.optional(),
+    idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/i),
   })
   .and(CustomerDetailsSchema);
 
@@ -195,6 +277,7 @@ const CreateInPersonOrderSchema = z
     items: z.array(CheckoutItemSchema).min(1),
     shippingMethod: z.enum(["gls", "pickup"]).default("pickup"),
     paymentMethod: paymentMethodEnum.optional(),
+    idempotencyKey: z.string().regex(/^[a-f0-9]{64}$/i),
   })
   .and(CustomerDetailsSchema);
 
@@ -509,8 +592,10 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      // ✅ Create order in DB FIRST (pending/unpaid)
-      const order = await storage.createOrder({
+      const idempotencyKey = parsed.idempotencyKey;
+
+      // ✅ Create order in DB FIRST (pending/unpaid) with idempotency guard
+      const orderValues: InsertOrder = {
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -531,7 +616,24 @@ export async function registerRoutes(app: Express) {
         paymentMethod: pm,
         // userId is optional (guest checkout)
         userId: null as any,
+      };
+
+      const { order, idempotencyHit, row } = await createOrderWithIdempotency({
+        idempotencyKey,
+        paymentMethod: pm,
+        values: orderValues,
       });
+
+      if (!order) {
+        return sendApiError(res, 409, {
+          code: "order_in_progress",
+          reason: "order_in_progress",
+        });
+      }
+
+      if (idempotencyHit && row?.stripeSessionUrl) {
+        return res.json({ url: row.stripeSessionUrl, orderId: order.id, idempotency: "hit" });
+      }
 
       // ✅ baseUrl must be a VALID absolute URL for Stripe redirects
       let baseUrl: string;
@@ -551,6 +653,10 @@ export async function registerRoutes(app: Express) {
           reason: "invalid_base_url",
           details: { message: e?.message || "invalid_url" },
         });
+      }
+
+      if (idempotencyHit && order.paymentStatus === "paid") {
+        return res.json({ url: `${baseUrl}/success?order_id=${order.id}`, orderId: order.id, idempotency: "hit" });
       }
 
       const successUrl = `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`;
@@ -578,26 +684,32 @@ export async function registerRoutes(app: Express) {
 
       let session: Stripe.Checkout.Session;
       try {
-        session = await stripe.checkout.sessions.create({
-          mode: "payment",
-          currency: "czk",
-          line_items,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-          customer_email: customerDetails.customerEmail,
-          client_reference_id: order.id,
-          metadata: {
-            orderId: order.id,
-            customerName: customerDetails.customerName,
-            customerAddress: customerDetails.customerAddress,
-            customerCity: customerDetails.customerCity,
-            customerZip: customerDetails.customerZip,
-            shippingMethod: parsed.shippingMethod,
-            subtotalCzk: String(subtotalCzk),
-            shippingCzk: String(shipping.priceCzk),
-            totalCzk: String(totalCzk),
+        session = await stripe.checkout.sessions.create(
+          {
+            mode: "payment",
+            currency: "czk",
+            line_items,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            customer_email: customerDetails.customerEmail,
+            client_reference_id: order.id,
+            metadata: {
+              orderId: order.id,
+              idempotencyKey,
+              customerName: customerDetails.customerName,
+              customerAddress: customerDetails.customerAddress,
+              customerCity: customerDetails.customerCity,
+              customerZip: customerDetails.customerZip,
+              shippingMethod: parsed.shippingMethod,
+              subtotalCzk: String(subtotalCzk),
+              shippingCzk: String(shipping.priceCzk),
+              totalCzk: String(totalCzk),
+            },
           },
-        });
+          {
+            idempotencyKey,
+          }
+        );
       } catch (e) {
         // Prevent orphan orders if Stripe session creation fails
         try {
@@ -617,6 +729,15 @@ export async function registerRoutes(app: Express) {
           reason: "missing_session_url",
         });
       }
+      await db
+        .update(orderIdempotencyKeys)
+        .set({
+          stripeSessionId: session.id,
+          stripeSessionUrl: session.url,
+          updatedAt: new Date(),
+        })
+        .where(eq(orderIdempotencyKeys.idempotencyKey, idempotencyKey));
+
       return res.json({ url: session.url, orderId: order.id });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -717,8 +838,9 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      // Create order in DB (pending/unpaid)
-      const order = await storage.createOrder({
+      const idempotencyKey = parsed.idempotencyKey;
+
+      const orderValues: InsertOrder = {
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -738,48 +860,70 @@ export async function registerRoutes(app: Express) {
         total: Math.round(totalCzk),
         paymentMethod: "cod" as PaymentMethod,
         userId: null as any,
+      };
+
+      const { order, idempotencyHit } = await createOrderWithIdempotency({
+        idempotencyKey,
+        paymentMethod: "cod",
+        values: orderValues,
       });
 
-      // Reserve/deduct stock immediately for COD (keeps inventory consistent)
-      try {
-        await atomicStockDeduction(order.id, parsed.items as any);
-        await db
-          .update(orders)
-          .set({ stockDeductedAt: new Date() })
-          .where(eq(orders.id, order.id));
-
-        // Mark COD order as confirmed (stock reserved) but unpaid
-        await storage.updateOrder(order.id, {
-          status: "confirmed",
-          paymentStatus: "unpaid",
-        });
-      } catch (e) {
-        // If stock deduction fails, cancel the order to avoid phantom reservations
-        await storage.updateOrder(order.id, {
-          status: "cancelled",
-          paymentStatus: "unpaid",
-        });
-        console.error("[cod] stock deduction failed; order cancelled", { orderId: order.id, error: (e as any)?.message });
+      if (!order) {
         return sendApiError(res, 409, {
-          code: "out_of_stock_or_reservation_failed",
-          reason: "out_of_stock_or_reservation_failed",
-          details: { orderId: order.id },
+          code: "order_in_progress",
+          reason: "order_in_progress",
         });
       }
 
-      // Notify fulfillment immediately (COD is created without Stripe)
-      const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+      // Reserve/deduct stock immediately for COD (keeps inventory consistent)
+      const needsStockDeduction = !order.stockDeductedAt;
 
-      sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
-        console.error("[cod] Failed to send fulfillment email:", err)
-      );
+      if (needsStockDeduction) {
+        try {
+          await atomicStockDeduction(order.id, parsed.items as any);
+          await db
+            .update(orders)
+            .set({ stockDeductedAt: new Date() })
+            .where(eq(orders.id, order.id));
 
-      // Customer confirmation email (best-effort)
-      sendOrderConfirmationEmail(orderForEmail).catch((err) =>
-        console.error("[cod] Failed to send customer confirmation email:", err)
-      );
+          // Mark COD order as confirmed (stock reserved) but unpaid
+          await storage.updateOrder(order.id, {
+            status: "confirmed",
+            paymentStatus: "unpaid",
+          });
+        } catch (e) {
+          // If stock deduction fails, cancel the order to avoid phantom reservations
+          await storage.updateOrder(order.id, {
+            status: "cancelled",
+            paymentStatus: "unpaid",
+          });
+          console.error("[cod] stock deduction failed; order cancelled", {
+            orderId: order.id,
+            error: (e as any)?.message,
+          });
+          return sendApiError(res, 409, {
+            code: "out_of_stock_or_reservation_failed",
+            reason: "out_of_stock_or_reservation_failed",
+            details: { orderId: order.id },
+          });
+        }
+      }
 
-      return res.json({ success: true, orderId: order.id });
+      if (!idempotencyHit) {
+        // Notify fulfillment immediately (COD is created without Stripe)
+        const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+
+        sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+          console.error("[cod] Failed to send fulfillment email:", err)
+        );
+
+        // Customer confirmation email (best-effort)
+        sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+          console.error("[cod] Failed to send customer confirmation email:", err)
+        );
+      }
+
+      return res.json({ success: true, orderId: order.id, idempotency: idempotencyHit ? "hit" : "new" });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, {
@@ -879,7 +1023,9 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      const order = await storage.createOrder({
+      const idempotencyKey = parsed.idempotencyKey;
+
+      const orderValues: InsertOrder = {
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -899,46 +1045,65 @@ export async function registerRoutes(app: Express) {
         total: Math.round(totalCzk),
         paymentMethod: "in_person" as PaymentMethod,
         userId: null as any,
+      };
+
+      const { order, idempotencyHit } = await createOrderWithIdempotency({
+        idempotencyKey,
+        paymentMethod: "in_person",
+        values: orderValues,
       });
 
-      try {
-        await atomicStockDeduction(order.id, parsed.items as any);
-        await db
-          .update(orders)
-          .set({ stockDeductedAt: new Date() })
-          .where(eq(orders.id, order.id));
-
-        await storage.updateOrder(order.id, {
-          status: "confirmed",
-          paymentStatus: "unpaid",
-        });
-      } catch (e) {
-        await storage.updateOrder(order.id, {
-          status: "cancelled",
-          paymentStatus: "unpaid",
-        });
-        console.error("[in-person] stock deduction failed; order cancelled", {
-          orderId: order.id,
-          error: (e as any)?.message,
-        });
+      if (!order) {
         return sendApiError(res, 409, {
-          code: "out_of_stock_or_reservation_failed",
-          reason: "out_of_stock_or_reservation_failed",
-          details: { orderId: order.id },
+          code: "order_in_progress",
+          reason: "order_in_progress",
         });
       }
 
-      const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+      const needsStockDeduction = !order.stockDeductedAt;
 
-      sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
-        console.error("[in-person] Failed to send fulfillment email:", err)
-      );
+      if (needsStockDeduction) {
+        try {
+          await atomicStockDeduction(order.id, parsed.items as any);
+          await db
+            .update(orders)
+            .set({ stockDeductedAt: new Date() })
+            .where(eq(orders.id, order.id));
 
-      sendOrderConfirmationEmail(orderForEmail).catch((err) =>
-        console.error("[in-person] Failed to send customer confirmation email:", err)
-      );
+          await storage.updateOrder(order.id, {
+            status: "confirmed",
+            paymentStatus: "unpaid",
+          });
+        } catch (e) {
+          await storage.updateOrder(order.id, {
+            status: "cancelled",
+            paymentStatus: "unpaid",
+          });
+          console.error("[in-person] stock deduction failed; order cancelled", {
+            orderId: order.id,
+            error: (e as any)?.message,
+          });
+          return sendApiError(res, 409, {
+            code: "out_of_stock_or_reservation_failed",
+            reason: "out_of_stock_or_reservation_failed",
+            details: { orderId: order.id },
+          });
+        }
+      }
 
-      return res.json({ success: true, orderId: order.id });
+      if (!idempotencyHit) {
+        const orderForEmail = { ...order, status: "confirmed", paymentStatus: "unpaid" } as any;
+
+        sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+          console.error("[in-person] Failed to send fulfillment email:", err)
+        );
+
+        sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+          console.error("[in-person] Failed to send customer confirmation email:", err)
+        );
+      }
+
+      return res.json({ success: true, orderId: order.id, idempotency: idempotencyHit ? "hit" : "new" });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, {
@@ -1040,6 +1205,8 @@ export async function registerRoutes(app: Express) {
       return res.json({
         success: true,
         orderId: order.id,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
         paymentMethod: order.paymentMethod,
         totalCzk: typeof (order as any).total === "number" ? (order as any).total : Number((order as any).total),
         shippingMethod: payload?.shippingMethod ?? null,
@@ -1084,9 +1251,13 @@ export async function registerRoutes(app: Express) {
       });
 
       const paymentStatus = session.payment_status; // "paid" | "unpaid" | "no_payment_required"
-      const orderIdFromMeta = (session.metadata?.orderId || session.client_reference_id || null) as
-        | string
-        | null;
+      let orderIdFromMeta = (session.metadata?.orderId || session.client_reference_id || null) as string | null;
+      const idempotencyKey = session.metadata?.idempotencyKey || null;
+
+      if (!orderIdFromMeta && idempotencyKey) {
+        const { order } = await fetchOrderByIdempotencyKey(String(idempotencyKey));
+        orderIdFromMeta = order?.id ?? null;
+      }
 
       if (paymentStatus !== "paid" && paymentStatus !== "no_payment_required") {
         return res.json({

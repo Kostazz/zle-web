@@ -12,7 +12,7 @@ import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin,
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
-import type { PaymentMethod } from "@shared/schema";
+import type { PaymentMethod, CartItem } from "@shared/schema";
 import type { ShippingMethodId } from "@shared/config/shipping";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
@@ -41,6 +41,36 @@ const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
 };
 
 const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
+
+const buildIdempotencyPayload = (
+  items: CartItem[],
+  email: string,
+  shipping: ShippingMethodId,
+  payment: PaymentMethod
+) => {
+  const normalizedItems = items
+    .map((item) => ({
+      productId: String(item.productId),
+      quantity: Number(item.quantity),
+      size: item.size ? String(item.size) : null,
+    }))
+    .sort((a, b) => `${a.productId}:${a.size ?? ""}`.localeCompare(`${b.productId}:${b.size ?? ""}`));
+
+  return JSON.stringify({
+    items: normalizedItems,
+    customerEmail: String(email).trim().toLowerCase(),
+    shippingMethod: shipping,
+    paymentMethod: payment,
+  });
+};
+
+const sha256Hex = async (value: string) => {
+  const data = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
 
 type ShippingOption = {
   id: ShippingMethodId;
@@ -74,6 +104,7 @@ export default function Checkout() {
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
   const [paymentConstraints, setPaymentConstraints] = useState<PaymentConstraints | null>(null);
   const [paymentConstraintReason, setPaymentConstraintReason] = useState<string | null>(null);
+  const [submitLocked, setSubmitLocked] = useState(false);
 
   // Stable key to avoid quote spam (items reference can change on re-render)
   const itemsKey = useMemo(() => {
@@ -231,6 +262,7 @@ export default function Checkout() {
       customerZip: string;
       shippingMethod: ShippingMethodId;
       paymentMethod: PaymentMethod;
+      idempotencyKey: string;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-session", data);
       return response.json();
@@ -240,6 +272,7 @@ export default function Checkout() {
         clearCart();
         window.location.href = data.url;
       } else {
+        setSubmitLocked(false);
         toast({
           title: "Chyba",
           description: "Nepodařilo se vytvořit platební session.",
@@ -248,6 +281,7 @@ export default function Checkout() {
       }
     },
     onError: (error: Error) => {
+      setSubmitLocked(false);
       toast({
         title: "Chyba",
         description: error.message || "Nepodařilo se zpracovat objednávku. Zkus to znovu.",
@@ -266,6 +300,7 @@ export default function Checkout() {
       customerZip: string;
       shippingMethod: ShippingMethodId;
       paymentMethod: PaymentMethod;
+      idempotencyKey: string;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-cod-order", data);
       return response.json();
@@ -273,6 +308,7 @@ export default function Checkout() {
     onSuccess: (data) => {
       const orderId = data?.orderId;
       if (!orderId) {
+        setSubmitLocked(false);
         toast({
           title: "Chyba",
           description: "Dobírku se nepodařilo založit. Zkus to znovu.",
@@ -284,6 +320,7 @@ export default function Checkout() {
       window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=cod`;
     },
     onError: (error: Error) => {
+      setSubmitLocked(false);
       toast({
         title: "Chyba",
         description: error.message || "Dobírku se nepodařilo založit. Zkus to znovu.",
@@ -302,6 +339,7 @@ export default function Checkout() {
       customerZip: string;
       shippingMethod: ShippingMethodId;
       paymentMethod: PaymentMethod;
+      idempotencyKey: string;
     }) => {
       const response = await apiRequest("POST", "/api/checkout/create-in-person-order", data);
       const payload = await response.json();
@@ -313,6 +351,7 @@ export default function Checkout() {
     onSuccess: (data) => {
       const orderId = data?.orderId;
       if (!orderId) {
+        setSubmitLocked(false);
         toast({
           title: "Chyba",
           description: "Platbu na místě se nepodařilo založit. Zkus to znovu.",
@@ -324,6 +363,7 @@ export default function Checkout() {
       window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=in_person`;
     },
     onError: (error: Error) => {
+      setSubmitLocked(false);
       toast({
         title: "Chyba",
         description: error.message || "Platbu na místě se nepodařilo založit. Zkus to znovu.",
@@ -332,7 +372,7 @@ export default function Checkout() {
     },
   });
 
-  const isSubmitting = checkoutMutation.isPending || codMutation.isPending || inPersonMutation.isPending;
+  const isSubmitting = checkoutMutation.isPending || codMutation.isPending || inPersonMutation.isPending || submitLocked;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -346,6 +386,10 @@ export default function Checkout() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (submitLocked || isSubmitting) {
+      return;
+    }
 
     if (!formData.name || !formData.email || !formData.address || !formData.city || !formData.zip) {
       toast({
@@ -378,6 +422,26 @@ export default function Checkout() {
       toast({
         title: "Platba není dostupná",
         description: selectedPaymentReason ?? "Zvolená platba není dostupná pro vybranou dopravu.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitLocked(true);
+    toast({
+      title: "Objednávka se zpracovává…",
+      description: "Chvilku počkej, než tě přesměrujeme.",
+    });
+
+    let idempotencyKey: string;
+    try {
+      const payload = buildIdempotencyPayload(items as CartItem[], formData.email, shippingMethod, paymentMethod);
+      idempotencyKey = await sha256Hex(payload);
+    } catch (error) {
+      setSubmitLocked(false);
+      toast({
+        title: "Chyba",
+        description: "Nepodařilo se připravit objednávku. Zkus to znovu.",
         variant: "destructive",
       });
       return;
@@ -430,6 +494,7 @@ export default function Checkout() {
         customerZip: formData.zip,
         shippingMethod,
         paymentMethod,
+        idempotencyKey,
       });
     } else if (paymentMethod === "cod") {
       codMutation.mutate({
@@ -441,6 +506,7 @@ export default function Checkout() {
         customerZip: formData.zip,
         shippingMethod,
         paymentMethod: "cod",
+        idempotencyKey,
       });
     } else if (paymentMethod === "in_person") {
       inPersonMutation.mutate({
@@ -452,6 +518,7 @@ export default function Checkout() {
         customerZip: formData.zip,
         shippingMethod,
         paymentMethod: "in_person",
+        idempotencyKey,
       });
     } else {
       clearCart();
@@ -717,9 +784,7 @@ export default function Checkout() {
 
                   <Button
                     type="submit"
-                    disabled={
-                      isSubmitting || !quote || !hasPaymentConstraints || !isSelectedPaymentAllowed || isInPersonPayment
-                    }
+                    disabled={isSubmitting || !quote || !hasPaymentConstraints || !isSelectedPaymentAllowed}
                     className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 mt-8"
                     data-testid="button-submit-order"
                   >

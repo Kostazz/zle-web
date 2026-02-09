@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Link, useSearch } from "wouter";
+import { useSearch } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Flame, Loader2, Package } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getLastOrder } from "@/utils/orderStorage";
+import { CheckoutResult } from "@/components/checkout/CheckoutResult";
+import type { PaymentMethod } from "@shared/schema";
 
 type VerifyResponse =
   | {
@@ -22,29 +24,27 @@ type VerifyResponse =
       retryAfterMs?: number | null;
     };
 
+type OrderSummaryResponse = {
+  success: boolean;
+  orderId?: string;
+  paymentMethod?: PaymentMethod;
+  subtotalCzk?: number | null;
+  shippingCzk?: number | null;
+  codCzk?: number | null;
+  totalCzk?: number | null;
+  shippingLabel?: string | null;
+};
+
 export default function CheckoutSuccess() {
   const searchString = useSearch();
   const params = useMemo(() => new URLSearchParams(searchString), [searchString]);
 
   const sessionId = params.get("session_id");
-  const orderId = params.get("order_id");
-  const pm = params.get("pm") || null;
+  const orderIdParam = params.get("order_id");
+  const pmParam = params.get("pm") as PaymentMethod | null;
 
   const lastLocalOrder = useMemo(() => getLastOrder(), []);
-
-  const nonStripeStamp = useMemo(() => orderId || lastLocalOrder?.id || null, [orderId, lastLocalOrder]);
-  const isNonStripeCod = !sessionId && pm === "cod";
-
-  const { data: orderSummary } = useQuery({
-    queryKey: ["/api/checkout/order-summary", nonStripeStamp],
-    queryFn: async () => {
-      const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(nonStripeStamp || ""))}`);
-      return response.json();
-    },
-    enabled: isNonStripeCod && !!nonStripeStamp,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
+  const fallbackOrderId = orderIdParam || lastLocalOrder?.id || null;
 
   // Polling settings (fail-safe for Stripe redirect timing + webhook delay)
   const MAX_POLLS = 12; // ~30s if interval 2500ms
@@ -100,119 +100,24 @@ export default function CheckoutSuccess() {
     data.reason === "not_paid" &&
     pollsRef.current >= MAX_POLLS;
 
-  // Non-Stripe flows (dobírka / bank / crypto)
-  if (!sessionId) {
-    const stamp = orderId || lastLocalOrder?.id || null;
-    const isCod = pm === "cod";
-    const isBank = pm === "bank";
-    const isCrypto = pm && ["usdc", "btc", "eth", "sol", "pi"].includes(pm);
+  const resolvedOrderId = sessionId
+    ? data && data.success
+      ? data.orderId || orderIdParam || null
+      : orderIdParam || null
+    : fallbackOrderId;
 
-    // If we still don't have any usable stamp, show the hard error.
-    if (!stamp) {
-      return (
-        <Layout>
-          <section className="py-16 md:py-24">
-            <div className="container mx-auto px-4">
-              <div className="max-w-md mx-auto text-center">
-                <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                  <Package className="h-10 w-10 text-red-400" />
-                </div>
-                <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                  CHYBÍ STAMP
-                </h1>
-                <p className="font-sans text-white/60 mb-8">
-                  Tenhle odkaz je neúplný. Pokud jsi objednával, pošli nám stamp a mrkneme na to.
-                </p>
+  const { data: orderSummary, isLoading: isSummaryLoading } = useQuery<OrderSummaryResponse>({
+    queryKey: ["/api/checkout/order-summary", resolvedOrderId],
+    queryFn: async () => {
+      const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(resolvedOrderId || ""))}`);
+      return response.json();
+    },
+    enabled: !!resolvedOrderId,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
-                <Button
-                  asChild
-                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-                >
-                  <Link href="/" data-testid="link-missing-session-to-home">
-                    ZPĚT NA HLAVNÍ STRÁNKU
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </section>
-        </Layout>
-      );
-    }
-
-    return (
-      <Layout>
-        <section className="py-10 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-2xl mx-auto">
-              <div className="border border-white/15 bg-black/35 p-6 md:p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                    {isCod ? <Flame className="h-5 w-5 text-white" /> : <Check className="h-5 w-5 text-white" />}
-                  </div>
-                  <div>
-                    <h1 className="font-display text-3xl text-white tracking-tight">
-                      {isCod ? "DOBÍRKA ZAPNUTÁ" : "OBJEDNÁVKA PŘIJATÁ"}
-                    </h1>
-                    <p className="font-sans text-white/60">
-                      {isCod
-                        ? "Zaplatíš až u dveří. Zbytek je na nás."
-                        : isBank
-                          ? "Pošleme ti instrukce. Bez stresu."
-                          : isCrypto
-                            ? "Pošleme ti instrukce pro krypto platbu."
-                            : "Jsme v tom. Dali jsme tomu číslo. A jedeme."}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
-                  <div className="font-heading text-xs tracking-wider text-white/60 mb-2">ORDER STAMP</div>
-                  <div className="font-mono text-xs text-white/80 break-all">{stamp}</div>
-                </div>
-
-                {isCod && (
-                  <div className="border border-white/15 bg-black/25 p-4 mb-6">
-                    <div className="font-heading text-xs tracking-wider text-white/60 mb-2">DOBÍRKA – JAK TO POJEDE</div>
-                    <ul className="text-sm text-white/70 space-y-2 list-disc pl-5">
-                      <li>Zaplatíš při převzetí (kurýr / výdejní místo podle dopravy).</li>
-                      {orderSummary?.success && (orderSummary?.codCzk ?? 0) > 0 && (
-                        <li>Dobírka příplatek: {orderSummary.codCzk} Kč (podle dopravce) – už v celkové částce.</li>
-                      )}
-                      <li>Měj připravenou hotovost / kartu – podle dopravce.</li>
-                      <li>Jakmile to vyrazí, pošleme info do mailu.</li>
-                    </ul>
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Button
-                    asChild
-                    className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-                  >
-                    <Link href="/" data-testid="link-nonstripe-success-to-home">
-                      ZPĚT NA HLAVNÍ STRÁNKU
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="font-heading text-sm tracking-wider border-white/20 text-white hover:bg-white/10"
-                  >
-                    <Link href="/shop" data-testid="link-nonstripe-success-to-shop">
-                      JÍT DO SHOPU
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
-  // Initial load
-  if (isLoading) {
+  if (sessionId && isLoading) {
     return (
       <Layout>
         <section className="py-16 md:py-24">
@@ -221,12 +126,8 @@ export default function CheckoutSuccess() {
               <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
                 <Loader2 className="h-10 w-10 text-white animate-spin" />
               </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                DRŽ. KONTROLUJEME PLATBU.
-              </h1>
-              <p className="font-sans text-white/60">
-                Systémy si to právě mezi sebou vyřizují.
-              </p>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">DRŽ. KONTROLUJEME PLATBU.</h1>
+              <p className="font-sans text-white/60">Systémy si to právě mezi sebou vyřizují.</p>
             </div>
           </div>
         </section>
@@ -234,7 +135,6 @@ export default function CheckoutSuccess() {
     );
   }
 
-  // Waiting state (polling not_paid)
   if (isWaitingForStripe) {
     return (
       <Layout>
@@ -244,9 +144,7 @@ export default function CheckoutSuccess() {
               <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
                 <Loader2 className="h-10 w-10 text-white animate-spin" />
               </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                JEŠTĚ TO DOBÍHÁ…
-              </h1>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">JEŠTĚ TO DOBÍHÁ…</h1>
               <p className="font-sans text-white/60 mb-6">
                 Platba proběhla. Potvrzení je na cestě.
                 <br />
@@ -256,15 +154,10 @@ export default function CheckoutSuccess() {
               </p>
 
               <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
-                <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
-                  SESSION STAMP
-                </div>
-                <div className="font-mono text-xs text-white/80 break-all">
-                  {sessionId}
-                </div>
+                <div className="font-heading text-xs tracking-wider text-white/60 mb-2">SESSION STAMP</div>
+                <div className="font-mono text-xs text-white/80 break-all">{sessionId}</div>
                 <div className="mt-3 text-xs text-white/45">
-                  pokus {Math.min(pollsRef.current, MAX_POLLS)} / {MAX_POLLS}{" "}
-                  {isFetching ? "· ověřuju…" : ""}
+                  pokus {Math.min(pollsRef.current, MAX_POLLS)} / {MAX_POLLS} {isFetching ? "· ověřuju…" : ""}
                 </div>
               </div>
 
@@ -282,65 +175,13 @@ export default function CheckoutSuccess() {
     );
   }
 
-  // Hard fail OR timed out waiting
-  if (error || !data?.success) {
-    const showTimedOutCopy = timedOutWaiting;
-
+  if ((sessionId && (error || !data?.success)) || timedOutWaiting) {
     return (
       <Layout>
-        <section className="py-16 md:py-24">
+        <section className="py-10 md:py-16">
           <div className="container mx-auto px-4">
-            <div className="max-w-md mx-auto text-center">
-              <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                <Package className="h-10 w-10 text-red-400" />
-              </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">
-                {showTimedOutCopy ? "JEŠTĚ TO NEDOSKOČILO" : "ROZSYPALO SE TO"}
-              </h1>
-
-              <p className="font-sans text-white/60 mb-4">
-                {showTimedOutCopy
-                  ? "Potvrzení je ještě na cestě. Dej tomu chvilku a zkus to znovu – nebo nám pošli stamp."
-                  : "Ne u tebe. Někde po cestě. Zkus to znovu – nebo nám pošli stamp."}
-              </p>
-
-              <div className="border border-white/15 bg-black/30 p-4 mb-8 text-left">
-                <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
-                  DEBUG STAMP
-                </div>
-                <div className="font-mono text-xs text-white/80 break-all">
-                  session_id: {sessionId ?? "(missing)"}
-                </div>
-                <div className="font-mono text-xs text-white/80 break-all">
-                  order_id: {orderId ?? "(missing)"}
-                </div>
-                <div className="font-mono text-xs text-white/70 break-all mt-2">
-                  reason: {"success" in (data || {}) ? "unknown" : (data as any)?.reason ?? "unknown"}
-                </div>
-              </div>
-
-              <p className="font-sans text-white/55 mb-8">
-                Když se to sekne, napiš na <span className="text-white">info@zle.cz</span> a pošli nám tenhle stamp.
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  onClick={() => refetch()}
-                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-                  data-testid="btn-error-refetch"
-                >
-                  ZKONTROLOVAT ZNOVU
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="font-heading text-sm tracking-wider border-white/20 text-white hover:bg-white/10"
-                >
-                  <Link href="/" data-testid="link-error-to-home">
-                    ZPĚT NA HLAVNÍ STRÁNKU
-                  </Link>
-                </Button>
-              </div>
+            <div className="max-w-2xl mx-auto">
+              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={pmParam} />
             </div>
           </div>
         </section>
@@ -348,122 +189,59 @@ export default function CheckoutSuccess() {
     );
   }
 
-  // Success (paid + finalized via verify/webhook)
+  if (isSummaryLoading) {
+    return (
+      <Layout>
+        <section className="py-16 md:py-24">
+          <div className="container mx-auto px-4">
+            <div className="max-w-md mx-auto text-center">
+              <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
+                <Loader2 className="h-10 w-10 text-white animate-spin" />
+              </div>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">NAČÍTÁME OBJEDNÁVKU…</h1>
+              <p className="font-sans text-white/60">Chvilku počkej, připravujeme shrnutí.</p>
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  if (!resolvedOrderId) {
+    return (
+      <Layout>
+        <section className="py-10 md:py-16">
+          <div className="container mx-auto px-4">
+            <div className="max-w-2xl mx-auto">
+              <CheckoutResult status="cancel" orderId={null} paymentMethod={pmParam} />
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <section className="py-10 md:py-16">
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto">
-            {/* RAW HEADER */}
-            <div className="border border-white/15 bg-black/35 p-6 md:p-8">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shrink-0">
-                  <Check className="h-7 w-7 text-black" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-heading text-xs tracking-[0.25em] text-white/60">
-                    PAYMENT LOCKED
-                  </div>
-                  <h1
-                    className="font-display text-3xl md:text-5xl text-white tracking-tight leading-tight"
-                    data-testid="text-success-title"
-                  >
-                    HOTOVO.
-                    <span className="block text-white/85">OBJEDNÁVKA JE TVOJE.</span>
-                    <span className="block text-white/70">JEĎ TO ZLE.</span>
-                  </h1>
-                </div>
-              </div>
-
-              <p className="font-sans text-white/65 mb-6">
-                Zaplaceno. Teď makáme my — balíme, lepíme, posíláme.
-              </p>
-
-              {/* STAMP */}
-              <div className="grid gap-4 md:grid-cols-2 mb-6">
-                <div className="border border-white/15 bg-white/5 p-4">
-                  <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
-                    ORDER TAG
-                  </div>
-                  <div className="font-mono text-sm text-white">
-                    {orderId
-                      ? orderId.slice(0, 8).toUpperCase()
-                      : data.orderId
-                        ? String(data.orderId).slice(0, 8).toUpperCase()
-                        : "ZLE-NEW"}
-                  </div>
-                </div>
-                <div className="border border-white/15 bg-white/5 p-4">
-                  <div className="font-heading text-xs tracking-wider text-white/60 mb-2">
-                    SESSION STAMP
-                  </div>
-                  <div className="font-mono text-xs text-white/80 break-all">
-                    {sessionId ?? "(missing)"}
-                  </div>
-                </div>
-              </div>
-
-              {/* WHAT NEXT */}
-              <div className="border border-white/15 bg-black/25 p-5 md:p-6 mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Flame className="h-4 w-4 text-white/70" />
-                  <h2 className="font-heading text-sm font-bold text-white tracking-wider">
-                    CO SE STANE TEĎ
-                  </h2>
-                </div>
-                <ul className="space-y-3">
-                  <li className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-white">1</span>
-                    </span>
-                    <span className="font-sans text-sm text-white/70">
-                      Přijde ti potvrzení na email.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-white">2</span>
-                    </span>
-                    <span className="font-sans text-sm text-white/70">
-                      Do 1–2 dnů to balíme a posíláme.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-white">3</span>
-                    </span>
-                    <span className="font-sans text-sm text-white/70">
-                      Dostaneš tracking a jedeš.
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button
-                  asChild
-                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-                >
-                  <Link href="/shop" data-testid="link-success-to-shop">
-                    ZPĚT DO SHOPU
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="font-heading text-sm tracking-wider border-white/20 text-white hover:bg-white/10"
-                >
-                  <Link href="/" data-testid="link-success-to-home">
-                    HLAVNÍ STRÁNKA
-                  </Link>
-                </Button>
-              </div>
-
-              <div className="mt-6 text-xs text-white/45">
-                Pokud něco nesedí, napiš nám a připoj{" "}
-                <span className="text-white/70">SESSION STAMP</span>.
-              </div>
-            </div>
+            <CheckoutResult
+              status="success"
+              orderId={resolvedOrderId}
+              paymentMethod={orderSummary?.paymentMethod ?? pmParam}
+              totals={
+                orderSummary
+                  ? {
+                      subtotalCzk: orderSummary.subtotalCzk ?? null,
+                      shippingCzk: orderSummary.shippingCzk ?? null,
+                      codCzk: orderSummary.codCzk ?? null,
+                      totalCzk: orderSummary.totalCzk ?? null,
+                      shippingLabel: orderSummary.shippingLabel ?? null,
+                    }
+                  : null
+              }
+            />
           </div>
         </div>
       </section>
