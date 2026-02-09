@@ -65,6 +65,7 @@ export const paymentMethodEnum = z.enum([
   "card",
   "bank",
   "cod",
+  "in_person",
   "gpay",
   "applepay",
   "usdc",

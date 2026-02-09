@@ -18,6 +18,7 @@ import type { ShippingMethodId } from "@shared/config/shipping";
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
   { value: "cod", label: "Dobírka (platíš při převzetí)", icon: HandCoins },
+  { value: "in_person", label: "Platba na místě (osobní odběr)", icon: HandCoins },
   { value: "bank", label: "Bankovní převod", icon: Landmark },
   { value: "gpay", label: "Google Pay", icon: Wallet },
   { value: "applepay", label: "Apple Pay", icon: Wallet },
@@ -48,6 +49,13 @@ type ShippingOption = {
   codAvailable: boolean;
   codFeeCzk: number;
   codUnavailableReason: string | null;
+  allowedPaymentMethods: PaymentMethod[];
+  disallowedPaymentReasons: Partial<Record<PaymentMethod, string>>;
+};
+
+type PaymentConstraints = {
+  allowedPaymentMethods: PaymentMethod[];
+  disallowedPaymentReasons: Partial<Record<PaymentMethod, string>>;
 };
 
 export default function Checkout() {
@@ -64,6 +72,8 @@ export default function Checkout() {
   const [paymentNetwork, setPaymentNetwork] = useState<string>("");
   const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("gls");
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+  const [paymentConstraints, setPaymentConstraints] = useState<PaymentConstraints | null>(null);
+  const [paymentConstraintReason, setPaymentConstraintReason] = useState<string | null>(null);
 
   // Stable key to avoid quote spam (items reference can change on re-render)
   const itemsKey = useMemo(() => {
@@ -84,6 +94,11 @@ export default function Checkout() {
     codFeeCzk: number;
     totalCzk: number;
   }>(null);
+
+  useEffect(() => {
+    setPaymentConstraints(null);
+    setPaymentConstraintReason(null);
+  }, [shippingMethod]);
 
   useEffect(() => {
     fetch("/api/shipping/options")
@@ -127,10 +142,23 @@ export default function Checkout() {
         }
 
         const data = await res.json();
-        if (!data?.totals) throw new Error(data?.error || "quote_failed");
+
+        if (!res.ok) {
+          if (data?.code === "payment_not_allowed_for_shipping") {
+            setPaymentConstraintReason(data?.reason ?? null);
+            setQuote(null);
+            return;
+          }
+          throw new Error(data?.error || data?.code || "quote_failed");
+        }
 
         if (data?.shippingOptions) {
           setShippingOptions(data.shippingOptions);
+        }
+
+        if (data?.paymentConstraints) {
+          setPaymentConstraints(data.paymentConstraints);
+          setPaymentConstraintReason(null);
         }
 
         setQuote(data.totals);
@@ -158,16 +186,31 @@ export default function Checkout() {
   }, [itemsKey, shippingMethod, paymentMethod]);
 
   const selectedShipping = shippingOptions.find((option) => option.id === shippingMethod) ?? null;
-  const codAvailable = quote?.codAvailable ?? selectedShipping?.codAvailable ?? false;
-  const codUnavailableReason = selectedShipping?.codUnavailableReason ?? null;
+  const fallbackConstraints = selectedShipping
+    ? {
+        allowedPaymentMethods: selectedShipping.allowedPaymentMethods,
+        disallowedPaymentReasons: selectedShipping.disallowedPaymentReasons,
+      }
+    : null;
+  const effectivePaymentConstraints = paymentConstraints ?? fallbackConstraints;
+  const allowedPaymentMethods = effectivePaymentConstraints?.allowedPaymentMethods ?? [];
+  const disallowedPaymentReasons = effectivePaymentConstraints?.disallowedPaymentReasons ?? {};
+  const hasPaymentConstraints = allowedPaymentMethods.length > 0;
+  const isSelectedPaymentAllowed = hasPaymentConstraints ? allowedPaymentMethods.includes(paymentMethod) : false;
+  const selectedPaymentReason = disallowedPaymentReasons[paymentMethod] ?? paymentConstraintReason;
+  const disabledPaymentReasons = hasPaymentConstraints
+    ? Array.from(
+        new Set(
+          PAYMENT_METHODS.filter((method) => !allowedPaymentMethods.includes(method.value))
+            .map((method) => disallowedPaymentReasons[method.value])
+            .filter((reason): reason is string => Boolean(reason))
+        )
+      )
+    : [];
+  const shouldShowSelectedPaymentReason =
+    Boolean(selectedPaymentReason) && !disabledPaymentReasons.includes(selectedPaymentReason as string);
 
-  useEffect(() => {
-    if (paymentMethod === "cod" && !codAvailable) {
-      setPaymentMethod("card");
-    }
-  }, [codAvailable, paymentMethod]);
-
-  const shippingPrice = quote?.shippingCzk ?? 0;
+  const shippingPrice = quote?.shippingCzk ?? selectedShipping?.priceCzk ?? 0;
 
   // COD surcharge (computed by server, depends on shipping carrier)
   const codFee = paymentMethod === "cod" ? quote?.codFeeCzk ?? 0 : 0;
@@ -176,6 +219,7 @@ export default function Checkout() {
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
+  const isInPersonPayment = paymentMethod === "in_person";
 
   const checkoutMutation = useMutation({
     mutationFn: async (data: {
@@ -285,6 +329,23 @@ export default function Checkout() {
         title: "Chybí přepočet",
         description: "Nepodařilo se ověřit dopravu. Zkus to prosím znovu.",
         variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isSelectedPaymentAllowed) {
+      toast({
+        title: "Platba není dostupná",
+        description: selectedPaymentReason ?? "Zvolená platba není dostupná pro vybranou dopravu.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isInPersonPayment) {
+      toast({
+        title: "Platba na místě",
+        description: "Platba na místě bude potvrzena v dalším kroku.",
       });
       return;
     }
@@ -540,8 +601,7 @@ export default function Checkout() {
                     >
                       {PAYMENT_METHODS.map((method) => {
                         const Icon = method.icon;
-                        const isCod = method.value === "cod";
-                        const isDisabled = isCod && !codAvailable;
+                        const isDisabled = !hasPaymentConstraints || !allowedPaymentMethods.includes(method.value);
                         return (
                           <div key={method.value} className="flex items-center">
                             <RadioGroupItem
@@ -563,8 +623,24 @@ export default function Checkout() {
                       })}
                     </RadioGroup>
 
-                    {!codAvailable && codUnavailableReason && (
-                      <p className="text-sm opacity-70 mt-3">{codUnavailableReason}</p>
+                    {!hasPaymentConstraints && (
+                      <p className="text-sm opacity-70 mt-3">Načítáme dostupné platební metody…</p>
+                    )}
+
+                    {disabledPaymentReasons.map((reason) => (
+                      <p key={reason} className="text-sm opacity-70 mt-3">
+                        {reason}
+                      </p>
+                    ))}
+
+                    {hasPaymentConstraints && !isSelectedPaymentAllowed && shouldShowSelectedPaymentReason && (
+                      <p className="text-sm opacity-70 mt-3">{selectedPaymentReason}</p>
+                    )}
+
+                    {isInPersonPayment && (
+                      <p className="text-sm opacity-70 mt-3">
+                        Platba na místě je dostupná při osobním odběru — potvrzení objednávky bude v dalším kroku.
+                      </p>
                     )}
 
                     {isCryptoMethod && networkOptions.length > 0 && (
@@ -596,7 +672,9 @@ export default function Checkout() {
 
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={
+                      isSubmitting || !quote || !hasPaymentConstraints || !isSelectedPaymentAllowed || isInPersonPayment
+                    }
                     className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 mt-8"
                     data-testid="button-submit-order"
                   >
@@ -616,7 +694,9 @@ export default function Checkout() {
                         )}
                         {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
                           ? "POKRAČOVAT K PLATBĚ"
-                          : "ODESLAT OBJEDNÁVKU"}
+                          : paymentMethod === "in_person"
+                            ? "POTVRDIT OBJEDNÁVKU"
+                            : "ODESLAT OBJEDNÁVKU"}
                       </>
                     )}
                   </Button>
@@ -626,6 +706,8 @@ export default function Checkout() {
                       ? "Budeš přesměrován na zabezpečenou platební bránu Stripe"
                       : paymentMethod === "cod"
                         ? "Zaplatíš až při převzetí (dobírka)"
+                        : paymentMethod === "in_person"
+                          ? "Platba na místě je dostupná při osobním odběru"
                         : paymentMethod === "bank"
                           ? "Po odeslání ti pošleme platební údaje emailem"
                           : "Po odeslání obdržíš instrukce pro krypto platbu emailem"}
@@ -675,7 +757,7 @@ export default function Checkout() {
                     <div className="flex items-center justify-between pt-2 border-t border-white/10">
                       <span className="font-heading text-lg text-white">CELKEM</span>
                       <span className="font-sans text-2xl font-bold text-white" data-testid="text-checkout-total">
-                        {totalWithShipping} Kč
+                        {quote ? `${totalWithShipping} Kč` : "—"}
                       </span>
                     </div>
                   </div>
