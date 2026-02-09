@@ -67,6 +67,7 @@ export const env = {
   EXPORT_TOKEN: process.env.EXPORT_TOKEN,
 
   // OPS
+  OPS_TOKEN: process.env.OPS_TOKEN,
   OPS_WEBHOOK_URL: process.env.OPS_WEBHOOK_URL,
   OPS_WEBHOOK_SECRET: process.env.OPS_WEBHOOK_SECRET,
   OPS_EMAIL_TO: process.env.OPS_EMAIL_TO,
@@ -74,6 +75,9 @@ export const env = {
   // Cron / jobs
   DAILY_LINE_CRON_SECRET: process.env.DAILY_LINE_CRON_SECRET,
   DAILY_LINE_ENABLE: process.env.DAILY_LINE_ENABLE,
+  ABANDONED_ORDER_TTL_MINUTES: process.env.ABANDONED_ORDER_TTL_MINUTES,
+  ABANDONED_SWEEP_INTERVAL_MS: process.env.ABANDONED_SWEEP_INTERVAL_MS,
+  ABANDONED_SWEEP_RUN_ON_BOOT: process.env.ABANDONED_SWEEP_RUN_ON_BOOT,
 
   // Client URL (optional)
   PUBLIC_URL: process.env.PUBLIC_URL,
