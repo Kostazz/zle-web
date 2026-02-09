@@ -241,16 +241,27 @@ export default function Checkout() {
   const shouldShowSelectedPaymentReason =
     Boolean(selectedPaymentReason) && !disabledPaymentReasons.includes(selectedPaymentReason as string);
 
+  const isPickupShipping = shippingMethod === "pickup";
+
   const shippingPrice = quote?.shippingCzk ?? selectedShipping?.priceCzk ?? 0;
 
   // COD surcharge (computed by server, depends on shipping carrier)
-  const codFee = paymentMethod === "cod" ? quote?.codFeeCzk ?? 0 : 0;
+  const codFee = paymentMethod === "cod" && isSelectedPaymentAllowed ? quote?.codFeeCzk ?? 0 : 0;
 
   const totalWithShipping = quote?.totalCzk ?? 0;
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
   const isInPersonPayment = paymentMethod === "in_person";
+  useEffect(() => {
+    if (!hasPaymentConstraints) return;
+    if (allowedPaymentMethods.includes(paymentMethod)) return;
+    const fallbackMethod = allowedPaymentMethods.includes("card") ? "card" : allowedPaymentMethods[0];
+    if (fallbackMethod) {
+      setPaymentMethod(fallbackMethod);
+      setPaymentNetwork("");
+    }
+  }, [allowedPaymentMethods, hasPaymentConstraints, paymentMethod]);
 
   const checkoutMutation = useMutation({
     mutationFn: async (data: {
@@ -668,7 +679,14 @@ export default function Checkout() {
 
                     <RadioGroup
                       value={shippingMethod}
-                      onValueChange={(value) => setShippingMethod(value as ShippingMethodId)}
+                      onValueChange={(value) => {
+                        const nextShipping = value as ShippingMethodId;
+                        setShippingMethod(nextShipping);
+                        if (nextShipping === "pickup" && paymentMethod === "cod") {
+                          setPaymentMethod("card");
+                          setPaymentNetwork("");
+                        }
+                      }}
                       className="space-y-3"
                       data-testid="radio-shipping-method"
                     >
@@ -747,6 +765,12 @@ export default function Checkout() {
 
                     {hasPaymentConstraints && !isSelectedPaymentAllowed && shouldShowSelectedPaymentReason && (
                       <p className="text-sm opacity-70 mt-3">{selectedPaymentReason}</p>
+                    )}
+
+                    {isPickupShipping && (
+                      <p className="text-sm opacity-70 mt-3">
+                        Dobírka je dostupná pouze při doručení na adresu.
+                      </p>
                     )}
 
                     {isInPersonPayment && (
@@ -857,7 +881,7 @@ export default function Checkout() {
                     </div>
 
                     {/* ✅ COD surcharge row */}
-                    {paymentMethod === "cod" && codFee > 0 && (
+                    {paymentMethod === "cod" && codFee > 0 && isSelectedPaymentAllowed && (
                       <div className="flex items-center justify-between text-white/70 text-sm">
                         <span>Dobírka</span>
                         <span>{codFee} Kč</span>
