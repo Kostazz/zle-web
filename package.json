@@ -12,6 +12,8 @@
     "build": "vite build && tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
     "images:optimize": "tsx script/optimize-images.ts"
