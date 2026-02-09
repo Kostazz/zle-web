@@ -10,7 +10,9 @@ function requireOpsToken(req: Request, res: Response): boolean {
     res.status(503).json({ error: "ops_not_configured" });
     return false;
   }
-  const provided = (req.headers["x-ops-token"] as string | undefined) || (req.query.token as string | undefined);
+
+  const provided = req.headers["x-ops-token"] as string | undefined;
+
   if (!provided || provided !== expected) {
     res.status(401).json({ error: "unauthorized" });
     return false;
@@ -120,13 +122,7 @@ export function registerOpsRoutes(app: Express) {
 
       if (q) {
         const like = `%${q}%`;
-        filters.push(
-          or(
-            ilike(orders.id, like),
-            ilike(orders.customerEmail, like),
-            ilike(orders.customerName, like)
-          )
-        );
+        filters.push(or(ilike(orders.id, like), ilike(orders.customerEmail, like), ilike(orders.customerName, like)));
       }
 
       const orderBy =

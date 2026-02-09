@@ -72,13 +72,13 @@ export default function OpsDashboard() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) || "";
+    const saved = sessionStorage.getItem(STORAGE_KEY) || "";
     setToken(saved);
   }, []);
 
   useEffect(() => {
     if (!token) return;
-    localStorage.setItem(STORAGE_KEY, token);
+    sessionStorage.setItem(STORAGE_KEY, token);
   }, [token]);
 
   const headers = useMemo(() => {
