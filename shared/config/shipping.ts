@@ -1,74 +1,79 @@
 // shared/config/shipping.ts
-// Single source of truth: shipping methods + COD availability/fee + totals
 
-export const SHIPPING_CURRENCY = "CZK";
-
-// D3: jednoduchý provozní model (Michal) — GLS + osobní vyzvednutí
 export type ShippingMethodId = "gls" | "pickup";
 
-export type ShippingMethod = {
+export interface ShippingMethod {
   id: ShippingMethodId;
   label: string;
   priceCzk: number;
 
-  // Cash on delivery (DOBÍRKA)
   codAvailable: boolean;
-  codFeeCzk: number;
+  codFeeCzk?: number;
+
+  codUnavailableReason?: string;
+}
+
+export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
+  gls: {
+    id: "gls",
+    label: "GLS – doručení na adresu",
+    priceCzk: 129,
+    codAvailable: true,
+    codFeeCzk: 39,
+  },
+
+  pickup: {
+    id: "pickup",
+    label: "Osobní odběr",
+    priceCzk: 0,
+    codAvailable: false,
+    codUnavailableReason:
+      "Dobírka není u osobního odběru dostupná. Zaplať online a vyzvedni bez čekání.",
+  },
 };
 
-export const SHIPPING_METHODS: ShippingMethod[] = [
-  {
-    id: "gls",
-    label: "GLS",
-    priceCzk: 109,
-    codAvailable: true,
-    codFeeCzk: 49,
-  },
-  {
-    id: "pickup",
-    label: "Osobní vyzvednutí na krámě",
-    priceCzk: 0,
-    // platba na místě = bez dobírkového příplatku
-    codAvailable: true,
-    codFeeCzk: 0,
-  },
-];
-
-export function getShippingMethod(id: ShippingMethodId) {
-  return SHIPPING_METHODS.find((m) => m.id === id);
+export function getShippingOptionsForApi() {
+  return Object.values(SHIPPING_METHODS).map((m) => ({
+    id: m.id,
+    label: m.label,
+    priceCzk: m.priceCzk,
+    codAvailable: m.codAvailable,
+    codFeeCzk: m.codFeeCzk ?? 0,
+    codUnavailableReason: m.codUnavailableReason ?? null,
+  }));
 }
 
-export function getShippingMeta(id: ShippingMethodId) {
-  const method = getShippingMethod(id);
-  if (!method) return null;
-
-  return {
-    shippingMethodId: method.id,
-    shippingLabel: method.label,
-    shippingCzk: method.priceCzk,
-    codAvailable: method.codAvailable,
-    codFeeCzk: method.codFeeCzk,
-  };
-}
-
-export function calculateTotals(input: {
+export function calculateTotals({
+  subtotalCzk,
+  shippingId,
+  paymentMethod,
+}: {
   subtotalCzk: number;
-  shippingMethodId: ShippingMethodId;
-  paymentMethod?: string | null;
+  shippingId: ShippingMethodId;
+  paymentMethod: "card" | "cod";
 }) {
-  const meta = getShippingMeta(input.shippingMethodId);
-  if (!meta) return { error: "unknown_shipping_method" as const };
+  const shipping = SHIPPING_METHODS[shippingId];
 
-  const wantsCod = (input.paymentMethod || "").toLowerCase() === "cod";
-  const codCzk = wantsCod && meta.codAvailable ? meta.codFeeCzk : 0;
+  if (!shipping) {
+    throw new Error("invalid_shipping_method");
+  }
 
-  const totalCzk = input.subtotalCzk + meta.shippingCzk + codCzk;
+  const codAvailable = shipping.codAvailable;
+  let codFeeCzk = 0;
+
+  if (paymentMethod === "cod") {
+    if (shipping.codAvailable) {
+      codFeeCzk = shipping.codFeeCzk ?? 0;
+    }
+  }
+
+  const shippingCzk = shipping.priceCzk;
+  const totalCzk = subtotalCzk + shippingCzk + codFeeCzk;
 
   return {
-    currency: SHIPPING_CURRENCY,
-    subtotalCzk: input.subtotalCzk,
-    ...meta,
-    codCzk,
+    shippingCzk,
+    codFeeCzk,
+    codAvailable,
     totalCzk,
   };
 }

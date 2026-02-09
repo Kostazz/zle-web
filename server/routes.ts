@@ -5,7 +5,12 @@ import express from "express";
 import Stripe from "stripe";
 import { z } from "zod";
 
-import { calculateTotals, getShippingMeta, type ShippingMethodId } from "@shared/config/shipping";
+import {
+  calculateTotals,
+  getShippingOptionsForApi,
+  SHIPPING_METHODS,
+  type ShippingMethodId,
+} from "@shared/config/shipping";
 
 import { storage } from "./storage";
 import type { PaymentMethod } from "../shared/schema";
@@ -169,7 +174,11 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-
+  app.get("/api/shipping/options", (_req, res) => {
+    res.json({
+      shippingOptions: getShippingOptionsForApi(),
+    });
+  });
 
   // Checkout: quote totals (shipping + COD availability/fee) — used for micro-UX recalculation
   app.post("/api/checkout/quote", async (req, res) => {
@@ -198,14 +207,17 @@ export async function registerRoutes(app: Express) {
         subtotalCzk += unitPriceCzk * item.quantity;
       }
 
+      const normalizedPaymentMethod = parsed.paymentMethod === "cod" ? "cod" : "card";
       const totals = calculateTotals({
         subtotalCzk,
-        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
-        paymentMethod: parsed.paymentMethod || null,
+        shippingId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: normalizedPaymentMethod,
       });
-      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
 
-      return res.json({ success: true, ...totals });
+      return res.json({
+        totals,
+        shippingOptions: getShippingOptionsForApi(),
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, "invalid_payload", err.flatten());
@@ -277,24 +289,23 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      const shipMeta = getShippingMeta(parsed.shippingMethod as ShippingMethodId);
-      if (!shipMeta) return sendApiError(res, 400, "unknown_shipping_method");
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      if (!shipping) return sendApiError(res, 400, "unknown_shipping_method");
 
       const totals = calculateTotals({
         subtotalCzk,
-        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
-        paymentMethod: pm,
+        shippingId: parsed.shippingMethod as ShippingMethodId,
+        paymentMethod: "card",
       });
-      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
 
-      if (shipMeta.shippingCzk > 0) {
+      if (shipping.priceCzk > 0) {
         line_items.push({
           quantity: 1,
           price_data: {
             currency: "czk",
-            unit_amount: CZK_TO_STRIPE(shipMeta.shippingCzk),
+            unit_amount: CZK_TO_STRIPE(shipping.priceCzk),
             product_data: {
-              name: `Doprava: ${shipMeta.shippingLabel}`,
+              name: `Doprava: ${shipping.label}`,
             },
           },
         });
@@ -317,12 +328,12 @@ export async function registerRoutes(app: Express) {
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
-          shippingLabel: shipMeta.shippingLabel,
+          shippingLabel: shipping.label,
           subtotalCzk,
-          shippingCzk: shipMeta.shippingCzk,
-          codAvailable: shipMeta.codAvailable,
-          codFeeCzk: shipMeta.codFeeCzk,
-          codCzk: totals.codCzk,
+          shippingCzk: shipping.priceCzk,
+          codAvailable: shipping.codAvailable,
+          codFeeCzk: shipping.codFeeCzk ?? 0,
+          codCzk: totals.codFeeCzk,
           totalCzk,
         }),
         total: Math.round(totalCzk),
@@ -386,7 +397,7 @@ export async function registerRoutes(app: Express) {
             customerZip: parsed.customerZip,
             shippingMethod: parsed.shippingMethod,
             subtotalCzk: String(subtotalCzk),
-            shippingCzk: String(shipMeta.shippingCzk),
+            shippingCzk: String(shipping.priceCzk),
             totalCzk: String(totalCzk),
           },
         });
@@ -437,19 +448,19 @@ export async function registerRoutes(app: Express) {
         subtotalCzk += unitPriceCzk * item.quantity;
       }
 
-      const shipMeta = getShippingMeta(parsed.shippingMethod as ShippingMethodId);
-      if (!shipMeta) return sendApiError(res, 400, "unknown_shipping_method");
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      if (!shipping) return sendApiError(res, 400, "unknown_shipping_method");
 
       const totals = calculateTotals({
         subtotalCzk,
-        shippingMethodId: parsed.shippingMethod as ShippingMethodId,
+        shippingId: parsed.shippingMethod as ShippingMethodId,
         paymentMethod: "cod",
       });
-      if ("error" in totals) return sendApiError(res, 400, "unknown_shipping_method");
 
       if (!totals.codAvailable) {
-        return sendApiError(res, 400, "cod_not_available_for_shipping", {
-          shippingMethod: parsed.shippingMethod,
+        return res.status(400).json({
+          code: "cod_not_available_for_shipping",
+          reason: "Dobírka není pro zvolenou dopravu dostupná. Zvol jiný způsob platby.",
         });
       }
 
@@ -468,12 +479,12 @@ export async function registerRoutes(app: Express) {
         items: JSON.stringify({
           items: parsed.items,
           shippingMethod: parsed.shippingMethod,
-          shippingLabel: shipMeta.shippingLabel,
+          shippingLabel: shipping.label,
           subtotalCzk,
-          shippingCzk: shipMeta.shippingCzk,
-          codAvailable: shipMeta.codAvailable,
-          codFeeCzk: shipMeta.codFeeCzk,
-          codCzk: totals.codCzk,
+          shippingCzk: shipping.priceCzk,
+          codAvailable: shipping.codAvailable,
+          codFeeCzk: shipping.codFeeCzk ?? 0,
+          codCzk: totals.codFeeCzk,
           totalCzk,
         }),
         total: Math.round(totalCzk),

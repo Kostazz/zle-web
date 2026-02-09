@@ -13,7 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
 import type { PaymentMethod } from "@shared/schema";
-import { SHIPPING_METHODS, type ShippingMethodId } from "@shared/config/shipping";
+import type { ShippingMethodId } from "@shared/config/shipping";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
@@ -41,6 +41,15 @@ const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
 
 const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
 
+type ShippingOption = {
+  id: ShippingMethodId;
+  label: string;
+  priceCzk: number;
+  codAvailable: boolean;
+  codFeeCzk: number;
+  codUnavailableReason: string | null;
+};
+
 export default function Checkout() {
   const { items, total, clearCart } = useCart();
   const { toast } = useToast();
@@ -54,10 +63,7 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [paymentNetwork, setPaymentNetwork] = useState<string>("");
   const [shippingMethod, setShippingMethod] = useState<ShippingMethodId>("gls");
-
-  const shippingOptions = useMemo(() => {
-    return SHIPPING_METHODS.map((m) => ({ id: m.id, value: m.id, label: m.label, priceCzk: m.priceCzk }));
-  }, []);
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
 
   // Stable key to avoid quote spam (items reference can change on re-render)
   const itemsKey = useMemo(() => {
@@ -73,16 +79,24 @@ export default function Checkout() {
 
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [quote, setQuote] = useState<null | {
-    currency: string;
-    subtotalCzk: number;
-    shippingMethodId: ShippingMethodId;
-    shippingLabel: string;
     shippingCzk: number;
     codAvailable: boolean;
     codFeeCzk: number;
-    codCzk: number;
     totalCzk: number;
   }>(null);
+
+  useEffect(() => {
+    fetch("/api/shipping/options")
+      .then((r) => r.json())
+      .then((data) => setShippingOptions(data.shippingOptions))
+      .catch(() => {
+        toast({
+          title: "Chyba",
+          description: "Nepodařilo se načíst dopravu",
+          variant: "destructive",
+        });
+      });
+  }, [toast]);
 
   useEffect(() => {
     if (!items || items.length === 0) {
@@ -113,29 +127,13 @@ export default function Checkout() {
         }
 
         const data = await res.json();
-        if (!data?.success) throw new Error(data?.error || "quote_failed");
+        if (!data?.totals) throw new Error(data?.error || "quote_failed");
 
-        // If COD selected but not available for current shipping -> switch away
-        if (paymentMethod === "cod" && data.codAvailable === false) {
-          setPaymentMethod("card");
-          toast({
-            title: "Dobírka není dostupná",
-            description: "Pro tuhle dopravu dobírka nejede. Přepínám tě na kartu.",
-            variant: "destructive",
-          });
+        if (data?.shippingOptions) {
+          setShippingOptions(data.shippingOptions);
         }
 
-        setQuote({
-          currency: data.currency,
-          subtotalCzk: data.subtotalCzk,
-          shippingMethodId: data.shippingMethodId,
-          shippingLabel: data.shippingLabel,
-          shippingCzk: data.shippingCzk,
-          codAvailable: data.codAvailable,
-          codFeeCzk: data.codFeeCzk,
-          codCzk: data.codCzk,
-          totalCzk: data.totalCzk,
-        });
+        setQuote(data.totals);
       } catch (e: any) {
         // Ignore aborted requests
         if (e?.name === "AbortError") return;
@@ -159,13 +157,22 @@ export default function Checkout() {
     };
   }, [itemsKey, shippingMethod, paymentMethod]);
 
+  const selectedShipping = shippingOptions.find((option) => option.id === shippingMethod) ?? null;
+  const codAvailable = quote?.codAvailable ?? selectedShipping?.codAvailable ?? false;
+  const codUnavailableReason = selectedShipping?.codUnavailableReason ?? null;
+
+  useEffect(() => {
+    if (paymentMethod === "cod" && !codAvailable) {
+      setPaymentMethod("card");
+    }
+  }, [codAvailable, paymentMethod]);
+
   const shippingPrice = quote?.shippingCzk ?? 0;
 
   // COD surcharge (computed by server, depends on shipping carrier)
-  const codFee = paymentMethod === "cod" ? quote?.codCzk ?? 0 : 0;
+  const codFee = paymentMethod === "cod" ? quote?.codFeeCzk ?? 0 : 0;
 
-  // Prefer server total if available, fallback to client total + extras
-  const totalWithShipping = quote?.totalCzk ?? (total + shippingPrice + codFee);
+  const totalWithShipping = quote?.totalCzk ?? 0;
 
   const isCryptoMethod = CRYPTO_METHODS.includes(paymentMethod);
   const networkOptions = isCryptoMethod ? CRYPTO_NETWORKS[paymentMethod] || [] : [];
@@ -268,6 +275,15 @@ export default function Checkout() {
       toast({
         title: "Vyber síť",
         description: "Pro krypto platbu musíš vybrat síť.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!quote) {
+      toast({
+        title: "Chybí přepočet",
+        description: "Nepodařilo se ověřit dopravu. Zkus to prosím znovu.",
         variant: "destructive",
       });
       return;
@@ -484,10 +500,10 @@ export default function Checkout() {
                       data-testid="radio-shipping-method"
                     >
                       {shippingOptions.map((method) => (
-                        <div key={method.value} className="flex items-center justify-between gap-4">
+                        <div key={method.id} className="flex items-center justify-between gap-4">
                           <div className="flex items-center">
                             <RadioGroupItem
-                              value={method.value}
+                              value={method.id}
                               id={`shipping-${method.id}`}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
                               data-testid={`radio-shipping-${method.id}`}
@@ -524,11 +540,14 @@ export default function Checkout() {
                     >
                       {PAYMENT_METHODS.map((method) => {
                         const Icon = method.icon;
+                        const isCod = method.value === "cod";
+                        const isDisabled = isCod && !codAvailable;
                         return (
                           <div key={method.value} className="flex items-center">
                             <RadioGroupItem
                               value={method.value}
                               id={`payment-${method.value}`}
+                              disabled={isDisabled}
                               className="border-white/30 text-white data-[state=checked]:bg-white data-[state=checked]:border-white"
                               data-testid={`radio-payment-${method.value}`}
                             />
@@ -543,6 +562,10 @@ export default function Checkout() {
                         );
                       })}
                     </RadioGroup>
+
+                    {!codAvailable && codUnavailableReason && (
+                      <p className="text-sm opacity-70 mt-3">{codUnavailableReason}</p>
+                    )}
 
                     {isCryptoMethod && networkOptions.length > 0 && (
                       <div className="mt-4 ml-6 pl-4 border-l border-white/20">
