@@ -508,7 +508,7 @@ export default function Checkout() {
 
                     <div className="mt-3 text-xs text-white/50 min-h-[16px]">
                       <span className={isRecalculating ? "opacity-100" : "opacity-0"}>
-                        Ověřujeme dostupnost dobírky…
+                        {paymentMethod === "cod" ? "Ověřujeme dostupnost dobírky…" : "Přepočítávám cenu…"}
                       </span>
                     </div>
                   </div>
