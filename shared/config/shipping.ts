@@ -1,5 +1,7 @@
 // shared/config/shipping.ts
 
+import type { PaymentMethod } from "../schema";
+
 export type ShippingMethodId = "gls" | "pickup";
 
 export interface ShippingMethod {
@@ -11,6 +13,9 @@ export interface ShippingMethod {
   codFeeCzk?: number;
 
   codUnavailableReason?: string;
+
+  allowedPaymentMethods: PaymentMethod[];
+  disallowedPaymentReasons: Partial<Record<PaymentMethod, string>>;
 }
 
 export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
@@ -20,6 +25,21 @@ export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
     priceCzk: 129,
     codAvailable: true,
     codFeeCzk: 39,
+    allowedPaymentMethods: [
+      "card",
+      "bank",
+      "cod",
+      "gpay",
+      "applepay",
+      "usdc",
+      "btc",
+      "eth",
+      "sol",
+      "pi",
+    ],
+    disallowedPaymentReasons: {
+      in_person: "Platba na místě je jen při osobním odběru.",
+    },
   },
 
   pickup: {
@@ -29,6 +49,21 @@ export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
     codAvailable: false,
     codUnavailableReason:
       "Dobírka není u osobního odběru dostupná. Zaplať online a vyzvedni bez čekání.",
+    allowedPaymentMethods: [
+      "card",
+      "bank",
+      "gpay",
+      "applepay",
+      "usdc",
+      "btc",
+      "eth",
+      "sol",
+      "pi",
+      "in_person",
+    ],
+    disallowedPaymentReasons: {
+      cod: "Dobírka je jen pro doručení kurýrem.",
+    },
   },
 };
 
@@ -40,6 +75,8 @@ export function getShippingOptionsForApi() {
     codAvailable: m.codAvailable,
     codFeeCzk: m.codFeeCzk ?? 0,
     codUnavailableReason: m.codUnavailableReason ?? null,
+    allowedPaymentMethods: m.allowedPaymentMethods,
+    disallowedPaymentReasons: m.disallowedPaymentReasons,
   }));
 }
 

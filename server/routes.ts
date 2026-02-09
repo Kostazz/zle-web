@@ -13,7 +13,7 @@ import {
 } from "@shared/config/shipping";
 
 import { storage } from "./storage";
-import type { PaymentMethod } from "../shared/schema";
+import { paymentMethodEnum, type PaymentMethod } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
@@ -106,7 +106,7 @@ const CreateSessionSchema = z.object({
   customerZip: z.string().min(1).max(20),
   // ✅ FIX: allow pickup too
   shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
-  paymentMethod: z.string().optional(),
+  paymentMethod: paymentMethodEnum.optional(),
 });
 
 const CreateCodOrderSchema = z.object({
@@ -187,7 +187,7 @@ export async function registerRoutes(app: Express) {
         items: z.array(CheckoutItemSchema).min(1),
         // ✅ FIX: allow pickup too
         shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
-        paymentMethod: z.string().optional(),
+        paymentMethod: paymentMethodEnum.optional(),
       });
 
       const parsed = QuoteSchema.parse(req.body);
@@ -207,6 +207,24 @@ export async function registerRoutes(app: Express) {
         subtotalCzk += unitPriceCzk * item.quantity;
       }
 
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      if (!shipping) {
+        return sendApiError(res, 400, "invalid_shipping_method");
+      }
+
+      if (parsed.paymentMethod && !shipping.allowedPaymentMethods.includes(parsed.paymentMethod)) {
+        const reason = shipping.disallowedPaymentReasons[parsed.paymentMethod];
+        return res.status(400).json({
+          code: "payment_not_allowed_for_shipping",
+          reason,
+          details: {
+            shippingMethod: parsed.shippingMethod,
+            paymentMethod: parsed.paymentMethod,
+            allowedPaymentMethods: shipping.allowedPaymentMethods,
+          },
+        });
+      }
+
       const normalizedPaymentMethod = parsed.paymentMethod === "cod" ? "cod" : "card";
       const totals = calculateTotals({
         subtotalCzk,
@@ -217,6 +235,10 @@ export async function registerRoutes(app: Express) {
       return res.json({
         totals,
         shippingOptions: getShippingOptionsForApi(),
+        paymentConstraints: {
+          allowedPaymentMethods: shipping.allowedPaymentMethods,
+          disallowedPaymentReasons: shipping.disallowedPaymentReasons,
+        },
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
