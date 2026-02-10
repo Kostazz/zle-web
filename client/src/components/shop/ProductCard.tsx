@@ -34,6 +34,7 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <>
       <div 
+        id={`product-${product.id}`}
         className={`group cursor-pointer zle-card p-3 ${isSoldOut ? "opacity-60" : ""}`}
         onClick={() => setIsModalOpen(true)}
         onMouseEnter={() => setIsHovered(true)}
