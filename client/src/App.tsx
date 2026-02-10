@@ -8,6 +8,10 @@ import { CartProvider } from "@/lib/cart-context";
 import { LogoProvider } from "@/lib/logoContext";
 import { ScrollToTop } from "@/components/layout/ScrollToTop";
 import { Canonical } from "@/components/seo/Canonical";
+import { SeoManager } from "@/components/seo/SeoManager";
+import { StructuredData } from "@/components/seo/StructuredData";
+import { Analytics } from "@/components/seo/Analytics";
+import { WebmasterVerification } from "@/components/seo/WebmasterVerification";
 import Home from "@/pages/Home";
 
 // Route-level code splitting (mobile speed): keep Home eager, lazy-load the rest.
@@ -79,6 +83,10 @@ function App() {
           <CartProvider>
             <ScrollToTop />
             <Canonical />
+            <SeoManager />
+            <StructuredData />
+            <Analytics />
+            <WebmasterVerification />
             <Toaster />
             <Router />
           </CartProvider>

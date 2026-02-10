@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /ops
+Disallow: /account
+Disallow: /checkout
+Disallow: /success
+Disallow: /cancel
 
 Sitemap: https://zleshop.cz/sitemap.xml
