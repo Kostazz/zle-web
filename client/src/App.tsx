@@ -11,6 +11,7 @@ import { Canonical } from "@/components/seo/Canonical";
 import { SeoManager } from "@/components/seo/SeoManager";
 import { SocialMeta } from "@/components/seo/SocialMeta";
 import { StructuredData } from "@/components/seo/StructuredData";
+import { ShopProductSchema } from "@/components/seo/ShopProductSchema";
 import { Analytics } from "@/components/seo/Analytics";
 import { WebmasterVerification } from "@/components/seo/WebmasterVerification";
 import Home from "@/pages/Home";
@@ -87,6 +88,7 @@ function App() {
             <SeoManager />
             <SocialMeta />
             <StructuredData />
+            <ShopProductSchema />
             <Analytics />
             <WebmasterVerification />
             <Toaster />
