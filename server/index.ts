@@ -14,6 +14,7 @@ import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
 import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
+import { injectSeo } from "./seo/injectSeo";
 
 const app = express();
 app.disable("x-powered-by");
@@ -246,52 +247,6 @@ function serveStaticProd(app: express.Express) {
   const distDir = path.resolve(PROJECT_ROOT, "dist");
   const indexHtml = path.join(distDir, "index.html");
   const indexHtmlTemplate = fs.readFileSync(indexHtml, "utf-8");
-
-  const escapeHtmlAttr = (value: string): string =>
-    value
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-  const injectSeo = (html: string, canonicalUrl: string): string => {
-    const safeUrl = escapeHtmlAttr(canonicalUrl);
-    const canonicalTag = `<link rel="canonical" href="${safeUrl}">`;
-    const ogUrlTag = `<meta property="og:url" content="${safeUrl}">`;
-
-    const canonicalRegex = /<link\b(?=[^>]*\brel\s*=\s*(?:["']?canonical["']?))[^>]*>/i;
-    const ogUrlRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:url["']?))[^>]*>/i;
-    const headCloseRegex = /<\/head>/i;
-
-    let output = html;
-    let hasCanonical = false;
-    let hasOgUrl = false;
-
-    if (canonicalRegex.test(output)) {
-      output = output.replace(canonicalRegex, canonicalTag);
-      hasCanonical = true;
-    }
-
-    if (ogUrlRegex.test(output)) {
-      output = output.replace(ogUrlRegex, ogUrlTag);
-      hasOgUrl = true;
-    }
-
-    if (!hasCanonical || !hasOgUrl) {
-      const missingTags = [!hasCanonical ? canonicalTag : null, !hasOgUrl ? ogUrlTag : null]
-        .filter(Boolean)
-        .join("\n  ");
-
-      if (headCloseRegex.test(output)) {
-        output = output.replace(headCloseRegex, `  ${missingTags}\n</head>`);
-      } else {
-        output += `\n${missingTags}`;
-      }
-    }
-
-    return output;
-  };
 
   app.use(express.static(distDir, { maxAge: "1h", etag: true, index: false }));
 
