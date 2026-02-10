@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import path from "path";
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
@@ -244,12 +245,61 @@ async function initStripe() {
 function serveStaticProd(app: express.Express) {
   const distDir = path.resolve(PROJECT_ROOT, "dist");
   const indexHtml = path.join(distDir, "index.html");
+  const indexHtmlTemplate = fs.readFileSync(indexHtml, "utf-8");
+
+  const injectSeo = (html: string, canonicalUrl: string): string => {
+    const canonicalTag = `<link rel="canonical" href="${canonicalUrl}">`;
+    const ogUrlTag = `<meta property="og:url" content="${canonicalUrl}">`;
+
+    const canonicalRegex = /<link\b(?=[^>]*\brel\s*=\s*(?:["']?canonical["']?))[^>]*>/i;
+    const ogUrlRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:url["']?))[^>]*>/i;
+    const headCloseRegex = /<\/head>/i;
+
+    let output = html;
+    let hasCanonical = false;
+    let hasOgUrl = false;
+
+    if (canonicalRegex.test(output)) {
+      output = output.replace(canonicalRegex, canonicalTag);
+      hasCanonical = true;
+    }
+
+    if (ogUrlRegex.test(output)) {
+      output = output.replace(ogUrlRegex, ogUrlTag);
+      hasOgUrl = true;
+    }
+
+    if (!hasCanonical || !hasOgUrl) {
+      const missingTags = [!hasCanonical ? canonicalTag : null, !hasOgUrl ? ogUrlTag : null]
+        .filter(Boolean)
+        .join("\n  ");
+
+      if (headCloseRegex.test(output)) {
+        output = output.replace(headCloseRegex, `  ${missingTags}\n</head>`);
+      } else {
+        output += `\n${missingTags}`;
+      }
+    }
+
+    return output;
+  };
 
   app.use(express.static(distDir, { maxAge: "1h", etag: true, index: false }));
 
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
-    res.sendFile(indexHtml);
+
+    const base = (
+      process.env.VITE_PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL || "https://zleshop.cz"
+    ).replace(/\/+$/, "");
+    const cleanPath = (req.path || "/").replace(/\/+$/, "") || "/";
+    const canonicalUrl = `${base}${cleanPath === "/" ? "/" : cleanPath}`;
+
+    const html = injectSeo(indexHtmlTemplate, canonicalUrl);
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(html);
   });
 }
 
