@@ -247,9 +247,18 @@ function serveStaticProd(app: express.Express) {
   const indexHtml = path.join(distDir, "index.html");
   const indexHtmlTemplate = fs.readFileSync(indexHtml, "utf-8");
 
+  const escapeHtmlAttr = (value: string): string =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
   const injectSeo = (html: string, canonicalUrl: string): string => {
-    const canonicalTag = `<link rel="canonical" href="${canonicalUrl}">`;
-    const ogUrlTag = `<meta property="og:url" content="${canonicalUrl}">`;
+    const safeUrl = escapeHtmlAttr(canonicalUrl);
+    const canonicalTag = `<link rel="canonical" href="${safeUrl}">`;
+    const ogUrlTag = `<meta property="og:url" content="${safeUrl}">`;
 
     const canonicalRegex = /<link\b(?=[^>]*\brel\s*=\s*(?:["']?canonical["']?))[^>]*>/i;
     const ogUrlRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:url["']?))[^>]*>/i;
