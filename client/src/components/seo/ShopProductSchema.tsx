@@ -30,6 +30,9 @@ function removeJsonLd(id: string) {
 export function ShopProductSchema() {
   const [location] = useLocation();
   const { data: products } = useProducts();
+  const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
   useEffect(() => {
     if (location !== "/shop") {
@@ -73,6 +76,16 @@ export function ShopProductSchema() {
             "@type": "Offer",
             priceCurrency: "CZK",
             price: String(product.price),
+            priceValidUntil,
+            seller: {
+              "@type": "Organization",
+              name: "ZLE",
+            },
+            priceSpecification: {
+              "@type": "PriceSpecification",
+              priceCurrency: "CZK",
+              price: String(product.price),
+            },
             url: productUrl,
             availability: product.stock > 0
               ? "https://schema.org/InStock"
