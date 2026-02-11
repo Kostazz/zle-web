@@ -81,8 +81,8 @@ export default function OpsDashboard() {
     sessionStorage.setItem(STORAGE_KEY, token);
   }, [token]);
 
-  const headers = useMemo(() => {
-    return token ? { "x-ops-token": token } : {};
+  const headers = useMemo<HeadersInit | undefined>(() => {
+    return token ? { "x-ops-token": token } : undefined;
   }, [token]);
 
   const fetchSummary = async () => {

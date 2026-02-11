@@ -297,17 +297,19 @@ export async function registerRoutes(app: Express) {
   function requireExportToken(req: Request, res: Response): boolean {
     const expected = process.env.EXPORT_TOKEN;
     if (!expected) {
-      return sendApiError(res, 503, {
+      sendApiError(res, 503, {
         code: "exports_not_configured",
         reason: "exports_not_configured",
       });
+      return false;
     }
     const provided = (req.headers["x-export-token"] as string | undefined) || (req.query.token as string | undefined);
     if (!provided || provided !== expected) {
-      return sendApiError(res, 401, {
+      sendApiError(res, 401, {
         code: "unauthorized",
         reason: "unauthorized",
       });
+      return false;
     }
     return true;
   }

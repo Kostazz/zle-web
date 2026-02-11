@@ -160,12 +160,13 @@ export default function Checkout() {
 
       setIsRecalculating(true);
       try {
-        const res = await apiRequest(
-          "POST",
-          "/api/checkout/quote",
-          { items, shippingMethod, paymentMethod },
-          { signal: controller.signal } as any
-        );
+        const res = await fetch("/api/checkout/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items, shippingMethod, paymentMethod }),
+          credentials: "include",
+          signal: controller.signal,
+        });
 
         // 429 = rate limit: keep UX quiet (no toast spam), just stop recalculating
         if (res.status === 429) {
