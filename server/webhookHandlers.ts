@@ -124,8 +124,11 @@ export async function atomicStockDeduction(
   try {
     return await db.transaction(async (tx) => {
       const failures: string[] = [];
+      const aggregatedItems = Array.from(aggregated.entries()).sort(([a], [b]) =>
+        String(a).localeCompare(String(b))
+      );
 
-      for (const [productId, item] of Array.from(aggregated.entries())) {
+      for (const [productId, item] of aggregatedItems) {
         const locked = await tx.execute<{ stock: number | string }>(
           sql`SELECT stock FROM products WHERE id = ${productId} FOR UPDATE`
         );
@@ -141,7 +144,7 @@ export async function atomicStockDeduction(
         throw new Error(`INSUFFICIENT_STOCK:${failures.join(" | ")}`);
       }
 
-      for (const [productId, item] of Array.from(aggregated.entries())) {
+      for (const [productId, item] of aggregatedItems) {
         await tx
           .update(products)
           .set({
