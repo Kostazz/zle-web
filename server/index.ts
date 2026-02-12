@@ -5,16 +5,19 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 
 import { registerRoutes } from "./routes";
 import { isStripeAvailable, disableStripe } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { apiLimiter, strictLimiter } from "./middleware/rateLimit";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
 import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 import { injectSeo } from "./seo/injectSeo";
+import { validateRequiredEnv } from "./utils/validateEnv";
+
+validateRequiredEnv();
 
 const app = express();
 app.disable("x-powered-by");
@@ -58,9 +61,7 @@ declare module "http" {
 // ----- middleware -----
 app.use(requestIdMiddleware);
 
-if (isProd()) {
-  app.set("trust proxy", 1);
-}
+app.set("trust proxy", 1);
 
 // ----- canonical domain + HTTPS (SEO hardening) -----
 // Enforces: https + non-www (based on PUBLIC_BASE_URL)
@@ -116,32 +117,13 @@ app.use(
   })
 );
 
-// ----- rate limits -----
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isProd() ? 150 : 2000,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const checkoutLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: isProd() ? 60 : 400,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use("/api/stripe/create-checkout-session", checkoutLimiter);
-app.use("/api/checkout", checkoutLimiter);
-app.use("/api/admin", apiLimiter);
-
 // ----- health -----
 app.get("/health", (_req, res) => res.json(getHealthData()));
 app.get("/api/health", (_req, res) => res.json(getHealthData()));
 
 // ----- Stripe webhook (raw) -----
 app.post(
-  "/api/stripe/webhook/:uuid",
+  "/api/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
     if (!flags.ENABLE_STRIPE) {
@@ -153,11 +135,6 @@ app.post(
       return res.status(400).json({ error: "Missing stripe-signature" });
     }
 
-    // Optional hardening: require the path uuid to match STRIPE_WEBHOOK_UUID (if set)
-    if (env.STRIPE_WEBHOOK_UUID && req.params.uuid !== env.STRIPE_WEBHOOK_UUID) {
-      // 404 = less information leakage (and avoids Stripe retry spam if someone hits random URLs)
-      return res.status(404).send("Not found");
-    }
 
     try {
       const sig = Array.isArray(signature) ? signature[0] : signature;
@@ -166,7 +143,7 @@ app.post(
         return res.status(500).json({ error: "Webhook processing error" });
       }
 
-      await WebhookHandlers.processWebhook(req.body, sig, req.params.uuid);
+      await WebhookHandlers.processWebhook(req.body, sig);
       return res.status(200).json({ received: true });
     } catch (e: any) {
       // Stripe will retry on non-2xx.
@@ -180,8 +157,6 @@ app.post(
         requestId,
         type: errType,
         message: errMsg,
-        uuidParam: req.params.uuid,
-        uuidExpected: env.STRIPE_WEBHOOK_UUID ? "set" : "not_set",
         hasWebhookSecret: Boolean(env.STRIPE_WEBHOOK_SECRET),
         hasSignature: Boolean(signature),
         isBuffer: Buffer.isBuffer(req.body),
@@ -189,12 +164,15 @@ app.post(
 
       // Common root causes:
       // - STRIPE_WEBHOOK_SECRET mismatch (most common)
-      // - Wrong endpoint URL (uuid mismatch)
       // - Body parsed before raw handler (would show isBuffer=false)
       return res.status(400).json({ error: "Webhook processing error" });
     }
   }
 );
+
+// ----- rate limits -----
+app.use("/api", apiLimiter);
+app.use("/api/checkout", strictLimiter);
 
 // ----- body parsers -----
 app.use(

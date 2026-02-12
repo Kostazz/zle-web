@@ -8,14 +8,14 @@ import { storage } from './storage';
 import { sendOrderConfirmationEmail, sendFulfillmentNewOrderEmail } from './emailService';
 import { db } from './db';
 import { orders, orderEvents, products, auditLog, orderIdempotencyKeys, type CartItem } from '@shared/schema';
-import { eq, and, sql, gte } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { emitOrderEvent, OpsEventType } from './ops/events';
 import { handleChargeback } from './refunds';
 import { finalizePaidOrder } from './paymentPipeline';
 import { env } from './env';
 
 export class WebhookHandlers {
-  static async processWebhook(payload: Buffer, signature: string, uuid: string): Promise<void> {
+  static async processWebhook(payload: Buffer, signature: string): Promise<void> {
     // Validate payload is a Buffer
     if (!Buffer.isBuffer(payload)) {
       throw new Error(
@@ -108,38 +108,68 @@ export async function atomicStockDeduction(
   orderId: string,
   items: CartItem[]
 ): Promise<{ success: boolean; failures: string[] }> {
-  const failures: string[] = [];
-  
+  const aggregated = new Map<string, { quantity: number; label: string }>();
   for (const item of items) {
-    const itemLabel = item.name ?? item.productId;
-    try {
-      // Atomic conditional update: only deduct if stock >= quantity
-      const result = await db
-        .update(products)
-        .set({
-          stock: sql`GREATEST(0, ${products.stock} - ${item.quantity})`,
-        })
-        .where(and(
-          eq(products.id, item.productId),
-          gte(products.stock, item.quantity)
-        ))
-        .returning();
-      
-      if (result.length === 0) {
-        // Stock was insufficient - this is an oversell situation
-        failures.push(`${itemLabel} (${item.productId}): requested ${item.quantity}`);
-        console.warn(`[stock] Oversell detected for ${item.productId}, order ${orderId}`);
-      }
-    } catch (error) {
-      failures.push(`${itemLabel} (${item.productId}): deduction failed`);
-      console.error(`[stock] Failed to deduct stock for ${item.productId}:`, error);
+    const prev = aggregated.get(item.productId);
+    if (prev) {
+      prev.quantity += item.quantity;
+      continue;
     }
+    aggregated.set(item.productId, {
+      quantity: item.quantity,
+      label: item.name ?? item.productId,
+    });
   }
-  
-  return {
-    success: failures.length === 0,
-    failures,
-  };
+
+  try {
+    return await db.transaction(async (tx) => {
+      const failures: string[] = [];
+      const aggregatedItems = Array.from(aggregated.entries()).sort(([a], [b]) =>
+        String(a).localeCompare(String(b))
+      );
+
+      for (const [productId, item] of aggregatedItems) {
+        const locked = await tx.execute<{ stock: number | string }>(
+          sql`SELECT stock FROM products WHERE id = ${productId} FOR UPDATE`
+        );
+        const row = locked.rows[0];
+        const stock = row ? Number(row.stock) : NaN;
+
+        if (!row || !Number.isFinite(stock) || stock < item.quantity) {
+          failures.push(`${item.label} (${productId}): requested ${item.quantity}`);
+        }
+      }
+
+      if (failures.length > 0) {
+        throw new Error(`INSUFFICIENT_STOCK:${failures.join(" | ")}`);
+      }
+
+      for (const [productId, item] of aggregatedItems) {
+        await tx
+          .update(products)
+          .set({
+            stock: sql`${products.stock} - ${item.quantity}`,
+          })
+          .where(eq(products.id, productId));
+      }
+
+      return { success: true, failures: [] as string[] };
+    });
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "stock_deduction_failed";
+    const failures = msg.startsWith("INSUFFICIENT_STOCK:")
+      ? msg.replace("INSUFFICIENT_STOCK:", "").split(" | ").filter(Boolean)
+      : ["stock_deduction_failed"];
+
+    failures.forEach((failure) => {
+      console.warn(`[stock] Oversell or lock conflict for order ${orderId}: ${failure}`);
+    });
+
+    return {
+      success: false,
+      failures,
+    };
+  }
 }
 
 async function handleCheckoutCompleted(session: any, stripeEventId: string) {
@@ -194,11 +224,6 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
     const stockResult = await atomicStockDeduction(orderId, items);
     
-    // Mark stock as deducted
-    await db.update(orders).set({
-      stockDeductedAt: new Date(),
-    }).where(eq(orders.id, orderId));
-
     if (!stockResult.success) {
       // Stock issues detected - mark for manual review but don't block payment
       await db.update(orders).set({
@@ -217,6 +242,10 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
       emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
         reason: stockResult.failures.join('; '),
       });
+    } else {
+      await db.update(orders).set({
+        stockDeductedAt: new Date(),
+      }).where(eq(orders.id, orderId));
     }
   }
 
@@ -291,10 +320,6 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
     const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
     const stockResult = await atomicStockDeduction(orderId, items);
     
-    await db.update(orders).set({
-      stockDeductedAt: new Date(),
-    }).where(eq(orders.id, orderId));
-
     if (!stockResult.success) {
       await db.update(orders).set({
         manualReview: true,
@@ -312,6 +337,10 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
       emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
         reason: stockResult.failures.join('; '),
       });
+    } else {
+      await db.update(orders).set({
+        stockDeductedAt: new Date(),
+      }).where(eq(orders.id, orderId));
     }
   }
   
