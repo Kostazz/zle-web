@@ -5,16 +5,19 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 
 import { registerRoutes } from "./routes";
 import { isStripeAvailable, disableStripe } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { seedPartners } from "./payouts";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { apiLimiter, strictLimiter } from "./middleware/rateLimit";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
 import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 import { injectSeo } from "./seo/injectSeo";
+import { validateRequiredEnv } from "./utils/validateEnv";
+
+validateRequiredEnv();
 
 const app = express();
 app.disable("x-powered-by");
@@ -117,23 +120,8 @@ app.use(
 );
 
 // ----- rate limits -----
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isProd() ? 150 : 2000,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const checkoutLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: isProd() ? 60 : 400,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use("/api/stripe/create-checkout-session", checkoutLimiter);
-app.use("/api/checkout", checkoutLimiter);
-app.use("/api/admin", apiLimiter);
+app.use("/api", apiLimiter);
+app.use("/api/checkout", strictLimiter);
 
 // ----- health -----
 app.get("/health", (_req, res) => res.json(getHealthData()));
