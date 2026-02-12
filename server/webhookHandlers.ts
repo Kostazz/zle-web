@@ -15,7 +15,7 @@ import { finalizePaidOrder } from './paymentPipeline';
 import { env } from './env';
 
 export class WebhookHandlers {
-  static async processWebhook(payload: Buffer, signature: string, uuid: string): Promise<void> {
+  static async processWebhook(payload: Buffer, signature: string): Promise<void> {
     // Validate payload is a Buffer
     if (!Buffer.isBuffer(payload)) {
       throw new Error(
