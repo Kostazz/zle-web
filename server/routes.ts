@@ -16,13 +16,14 @@ import {
 } from "@shared/config/shipping";
 
 import { storage } from "./storage";
-import { paymentMethodEnum, type PaymentMethod, orders, orderIdempotencyKeys, products, type CartItem, type Order, type InsertOrder } from "../shared/schema";
+import { paymentMethodEnum, type PaymentMethod, orders, orderEvents, auditLog, orderIdempotencyKeys, products, type CartItem, type Order, type InsertOrder } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { atomicStockDeduction } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
+import { emitOrderEvent, OpsEventType } from "./ops/events";
 import { db } from "./db";
 import { eq, sql } from "drizzle-orm";
 
@@ -1427,11 +1428,33 @@ export async function registerRoutes(app: Express) {
             })();
 
             if (parsedItems.length > 0) {
-              await atomicStockDeduction(orderIdFromMeta, parsedItems as any);
-              await db
-                .update(orders)
-                .set({ stockDeductedAt: new Date() })
-                .where(eq(orders.id, orderIdFromMeta));
+              const stockResult = await atomicStockDeduction(orderIdFromMeta, parsedItems as any);
+              if (stockResult.success) {
+                await db
+                  .update(orders)
+                  .set({ stockDeductedAt: new Date() })
+                  .where(eq(orders.id, orderIdFromMeta));
+              } else {
+                await db
+                  .update(orders)
+                  .set({
+                    manualReview: true,
+                    opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join("; ")}`,
+                  })
+                  .where(eq(orders.id, orderIdFromMeta));
+
+                await db.insert(auditLog).values({
+                  action: "stock_deduction_failed",
+                  entity: "order",
+                  entityId: orderIdFromMeta,
+                  severity: "important",
+                  meta: { failures: stockResult.failures },
+                });
+
+                emitOrderEvent(OpsEventType.STOCK_ISSUE, orderIdFromMeta, {
+                  reason: stockResult.failures.join("; "),
+                });
+              }
             }
           }
         }
@@ -1443,6 +1466,46 @@ export async function registerRoutes(app: Express) {
           providerEventId: `verify:${session.id}`,
           meta: { source: "verify", sessionId: session.id },
         });
+
+        const orderForEmail = await storage.getOrder(orderIdFromMeta);
+        if (orderForEmail) {
+          console.log(`[verify] sending emails for order ${orderForEmail.id}`);
+
+          const markEmailEventSent = async (type: "email_customer_sent" | "email_fulfillment_sent", providerEventId: string) => {
+            const result = await db
+              .insert(orderEvents)
+              .values({
+                orderId: orderForEmail.id,
+                provider: "system",
+                providerEventId,
+                type,
+                payload: { source: "stripe:verify", sessionId: session.id },
+              })
+              .onConflictDoNothing()
+              .returning({ id: orderEvents.id });
+
+            return result.length > 0;
+          };
+
+          const shouldSendFulfillment = await markEmailEventSent(
+            "email_fulfillment_sent",
+            `email_fulfillment:${orderForEmail.id}`,
+          );
+          if (shouldSendFulfillment) {
+            sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+              console.error("[verify] Failed to send fulfillment email:", err)
+            );
+          }
+
+          const shouldSendCustomer =
+            !orderForEmail.manualReview &&
+            await markEmailEventSent("email_customer_sent", `email_customer:${orderForEmail.id}`);
+          if (shouldSendCustomer) {
+            sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+              console.error("[verify] Failed to send customer confirmation email:", err)
+            );
+          }
+        }
       }
 
       return res.json({

@@ -99,6 +99,23 @@ async function recordEvent(
   }).onConflictDoNothing();
 }
 
+
+async function markEmailEventSent(orderId: string, type: 'email_customer_sent' | 'email_fulfillment_sent', providerEventId: string) {
+  const result = await db
+    .insert(orderEvents)
+    .values({
+      orderId,
+      provider: 'system',
+      providerEventId,
+      type,
+      payload: { source: 'webhook' },
+    })
+    .onConflictDoNothing()
+    .returning({ id: orderEvents.id });
+
+  return result.length > 0;
+}
+
 /**
  * Atomic stock deduction with fail-safe handling.
  * Returns list of failed deductions for manual review.
@@ -279,15 +296,21 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   // for accounting continuity, but we must not send a customer "order complete" confirmation.
   if (updatedOrder) {
     if (!stockDeductionFailed) {
-      sendOrderConfirmationEmail(updatedOrder).catch((err) =>
-        console.error('Failed to send confirmation email:', err)
-      );
+      const shouldSendCustomer = await markEmailEventSent(orderId, 'email_customer_sent', `email_customer:${orderId}`);
+      if (shouldSendCustomer) {
+        sendOrderConfirmationEmail(updatedOrder).catch((err) =>
+          console.error('Failed to send confirmation email:', err)
+        );
+      }
     }
 
     // Send fulfillment/admin email immediately (also serves as urgent alert on manual review)
-    sendFulfillmentNewOrderEmail(updatedOrder).catch((err) =>
-      console.error('Failed to send fulfillment email:', err)
-    );
+    const shouldSendFulfillment = await markEmailEventSent(orderId, 'email_fulfillment_sent', `email_fulfillment:${orderId}`);
+    if (shouldSendFulfillment) {
+      sendFulfillmentNewOrderEmail(updatedOrder).catch((err) =>
+        console.error('Failed to send fulfillment email:', err)
+      );
+    }
   }
 }
 
@@ -376,9 +399,12 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
   if (stockDeductionFailed) {
     const [orderForAlert] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (orderForAlert) {
-      sendFulfillmentNewOrderEmail(orderForAlert).catch((err) =>
-        console.error('Failed to send fulfillment email:', err)
-      );
+      const shouldSendFulfillment = await markEmailEventSent(orderId, 'email_fulfillment_sent', `email_fulfillment:${orderId}`);
+      if (shouldSendFulfillment) {
+        sendFulfillmentNewOrderEmail(orderForAlert).catch((err) =>
+          console.error('Failed to send fulfillment email:', err)
+        );
+      }
     }
   }
 }
