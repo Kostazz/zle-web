@@ -217,6 +217,7 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   // Check if stock already deducted
   const currentOrder = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   const stockAlreadyDeducted = currentOrder[0]?.stockDeductedAt !== null;
+  let stockDeductionFailed = false;
 
   if (!stockAlreadyDeducted) {
     // Atomic stock deduction with fail-safe
@@ -225,6 +226,7 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     const stockResult = await atomicStockDeduction(orderId, items);
     
     if (!stockResult.success) {
+      stockDeductionFailed = true;
       // Stock issues detected - mark for manual review but don't block payment
       await db.update(orders).set({
         manualReview: true,
@@ -273,13 +275,16 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   
   emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
   
-  // Send order confirmation email (customer)
+  // INTENTIONAL business decision: on stock-deduction failure we keep payment+status settled
+  // for accounting continuity, but we must not send a customer "order complete" confirmation.
   if (updatedOrder) {
-    sendOrderConfirmationEmail(updatedOrder).catch((err) =>
-      console.error('Failed to send confirmation email:', err)
-    );
+    if (!stockDeductionFailed) {
+      sendOrderConfirmationEmail(updatedOrder).catch((err) =>
+        console.error('Failed to send confirmation email:', err)
+      );
+    }
 
-    // Send fulfillment email (Michal / TotalBoardShop)
+    // Send fulfillment/admin email immediately (also serves as urgent alert on manual review)
     sendFulfillmentNewOrderEmail(updatedOrder).catch((err) =>
       console.error('Failed to send fulfillment email:', err)
     );
@@ -314,6 +319,7 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
   // Check if stock already deducted
   const currentOrder = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   const stockAlreadyDeducted = currentOrder[0]?.stockDeductedAt !== null;
+  let stockDeductionFailed = false;
 
   if (!stockAlreadyDeducted) {
     const raw = JSON.parse(order.items);
@@ -321,6 +327,7 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
     const stockResult = await atomicStockDeduction(orderId, items);
     
     if (!stockResult.success) {
+      stockDeductionFailed = true;
       await db.update(orders).set({
         manualReview: true,
         opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
@@ -365,6 +372,15 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
   });
   
   emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
+
+  if (stockDeductionFailed) {
+    const [orderForAlert] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (orderForAlert) {
+      sendFulfillmentNewOrderEmail(orderForAlert).catch((err) =>
+        console.error('Failed to send fulfillment email:', err)
+      );
+    }
+  }
 }
 
 async function handlePaymentFailed(paymentIntent: any, stripeEventId: string) {
