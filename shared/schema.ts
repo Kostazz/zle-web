@@ -96,6 +96,10 @@ export const orders = pgTable("orders", {
   paymentIntentId: text("payment_intent_id"),
   paymentMethod: text("payment_method").default("card"),
   paymentNetwork: text("payment_network"),
+  fingerprint: text("fingerprint"),
+  fingerprintCreatedAt: timestamp("fingerprint_created_at"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripeCheckoutSessionCreatedAt: timestamp("stripe_checkout_session_created_at"),
   createdAt: timestamp("created_at").defaultNow(),
   // Waterfall payout fields (ZLE v1.2.2)
   cogsTotal: numeric("cogs_total", { precision: 12, scale: 2 }),
@@ -113,7 +117,9 @@ export const orders = pgTable("orders", {
   withdrawalDeadlineAt: timestamp("withdrawal_deadline_at"),
   refundAmount: numeric("refund_amount", { precision: 12, scale: 2 }),
   refundReason: text("refund_reason"),
-});
+}, (table) => [
+  index("IDX_orders_fingerprint").on(table.fingerprint),
+]);
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,

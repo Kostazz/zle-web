@@ -2,7 +2,7 @@
 
 import type { Express, Request, Response } from "express";
 import express from "express";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import Stripe from "stripe";
 import { z } from "zod";
 
@@ -25,7 +25,7 @@ import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 
 // -----------------------------
 // Stripe setup
@@ -111,8 +111,37 @@ async function createOrderWithIdempotency(params: {
   idempotencyKey: string;
   paymentMethod: PaymentMethod;
   values: InsertOrder;
+  fingerprint?: string;
 }) {
   return db.transaction(async (tx) => {
+    if (params.fingerprint) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${params.fingerprint}))`);
+
+      const [existingFingerprintOrder] = await tx
+        .select()
+        .from(orders)
+        .where(and(
+          eq(orders.fingerprint, params.fingerprint),
+          eq(orders.status, "pending"),
+          eq(orders.paymentStatus, "unpaid"),
+          gte(orders.createdAt, sql`NOW() - INTERVAL '10 minutes'`)
+        ))
+        .orderBy(desc(orders.createdAt))
+        .limit(1);
+
+      if (existingFingerprintOrder) {
+        console.log(
+          `[checkout] order reuse hit fingerprint=${params.fingerprint.slice(0, 12)} order=${existingFingerprintOrder.id}`
+        );
+        return {
+          order: existingFingerprintOrder,
+          idempotencyHit: true,
+          row: null,
+          fingerprintHit: true,
+        };
+      }
+    }
+
     const [existingRow] = await tx
       .select()
       .from(orderIdempotencyKeys)
@@ -127,7 +156,7 @@ async function createOrderWithIdempotency(params: {
         .limit(1);
 
       if (existingOrder) {
-        return { order: existingOrder, idempotencyHit: true, row: existingRow };
+        return { order: existingOrder, idempotencyHit: true, row: existingRow, fingerprintHit: false };
       }
     }
 
@@ -155,11 +184,11 @@ async function createOrderWithIdempotency(params: {
           .limit(1);
 
         if (conflictOrder) {
-          return { order: conflictOrder, idempotencyHit: true, row: conflictRow };
+          return { order: conflictOrder, idempotencyHit: true, row: conflictRow, fingerprintHit: false };
         }
       }
 
-      return { order: null, idempotencyHit: true, row: conflictRow ?? null };
+      return { order: null, idempotencyHit: true, row: conflictRow ?? null, fingerprintHit: false };
     }
 
     const [createdOrder] = await tx.insert(orders).values(params.values).returning();
@@ -169,8 +198,41 @@ async function createOrderWithIdempotency(params: {
       .set({ orderId: createdOrder.id, updatedAt: new Date() })
       .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey));
 
-    return { order: createdOrder, idempotencyHit: false, row: insertedRow };
+    return { order: createdOrder, idempotencyHit: false, row: insertedRow, fingerprintHit: false };
   });
+}
+
+function buildOrderFingerprint(input: {
+  items: Array<{ productId: string; quantity: number; unitPrice: number; size?: string | null }>;
+  shippingMethod: string;
+  paymentMethod: string;
+  customerEmail: string;
+  totalAmount: number;
+  currency: string;
+}) {
+  const normalized = {
+    currency: input.currency.toUpperCase(),
+    customerEmail: input.customerEmail.trim().toLowerCase(),
+    items: input.items
+      .map((item) => ({
+        productId: item.productId,
+        quantity: Number(item.quantity),
+        size: item.size ? String(item.size) : null,
+        unitPrice: Math.round(Number(item.unitPrice)),
+      }))
+      .sort((a, b) => {
+        if (a.productId === b.productId) {
+          return String(a.size ?? "").localeCompare(String(b.size ?? ""));
+        }
+        return a.productId.localeCompare(b.productId);
+      }),
+    paymentMethod: input.paymentMethod,
+    shippingMethod: input.shippingMethod,
+    totalAmount: Math.round(Number(input.totalAmount)),
+  };
+
+  const payload = JSON.stringify(normalized);
+  return createHash("sha256").update(payload).digest("hex");
 }
 
 function sendApiError(
@@ -526,6 +588,7 @@ export async function registerRoutes(app: Express) {
 
       // Server builds line items from DB (never trust client price)
       const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+      const fingerprintItems: Array<{ productId: string; quantity: number; unitPrice: number; size?: string | null }> = [];
       let subtotalCzk = 0;
 
       for (const item of parsed.items) {
@@ -546,6 +609,13 @@ export async function registerRoutes(app: Express) {
             details: { productId: product.id },
           });
         }
+
+        fingerprintItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          size: item.size,
+          unitPrice: unitPriceCzk,
+        });
 
         subtotalCzk += unitPriceCzk * item.quantity;
 
@@ -608,8 +678,16 @@ export async function registerRoutes(app: Express) {
       }
 
       const idempotencyKey = parsed.idempotencyKey;
+      const fingerprint = buildOrderFingerprint({
+        items: fingerprintItems,
+        shippingMethod: parsed.shippingMethod,
+        paymentMethod: pm,
+        customerEmail: customerDetails.customerEmail,
+        totalAmount: totalCzk,
+        currency: "czk",
+      });
 
-      // ✅ Create order in DB FIRST (pending/unpaid) with idempotency guard
+      // ✅ Create order in DB FIRST (pending/unpaid) with idempotency + fingerprint guard
       const orderValues: InsertOrder = {
         accessToken: generateOrderAccessToken(),
         customerName: customerDetails.customerName,
@@ -630,29 +708,23 @@ export async function registerRoutes(app: Express) {
         }),
         total: Math.round(totalCzk),
         paymentMethod: pm,
+        fingerprint,
+        fingerprintCreatedAt: new Date(),
         // userId is optional (guest checkout)
         userId: null as any,
       };
 
-      const { order, idempotencyHit, row } = await createOrderWithIdempotency({
+      const { order, idempotencyHit, row, fingerprintHit } = await createOrderWithIdempotency({
         idempotencyKey,
         paymentMethod: pm,
         values: orderValues,
+        fingerprint,
       });
 
       if (!order) {
         return sendApiError(res, 409, {
           code: "order_in_progress",
           reason: "order_in_progress",
-        });
-      }
-
-      if (idempotencyHit && row?.stripeSessionUrl) {
-        return res.json({
-          url: row.stripeSessionUrl,
-          orderId: order.id,
-          accessToken: order.accessToken,
-          idempotency: "hit",
         });
       }
 
@@ -676,9 +748,22 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      if (idempotencyHit && order.paymentStatus === "paid") {
+      console.log(`[checkout] create-session order=${order.id} status=${order.status} paymentStatus=${order.paymentStatus}`);
+
+      if (order.paymentStatus === "paid" || order.status === "confirmed" || order.status === "fulfilled") {
+        console.warn(`[checkout] blocked already paid order=${order.id}`);
+        return res.status(409).json({
+          code: "ORDER_ALREADY_PAID",
+          orderId: order.id,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
+        });
+      }
+
+      if (idempotencyHit && row?.stripeSessionUrl) {
         return res.json({
-          url: `${baseUrl}/success?order_id=${order.id}`,
+          url: row.stripeSessionUrl,
           orderId: order.id,
           accessToken: order.accessToken,
           idempotency: "hit",
@@ -719,41 +804,95 @@ export async function registerRoutes(app: Express) {
 
       let session: Stripe.Checkout.Session;
       try {
-        session = await stripe.checkout.sessions.create(
-          {
-            mode: "payment",
-            currency: "czk",
-            line_items,
-            success_url: successUrl,
-            cancel_url: cancelUrl,
-            customer_email: customerDetails.customerEmail,
-            client_reference_id: order.id,
-            metadata: {
-              orderId: order.id,
-              idempotencyKey,
-              customerName: customerDetails.customerName,
-              customerAddress: customerDetails.customerAddress,
-              customerCity: customerDetails.customerCity,
-              customerZip: customerDetails.customerZip,
-              shippingMethod: parsed.shippingMethod,
-              subtotalCzk: String(subtotalCzk),
-              shippingCzk: String(shipping.priceCzk),
-              totalCzk: String(totalCzk),
-            },
-          },
-          {
-            idempotencyKey,
+        session = await db.transaction(async (tx) => {
+          const lockResult = await tx.execute(sql<{ id: string; status: string; payment_status: string | null }>`
+            SELECT id, status, payment_status
+            FROM orders
+            WHERE id = ${order.id}
+            FOR UPDATE
+          `);
+
+          const lockedOrder = lockResult.rows?.[0];
+
+          if (!lockedOrder) {
+            throw new Error("order_not_found");
           }
-        );
-      } catch (e) {
-        // Prevent orphan orders if Stripe session creation fails
-        try {
-          await storage.updateOrder(order.id, { status: "cancelled", paymentStatus: "unpaid" });
-        } catch (updateErr) {
-          console.error("[checkout] failed to cancel order after Stripe error:", {
+
+          if (
+            lockedOrder.payment_status === "paid" ||
+            lockedOrder.status === "confirmed" ||
+            lockedOrder.status === "fulfilled"
+          ) {
+            console.warn(`[checkout] blocked already paid order=${order.id}`);
+            throw new Error("ORDER_ALREADY_PAID");
+          }
+
+          const createdSession = await stripe.checkout.sessions.create(
+            {
+              mode: "payment",
+              currency: "czk",
+              line_items,
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              customer_email: customerDetails.customerEmail,
+              client_reference_id: order.id,
+              metadata: {
+                orderId: order.id,
+                idempotencyKey,
+                customerName: customerDetails.customerName,
+                customerAddress: customerDetails.customerAddress,
+                customerCity: customerDetails.customerCity,
+                customerZip: customerDetails.customerZip,
+                shippingMethod: parsed.shippingMethod,
+                subtotalCzk: String(subtotalCzk),
+                shippingCzk: String(shipping.priceCzk),
+                totalCzk: String(totalCzk),
+              },
+            },
+            {
+              idempotencyKey,
+            }
+          );
+
+          await tx
+            .update(orders)
+            .set({
+              stripeCheckoutSessionId: createdSession.id,
+              stripeCheckoutSessionCreatedAt: new Date(),
+            })
+            .where(eq(orders.id, order.id));
+
+          await tx
+            .update(orderIdempotencyKeys)
+            .set({
+              stripeSessionId: createdSession.id,
+              stripeSessionUrl: createdSession.url,
+              updatedAt: new Date(),
+            })
+            .where(eq(orderIdempotencyKeys.idempotencyKey, idempotencyKey));
+
+          return createdSession;
+        });
+      } catch (e: any) {
+        if (e?.message === "ORDER_ALREADY_PAID") {
+          return res.status(409).json({
+            code: "ORDER_ALREADY_PAID",
             orderId: order.id,
-            error: (updateErr as any)?.message,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
           });
+        }
+        // Prevent orphan orders only for newly-created orders if Stripe session creation fails
+        if (!idempotencyHit && !fingerprintHit) {
+          try {
+            await storage.updateOrder(order.id, { status: "cancelled", paymentStatus: "unpaid" });
+          } catch (updateErr) {
+            console.error("[checkout] failed to cancel order after Stripe error:", {
+              orderId: order.id,
+              error: (updateErr as any)?.message,
+            });
+          }
         }
         throw e;
       }
@@ -764,15 +903,6 @@ export async function registerRoutes(app: Express) {
           reason: "missing_session_url",
         });
       }
-      await db
-        .update(orderIdempotencyKeys)
-        .set({
-          stripeSessionId: session.id,
-          stripeSessionUrl: session.url,
-          updatedAt: new Date(),
-        })
-        .where(eq(orderIdempotencyKeys.idempotencyKey, idempotencyKey));
-
       return res.json({ url: session.url, orderId: order.id, accessToken: order.accessToken });
     } catch (err: any) {
       if (err instanceof z.ZodError) {

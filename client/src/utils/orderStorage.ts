@@ -49,8 +49,9 @@ export function saveOrders(orders: ZleOrder[]) {
 
 export function appendOrder(order: ZleOrder) {
   const current = loadOrders();
-  current.push(order);
-  saveOrders(current);
+  const withoutSameId = current.filter((existing) => existing.id !== order.id);
+  withoutSameId.push(order);
+  saveOrders(withoutSameId);
 }
 
 export function getLastOrder(): ZleOrder | null {
