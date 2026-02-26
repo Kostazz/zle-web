@@ -79,6 +79,7 @@ export type PaymentMethod = z.infer<typeof paymentMethodEnum>;
 
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  accessToken: varchar("access_token", { length: 64 }).unique(),
   userId: varchar("user_id").references(() => users.id),
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email").notNull(),

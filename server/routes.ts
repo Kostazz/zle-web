@@ -2,6 +2,7 @@
 
 import type { Express, Request, Response } from "express";
 import express from "express";
+import { randomBytes } from "crypto";
 import Stripe from "stripe";
 import { z } from "zod";
 
@@ -64,6 +65,17 @@ function normalizeBaseUrl(raw: string) {
   new URL(v);
 
   return v;
+}
+
+function generateOrderAccessToken() {
+  return randomBytes(32).toString("hex");
+}
+
+function getOrderAccessTokenFromRequest(req: Request) {
+  const headerTokenRaw = req.header("x-order-token");
+  const headerToken = typeof headerTokenRaw === "string" ? headerTokenRaw.trim() : "";
+  const queryToken = typeof req.query.token === "string" ? req.query.token.trim() : "";
+  return headerToken || queryToken;
 }
 
 function getBaseUrl(req: Request) {
@@ -598,6 +610,7 @@ export async function registerRoutes(app: Express) {
 
       // ✅ Create order in DB FIRST (pending/unpaid) with idempotency guard
       const orderValues: InsertOrder = {
+        accessToken: generateOrderAccessToken(),
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -634,7 +647,12 @@ export async function registerRoutes(app: Express) {
       }
 
       if (idempotencyHit && row?.stripeSessionUrl) {
-        return res.json({ url: row.stripeSessionUrl, orderId: order.id, idempotency: "hit" });
+        return res.json({
+          url: row.stripeSessionUrl,
+          orderId: order.id,
+          accessToken: order.accessToken,
+          idempotency: "hit",
+        });
       }
 
       // ✅ baseUrl must be a VALID absolute URL for Stripe redirects
@@ -658,11 +676,25 @@ export async function registerRoutes(app: Express) {
       }
 
       if (idempotencyHit && order.paymentStatus === "paid") {
-        return res.json({ url: `${baseUrl}/success?order_id=${order.id}`, orderId: order.id, idempotency: "hit" });
+        return res.json({
+          url: `${baseUrl}/success?order_id=${order.id}`,
+          orderId: order.id,
+          accessToken: order.accessToken,
+          idempotency: "hit",
+        });
       }
 
       const successUrl = `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`;
-      const cancelUrl = `${baseUrl}/cancel?order_id=${order.id}`;
+      const cancelUrl = order.accessToken
+        ? `${baseUrl}/cancel?order_id=${order.id}&token=${order.accessToken}`
+        : `${baseUrl}/cancel?order_id=${order.id}`;
+
+      if (!order.accessToken) {
+        console.warn("[checkout] create-session order missing access token for cancel_url", {
+          orderId: order.id,
+          idempotencyKey,
+        });
+      }
 
       // hard check (prevents Stripe "Not a valid URL" mystery)
       try {
@@ -740,7 +772,7 @@ export async function registerRoutes(app: Express) {
         })
         .where(eq(orderIdempotencyKeys.idempotencyKey, idempotencyKey));
 
-      return res.json({ url: session.url, orderId: order.id });
+      return res.json({ url: session.url, orderId: order.id, accessToken: order.accessToken });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, {
@@ -843,6 +875,7 @@ export async function registerRoutes(app: Express) {
       const idempotencyKey = parsed.idempotencyKey;
 
       const orderValues: InsertOrder = {
+        accessToken: generateOrderAccessToken(),
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -925,7 +958,12 @@ export async function registerRoutes(app: Express) {
         );
       }
 
-      return res.json({ success: true, orderId: order.id, idempotency: idempotencyHit ? "hit" : "new" });
+      return res.json({
+        success: true,
+        orderId: order.id,
+        accessToken: order.accessToken,
+        idempotency: idempotencyHit ? "hit" : "new",
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, {
@@ -1028,6 +1066,7 @@ export async function registerRoutes(app: Express) {
       const idempotencyKey = parsed.idempotencyKey;
 
       const orderValues: InsertOrder = {
+        accessToken: generateOrderAccessToken(),
         customerName: customerDetails.customerName,
         customerEmail: customerDetails.customerEmail,
         customerAddress: customerDetails.customerAddress,
@@ -1105,7 +1144,12 @@ export async function registerRoutes(app: Express) {
         );
       }
 
-      return res.json({ success: true, orderId: order.id, idempotency: idempotencyHit ? "hit" : "new" });
+      return res.json({
+        success: true,
+        orderId: order.id,
+        accessToken: order.accessToken,
+        idempotency: idempotencyHit ? "hit" : "new",
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return sendApiError(res, 400, {
@@ -1125,7 +1169,7 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // ✅ Cancel an unpaid order (used by /checkout/cancel page)
+  // ✅ Cancel an unpaid order (requires order access token; used by /checkout/cancel page)
   app.post("/api/checkout/cancel/:orderId", async (req, res) => {
     try {
       const orderId = String(req.params.orderId || "");
@@ -1141,6 +1185,30 @@ export async function registerRoutes(app: Express) {
         return sendApiError(res, 404, {
           code: "order_not_found",
           reason: "order_not_found",
+        });
+      }
+
+      // Token is required to cancel guest/public orders safely.
+      const providedToken = getOrderAccessTokenFromRequest(req);
+      if (!providedToken) {
+        return sendApiError(res, 401, {
+          code: "missing_order_token",
+          reason: "missing_order_token",
+        });
+      }
+
+      if (!order.accessToken) {
+        return sendApiError(res, 409, {
+          code: "token_required",
+          reason: "token_required",
+          details: { orderId },
+        });
+      }
+
+      if (providedToken !== order.accessToken) {
+        return sendApiError(res, 403, {
+          code: "invalid_order_token",
+          reason: "invalid_order_token",
         });
       }
 
@@ -1213,7 +1281,7 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // Checkout: order summary (used by non-Stripe success pages: COD / bank / crypto)
+  // Checkout: order summary (PII requires matching order access token)
   app.get("/api/checkout/order-summary/:orderId", async (req, res) => {
     try {
       const orderId = String(req.params.orderId || "").trim();
@@ -1239,7 +1307,10 @@ export async function registerRoutes(app: Express) {
         payload = null;
       }
 
-      return res.json({
+      const providedToken = getOrderAccessTokenFromRequest(req);
+      const hasValidToken = Boolean(order.accessToken && providedToken && providedToken === order.accessToken);
+
+      const safePayload = {
         success: true,
         orderId: order.id,
         status: order.status,
@@ -1252,6 +1323,19 @@ export async function registerRoutes(app: Express) {
         codFeeCzk: payload?.codFeeCzk ?? null,
         codCzk: payload?.codCzk ?? null,
         subtotalCzk: payload?.subtotalCzk ?? null,
+      };
+
+      if (!hasValidToken) {
+        return res.json(safePayload);
+      }
+
+      return res.json({
+        ...safePayload,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerAddress: order.customerAddress,
+        customerCity: order.customerCity,
+        customerZip: order.customerZip,
       });
     } catch (err: any) {
       const message = err?.message || "unknown_error";
