@@ -685,7 +685,16 @@ export async function registerRoutes(app: Express) {
       }
 
       const successUrl = `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&order_id=${order.id}`;
-      const cancelUrl = `${baseUrl}/cancel?order_id=${order.id}`;
+      const cancelUrl = order.accessToken
+        ? `${baseUrl}/cancel?order_id=${order.id}&token=${order.accessToken}`
+        : `${baseUrl}/cancel?order_id=${order.id}`;
+
+      if (!order.accessToken) {
+        console.warn("[checkout] create-session order missing access token for cancel_url", {
+          orderId: order.id,
+          idempotencyKey,
+        });
+      }
 
       // hard check (prevents Stripe "Not a valid URL" mystery)
       try {
