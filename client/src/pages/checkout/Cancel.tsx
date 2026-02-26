@@ -16,8 +16,9 @@ export default function CheckoutCancel() {
 
   const cancelMutation = useMutation({
     mutationFn: async ({ id, token }: { id: string; token: string }) => {
-      const encodedToken = encodeURIComponent(token);
-      await apiRequest("POST", `/api/checkout/cancel/${id}?token=${encodedToken}`);
+      await apiRequest("POST", `/api/checkout/cancel/${id}`, undefined, {
+        "x-order-token": token,
+      });
     },
   });
 

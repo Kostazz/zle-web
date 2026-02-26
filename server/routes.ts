@@ -72,10 +72,10 @@ function generateOrderAccessToken() {
 }
 
 function getOrderAccessTokenFromRequest(req: Request) {
-  const queryToken = typeof req.query.token === "string" ? req.query.token.trim() : "";
   const headerTokenRaw = req.header("x-order-token");
   const headerToken = typeof headerTokenRaw === "string" ? headerTokenRaw.trim() : "";
-  return queryToken || headerToken;
+  const queryToken = typeof req.query.token === "string" ? req.query.token.trim() : "";
+  return headerToken || queryToken;
 }
 
 function getBaseUrl(req: Request) {
