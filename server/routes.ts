@@ -15,7 +15,7 @@ import {
 } from "@shared/config/shipping";
 
 import { storage } from "./storage";
-import { paymentMethodEnum, type PaymentMethod, orders, orderIdempotencyKeys, type Order, type InsertOrder } from "../shared/schema";
+import { paymentMethodEnum, type PaymentMethod, orders, orderIdempotencyKeys, products, type CartItem, type Order, type InsertOrder } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
@@ -23,7 +23,7 @@ import { atomicStockDeduction } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // -----------------------------
 // Stripe setup
@@ -1153,18 +1153,53 @@ export async function registerRoutes(app: Express) {
         });
       }
 
-      if (order.stockDeductedAt) {
-        console.warn("[cancel] Stock was already deducted; no automatic stock return", { orderId });
-      }
-
       if (order.status === "cancelled") {
         return res.json({ success: true, orderId, alreadyCancelled: true });
       }
 
-      await storage.updateOrder(orderId, {
-        status: "cancelled",
-        paymentStatus: order.paymentStatus || "unpaid",
-      });
+      if (order.stockDeductedAt) {
+        const rawItems = JSON.parse(order.items as string);
+        const parsedItems: CartItem[] = Array.isArray(rawItems) ? rawItems : (rawItems?.items || []);
+        const aggregated = new Map<string, number>();
+
+        for (const item of parsedItems) {
+          const prev = aggregated.get(item.productId) ?? 0;
+          aggregated.set(item.productId, prev + Number(item.quantity || 0));
+        }
+
+        await db.transaction(async (tx) => {
+          const aggregatedItems = Array.from(aggregated.entries())
+            .filter(([, quantity]) => Number.isFinite(quantity) && quantity > 0)
+            .sort(([a], [b]) => String(a).localeCompare(String(b)));
+
+          for (const [productId] of aggregatedItems) {
+            await tx.execute(sql`SELECT stock FROM products WHERE id = ${productId} FOR UPDATE`);
+          }
+
+          for (const [productId, quantity] of aggregatedItems) {
+            await tx
+              .update(products)
+              .set({
+                stock: sql`${products.stock} + ${quantity}`,
+              })
+              .where(eq(products.id, productId));
+          }
+
+          await tx
+            .update(orders)
+            .set({
+              stockDeductedAt: null,
+              status: "cancelled",
+              paymentStatus: order.paymentStatus || "unpaid",
+            })
+            .where(eq(orders.id, orderId));
+        });
+      } else {
+        await storage.updateOrder(orderId, {
+          status: "cancelled",
+          paymentStatus: order.paymentStatus || "unpaid",
+        });
+      }
 
       return res.json({ success: true, orderId });
     } catch (err: any) {
