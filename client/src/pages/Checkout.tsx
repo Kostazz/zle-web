@@ -276,11 +276,26 @@ export default function Checkout() {
       paymentMethod: PaymentMethod;
       idempotencyKey: string;
     }) => {
-      const response = await apiRequest("POST", "/api/checkout/create-session", data);
-      return response.json();
+      const response = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw Object.assign(new Error(payload?.reason || "Nepodařilo se zpracovat objednávku."), {
+          status: response.status,
+          payload,
+        });
+      }
+      return payload;
     },
     onSuccess: (data) => {
       if (data.url) {
+        if (data.orderId) {
+          persistLocalOrder(String(data.orderId));
+        }
         clearCart();
         window.location.href = data.url;
       } else {
@@ -292,8 +307,19 @@ export default function Checkout() {
         });
       }
     },
-    onError: (error: Error) => {
+    onError: (error: Error & { status?: number; payload?: any }) => {
       setSubmitLocked(false);
+      if (error.status === 409 && error.payload?.code === "ORDER_ALREADY_PAID") {
+        const orderId = error.payload?.orderId;
+        toast({
+          title: "Už zaplaceno",
+          description: "Tohle už je zaplacený. Mrkni na potvrzení.",
+        });
+        window.location.href = orderId
+          ? `/checkout/success?order_id=${encodeURIComponent(String(orderId))}`
+          : "/checkout/success";
+        return;
+      }
       toast({
         title: "Chyba",
         description: error.message || "Nepodařilo se zpracovat objednávku. Zkus to znovu.",
@@ -328,6 +354,7 @@ export default function Checkout() {
         });
         return;
       }
+      persistLocalOrder(String(orderId));
       clearCart();
       window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=cod`;
     },
@@ -371,6 +398,7 @@ export default function Checkout() {
         });
         return;
       }
+      persistLocalOrder(String(orderId));
       clearCart();
       window.location.href = `/checkout/success?order_id=${encodeURIComponent(orderId)}&pm=in_person`;
     },
@@ -383,6 +411,28 @@ export default function Checkout() {
       });
     },
   });
+
+
+  const persistLocalOrder = (orderId: string) => {
+    const localOrder: ZleOrder = {
+      id: orderId,
+      createdAt: new Date().toISOString(),
+      amount: totalWithShipping,
+      shippingMethod,
+      shippingPrice,
+      codFee,
+      currency: "CZK",
+      paymentMethod,
+      paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
+      items,
+      customerEmail: formData.email,
+      customerName: formData.name,
+      customerAddress: formData.address,
+      customerCity: formData.city,
+      customerZip: formData.zip,
+    };
+    appendOrder(localOrder);
+  };
 
   const isSubmitting = checkoutMutation.isPending || codMutation.isPending || inPersonMutation.isPending || submitLocked;
 
@@ -476,25 +526,6 @@ export default function Checkout() {
     };
 
     console.log("NEW ZLE ORDER", orderData);
-
-    const newOrder: ZleOrder = {
-      id: crypto.randomUUID(),
-      createdAt: orderData.createdAt,
-      amount: totalWithShipping,
-      shippingMethod,
-      shippingPrice,
-      codFee,
-      currency: "CZK",
-      paymentMethod,
-      paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
-      items,
-      customerEmail: formData.email,
-      customerName: formData.name,
-      customerAddress: formData.address,
-      customerCity: formData.city,
-      customerZip: formData.zip,
-    };
-    appendOrder(newOrder);
 
     if (paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay") {
       checkoutMutation.mutate({
