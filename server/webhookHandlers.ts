@@ -123,7 +123,8 @@ async function markEmailEventSent(orderId: string, type: 'email_customer_sent' |
  */
 export async function atomicStockDeduction(
   orderId: string,
-  items: CartItem[]
+  items: CartItem[],
+  executor: any = db,
 ): Promise<{ success: boolean; failures: string[] }> {
   const aggregated = new Map<string, { quantity: number; label: string }>();
   for (const item of items) {
@@ -139,14 +140,14 @@ export async function atomicStockDeduction(
   }
 
   try {
-    return await db.transaction(async (tx) => {
+    const runDeduction = async (tx: any) => {
       const failures: string[] = [];
       const aggregatedItems = Array.from(aggregated.entries()).sort(([a], [b]) =>
         String(a).localeCompare(String(b))
       );
 
       for (const [productId, item] of aggregatedItems) {
-        const locked = await tx.execute<{ stock: number | string }>(
+        const locked = await tx.execute(
           sql`SELECT stock FROM products WHERE id = ${productId} FOR UPDATE`
         );
         const row = locked.rows[0];
@@ -171,7 +172,9 @@ export async function atomicStockDeduction(
       }
 
       return { success: true, failures: [] as string[] };
-    });
+    };
+
+    return await runDeduction(executor);
   } catch (error) {
     const msg = (error as Error)?.message ?? "stock_deduction_failed";
     const failures = msg.startsWith("INSUFFICIENT_STOCK:")
@@ -187,6 +190,36 @@ export async function atomicStockDeduction(
       failures,
     };
   }
+}
+
+export async function deductStockOnceWithOrderLock(
+  orderId: string,
+  items: CartItem[],
+): Promise<{ success: boolean; skipped: boolean; failures: string[] }> {
+  return db.transaction(async (tx) => {
+    const lockResult = await tx.execute<{ stock_deducted_at: Date | null }>(
+      sql`SELECT stock_deducted_at FROM orders WHERE id = ${orderId} FOR UPDATE`
+    );
+
+    const stockDeductedAt = lockResult.rows?.[0]?.stock_deducted_at ?? null;
+    if (stockDeductedAt) {
+      console.log(`[stock] stock_deduction_skip_already_done order=${orderId}`);
+      return { success: true, skipped: true, failures: [] };
+    }
+
+    const stockResult = await atomicStockDeduction(orderId, items, tx);
+    if (!stockResult.success) {
+      return { success: false, skipped: false, failures: stockResult.failures };
+    }
+
+    await tx
+      .update(orders)
+      .set({ stockDeductedAt: sql`NOW()` })
+      .where(eq(orders.id, orderId));
+
+    console.log(`[stock] stock_deduction_claimed order=${orderId}`);
+    return { success: true, skipped: false, failures: [] };
+  });
 }
 
 async function handleCheckoutCompleted(session: any, stripeEventId: string) {
@@ -231,41 +264,30 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     paymentIntent: session.payment_intent,
   });
 
-  // Check if stock already deducted
-  const currentOrder = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  const stockAlreadyDeducted = currentOrder[0]?.stockDeductedAt !== null;
   let stockDeductionFailed = false;
+  const raw = JSON.parse(order.items);
+  const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
+  const stockResult = await deductStockOnceWithOrderLock(orderId, items);
 
-  if (!stockAlreadyDeducted) {
-    // Atomic stock deduction with fail-safe
-    const raw = JSON.parse(order.items);
-    const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
-    const stockResult = await atomicStockDeduction(orderId, items);
-    
-    if (!stockResult.success) {
-      stockDeductionFailed = true;
-      // Stock issues detected - mark for manual review but don't block payment
-      await db.update(orders).set({
-        manualReview: true,
-        opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
-      }).where(eq(orders.id, orderId));
+  if (!stockResult.success) {
+    stockDeductionFailed = true;
+    // Stock issues detected - mark for manual review but don't block payment
+    await db.update(orders).set({
+      manualReview: true,
+      opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
+    }).where(eq(orders.id, orderId));
 
-      await db.insert(auditLog).values({
-        action: 'stock_deduction_failed',
-        entity: 'order',
-        entityId: orderId,
-        severity: 'important',
-        meta: { failures: stockResult.failures },
-      });
+    await db.insert(auditLog).values({
+      action: 'stock_deduction_failed',
+      entity: 'order',
+      entityId: orderId,
+      severity: 'important',
+      meta: { failures: stockResult.failures },
+    });
 
-      emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
-        reason: stockResult.failures.join('; '),
-      });
-    } else {
-      await db.update(orders).set({
-        stockDeductedAt: new Date(),
-      }).where(eq(orders.id, orderId));
-    }
+    emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
+      reason: stockResult.failures.join('; '),
+    });
   }
 
   // Update order status
@@ -339,39 +361,29 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
     paymentIntentId: paymentIntent.id,
   });
 
-  // Check if stock already deducted
-  const currentOrder = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  const stockAlreadyDeducted = currentOrder[0]?.stockDeductedAt !== null;
   let stockDeductionFailed = false;
+  const raw = JSON.parse(order.items);
+  const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
+  const stockResult = await deductStockOnceWithOrderLock(orderId, items);
 
-  if (!stockAlreadyDeducted) {
-    const raw = JSON.parse(order.items);
-    const items: CartItem[] = Array.isArray(raw) ? raw : (raw?.items || []);
-    const stockResult = await atomicStockDeduction(orderId, items);
-    
-    if (!stockResult.success) {
-      stockDeductionFailed = true;
-      await db.update(orders).set({
-        manualReview: true,
-        opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
-      }).where(eq(orders.id, orderId));
+  if (!stockResult.success) {
+    stockDeductionFailed = true;
+    await db.update(orders).set({
+      manualReview: true,
+      opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
+    }).where(eq(orders.id, orderId));
 
-      await db.insert(auditLog).values({
-        action: 'stock_deduction_failed',
-        entity: 'order',
-        entityId: orderId,
-        severity: 'important',
-        meta: { failures: stockResult.failures },
-      });
+    await db.insert(auditLog).values({
+      action: 'stock_deduction_failed',
+      entity: 'order',
+      entityId: orderId,
+      severity: 'important',
+      meta: { failures: stockResult.failures },
+    });
 
-      emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
-        reason: stockResult.failures.join('; '),
-      });
-    } else {
-      await db.update(orders).set({
-        stockDeductedAt: new Date(),
-      }).where(eq(orders.id, orderId));
-    }
+    emitOrderEvent(OpsEventType.STOCK_ISSUE, orderId, {
+      reason: stockResult.failures.join('; '),
+    });
   }
   
   await storage.updateOrder(orderId, {

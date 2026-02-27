@@ -20,7 +20,7 @@ import { paymentMethodEnum, type PaymentMethod, orders, orderEvents, auditLog, o
 import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
-import { atomicStockDeduction } from "./webhookHandlers";
+import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
@@ -130,13 +130,30 @@ async function createOrderWithIdempotency(params: {
         .limit(1);
 
       if (existingFingerprintOrder) {
+        const [mappedRow] = await tx
+          .insert(orderIdempotencyKeys)
+          .values({
+            idempotencyKey: params.idempotencyKey,
+            paymentMethod: params.paymentMethod,
+            orderId: existingFingerprintOrder.id,
+          })
+          .onConflictDoUpdate({
+            target: orderIdempotencyKeys.idempotencyKey,
+            set: {
+              orderId: existingFingerprintOrder.id,
+              paymentMethod: params.paymentMethod,
+              updatedAt: new Date(),
+            },
+          })
+          .returning();
+
         console.log(
           `[checkout] order reuse hit fingerprint=${params.fingerprint.slice(0, 12)} order=${existingFingerprintOrder.id}`
         );
         return {
           order: existingFingerprintOrder,
           idempotencyHit: true,
-          row: null,
+          row: mappedRow ?? null,
           fingerprintHit: true,
         };
       }
@@ -805,8 +822,8 @@ export async function registerRoutes(app: Express) {
       let session: Stripe.Checkout.Session;
       try {
         session = await db.transaction(async (tx) => {
-          const lockResult = await tx.execute(sql<{ id: string; status: string; payment_status: string | null }>`
-            SELECT id, status, payment_status
+          const lockResult = await tx.execute(sql<{ id: string; status: string; payment_status: string | null; stripe_checkout_session_id: string | null }>`
+            SELECT id, status, payment_status, stripe_checkout_session_id
             FROM orders
             WHERE id = ${order.id}
             FOR UPDATE
@@ -825,6 +842,23 @@ export async function registerRoutes(app: Express) {
           ) {
             console.warn(`[checkout] blocked already paid order=${order.id}`);
             throw new Error("ORDER_ALREADY_PAID");
+          }
+
+          if (lockedOrder.stripe_checkout_session_id) {
+            try {
+              const existingSession = await stripe.checkout.sessions.retrieve(String(lockedOrder.stripe_checkout_session_id));
+              if (existingSession.url) {
+                return existingSession;
+              }
+            } catch (retrieveError) {
+              console.warn("[checkout] failed to retrieve existing stripe session", {
+                orderId: order.id,
+                stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
+                error: (retrieveError as any)?.message,
+              });
+            }
+
+            throw new Error("SESSION_ALREADY_CREATED");
           }
 
           const createdSession = await stripe.checkout.sessions.create(
@@ -881,6 +915,14 @@ export async function registerRoutes(app: Express) {
             status: order.status,
             paymentStatus: order.paymentStatus,
             redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
+          });
+        }
+        if (e?.message === "SESSION_ALREADY_CREATED") {
+          return res.status(409).json({
+            code: "SESSION_ALREADY_CREATED",
+            orderId: order.id,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
           });
         }
         // Prevent orphan orders only for newly-created orders if Stripe session creation fails
@@ -1045,19 +1087,8 @@ export async function registerRoutes(app: Express) {
       const needsStockDeduction = !order.stockDeductedAt;
 
       if (needsStockDeduction) {
-        try {
-          await atomicStockDeduction(order.id, parsed.items as any);
-          await db
-            .update(orders)
-            .set({ stockDeductedAt: new Date() })
-            .where(eq(orders.id, order.id));
-
-          // Mark COD order as confirmed (stock reserved) but unpaid
-          await storage.updateOrder(order.id, {
-            status: "confirmed",
-            paymentStatus: "unpaid",
-          });
-        } catch (e) {
+        const stockResult = await deductStockOnceWithOrderLock(order.id, parsed.items as any);
+        if (!stockResult.success) {
           // If stock deduction fails, cancel the order to avoid phantom reservations
           await storage.updateOrder(order.id, {
             status: "cancelled",
@@ -1065,7 +1096,7 @@ export async function registerRoutes(app: Express) {
           });
           console.error("[cod] stock deduction failed; order cancelled", {
             orderId: order.id,
-            error: (e as any)?.message,
+            failures: stockResult.failures,
           });
           return sendApiError(res, 409, {
             code: "out_of_stock_or_reservation_failed",
@@ -1073,6 +1104,12 @@ export async function registerRoutes(app: Express) {
             details: { orderId: order.id },
           });
         }
+
+        // Mark COD order as confirmed (stock reserved) but unpaid
+        await storage.updateOrder(order.id, {
+          status: "confirmed",
+          paymentStatus: "unpaid",
+        });
       }
 
       if (!idempotencyHit) {
@@ -1235,25 +1272,15 @@ export async function registerRoutes(app: Express) {
       const needsStockDeduction = !order.stockDeductedAt;
 
       if (needsStockDeduction) {
-        try {
-          await atomicStockDeduction(order.id, parsed.items as any);
-          await db
-            .update(orders)
-            .set({ stockDeductedAt: new Date() })
-            .where(eq(orders.id, order.id));
-
-          await storage.updateOrder(order.id, {
-            status: "confirmed",
-            paymentStatus: "unpaid",
-          });
-        } catch (e) {
+        const stockResult = await deductStockOnceWithOrderLock(order.id, parsed.items as any);
+        if (!stockResult.success) {
           await storage.updateOrder(order.id, {
             status: "cancelled",
             paymentStatus: "unpaid",
           });
           console.error("[in-person] stock deduction failed; order cancelled", {
             orderId: order.id,
-            error: (e as any)?.message,
+            failures: stockResult.failures,
           });
           return sendApiError(res, 409, {
             code: "out_of_stock_or_reservation_failed",
@@ -1261,6 +1288,11 @@ export async function registerRoutes(app: Express) {
             details: { orderId: order.id },
           });
         }
+
+        await storage.updateOrder(order.id, {
+          status: "confirmed",
+          paymentStatus: "unpaid",
+        });
       }
 
       if (!idempotencyHit) {
@@ -1536,55 +1568,42 @@ export async function registerRoutes(app: Express) {
           paymentNetwork: null,
         });
 
-        // B) Stock deduction fallback (only if not already deducted)
-        const [row] = await db
-          .select({ stockDeductedAt: orders.stockDeductedAt })
-          .from(orders)
-          .where(eq(orders.id, orderIdFromMeta))
-          .limit(1);
+        // B) Stock deduction fallback (order lock + exactly-once claim)
+        const dbOrder = await storage.getOrder(orderIdFromMeta);
+        if (dbOrder) {
+          const parsedItems = (() => {
+            try {
+              const raw = JSON.parse(dbOrder.items);
+              if (Array.isArray(raw)) return raw;
+              if (raw && Array.isArray(raw.items)) return raw.items;
+              return [];
+            } catch {
+              return [];
+            }
+          })();
 
-        if (!row?.stockDeductedAt) {
-          const dbOrder = await storage.getOrder(orderIdFromMeta);
-          if (dbOrder) {
-            const parsedItems = (() => {
-              try {
-                const raw = JSON.parse(dbOrder.items);
-                if (Array.isArray(raw)) return raw;
-                if (raw && Array.isArray(raw.items)) return raw.items;
-                return [];
-              } catch {
-                return [];
-              }
-            })();
+          if (parsedItems.length > 0) {
+            const stockResult = await deductStockOnceWithOrderLock(orderIdFromMeta, parsedItems as any);
+            if (!stockResult.success) {
+              await db
+                .update(orders)
+                .set({
+                  manualReview: true,
+                  opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join("; ")}`,
+                })
+                .where(eq(orders.id, orderIdFromMeta));
 
-            if (parsedItems.length > 0) {
-              const stockResult = await atomicStockDeduction(orderIdFromMeta, parsedItems as any);
-              if (stockResult.success) {
-                await db
-                  .update(orders)
-                  .set({ stockDeductedAt: new Date() })
-                  .where(eq(orders.id, orderIdFromMeta));
-              } else {
-                await db
-                  .update(orders)
-                  .set({
-                    manualReview: true,
-                    opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join("; ")}`,
-                  })
-                  .where(eq(orders.id, orderIdFromMeta));
+              await db.insert(auditLog).values({
+                action: "stock_deduction_failed",
+                entity: "order",
+                entityId: orderIdFromMeta,
+                severity: "important",
+                meta: { failures: stockResult.failures },
+              });
 
-                await db.insert(auditLog).values({
-                  action: "stock_deduction_failed",
-                  entity: "order",
-                  entityId: orderIdFromMeta,
-                  severity: "important",
-                  meta: { failures: stockResult.failures },
-                });
-
-                emitOrderEvent(OpsEventType.STOCK_ISSUE, orderIdFromMeta, {
-                  reason: stockResult.failures.join("; "),
-                });
-              }
+              emitOrderEvent(OpsEventType.STOCK_ISSUE, orderIdFromMeta, {
+                reason: stockResult.failures.join("; "),
+              });
             }
           }
         }
