@@ -4,7 +4,7 @@ import path from "path";
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 
-import helmet from "helmet";
+import { securityHeaders } from "./security/headers";
 
 import { registerRoutes } from "./routes";
 import { isStripeAvailable, disableStripe } from "./stripeClient";
@@ -110,12 +110,7 @@ if (isProd()) {
   });
 }
 
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-  })
-);
+app.use(securityHeaders());
 
 // ----- health -----
 app.get("/health", (_req, res) => res.json(getHealthData()));

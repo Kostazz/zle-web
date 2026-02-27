@@ -28,7 +28,8 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtlSeconds = 7 * 24 * 60 * 60; // 1 week
+  const sessionTtlMs = sessionTtlSeconds * 1000;
 
   // Use PostgreSQL session store if DB available, otherwise memory
   if (flags.HAS_DATABASE) {
@@ -36,7 +37,8 @@ export function getSession() {
     const sessionStore = new pgStore({
       conString: env.DATABASE_URL,
       createTableIfMissing: false,
-      ttl: sessionTtl,
+      // connect-pg-simple expects seconds
+      ttl: sessionTtlSeconds,
       tableName: "sessions",
     });
     return session({
@@ -47,7 +49,8 @@ export function getSession() {
       cookie: {
         httpOnly: true,
         secure: !env.isDev,
-        maxAge: sessionTtl,
+        sameSite: "lax",
+        maxAge: sessionTtlMs,
       },
     });
   }
@@ -61,7 +64,8 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: false,
-      maxAge: sessionTtl,
+      sameSite: "lax",
+      maxAge: sessionTtlMs,
     },
   });
 }
