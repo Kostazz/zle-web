@@ -33,6 +33,8 @@ export function securityHeaders(): RequestHandler {
         "style-src": ["'self'", "https:", "'unsafe-inline'"],
         "script-src": ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
         "connect-src": ["'self'", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
+        "frame-src": ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
+        "child-src": ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         ...(reportUri ? { "report-uri": [reportUri] } : {}),
       },
     },
