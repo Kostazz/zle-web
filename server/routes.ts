@@ -819,11 +819,13 @@ export async function registerRoutes(app: Express) {
         });
       }
 
+      const SESSION_RECOVERY_COOLDOWN_MS = 2 * 60 * 1000;
+
       let session: Stripe.Checkout.Session;
       try {
         session = await db.transaction(async (tx) => {
-          const lockResult = await tx.execute(sql<{ id: string; status: string; payment_status: string | null; stripe_checkout_session_id: string | null }>`
-            SELECT id, status, payment_status, stripe_checkout_session_id
+          const lockResult = await tx.execute(sql<{ id: string; status: string; payment_status: string | null; stripe_checkout_session_id: string | null; stripe_checkout_session_created_at: string | Date | null }>`
+            SELECT id, status, payment_status, stripe_checkout_session_id, stripe_checkout_session_created_at
             FROM orders
             WHERE id = ${order.id}
             FOR UPDATE
@@ -845,17 +847,97 @@ export async function registerRoutes(app: Express) {
           }
 
           if (lockedOrder.stripe_checkout_session_id) {
+            let shouldRecoverSession = false;
             try {
               const existingSession = await stripe.checkout.sessions.retrieve(String(lockedOrder.stripe_checkout_session_id));
-              if (existingSession.url) {
+              const sessionUnusable =
+                existingSession.status === "expired" ||
+                !existingSession.url ||
+                existingSession.payment_status === "paid";
+
+              if (!sessionUnusable && existingSession.url) {
+                console.info("stripe_session_reuse_ok", {
+                  orderId: order.id,
+                  stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
+                });
                 return existingSession;
               }
+
+              shouldRecoverSession = true;
             } catch (retrieveError) {
               console.warn("[checkout] failed to retrieve existing stripe session", {
                 orderId: order.id,
                 stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
                 error: (retrieveError as any)?.message,
               });
+              shouldRecoverSession = true;
+            }
+
+            if (shouldRecoverSession) {
+              const createdAtMs = lockedOrder.stripe_checkout_session_created_at
+                ? new Date(String(lockedOrder.stripe_checkout_session_created_at)).getTime()
+                : null;
+              const ageMs = createdAtMs ? Date.now() - createdAtMs : null;
+              if (ageMs !== null && ageMs < SESSION_RECOVERY_COOLDOWN_MS) {
+                console.info("stripe_session_recreate_throttled", {
+                  orderId: order.id,
+                  stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
+                  age_ms: ageMs,
+                });
+                throw new Error("SESSION_RETRY_LATER");
+              }
+
+              const recreatedSession = await stripe.checkout.sessions.create(
+                {
+                  mode: "payment",
+                  currency: "czk",
+                  line_items,
+                  success_url: successUrl,
+                  cancel_url: cancelUrl,
+                  customer_email: customerDetails.customerEmail,
+                  client_reference_id: order.id,
+                  metadata: {
+                    orderId: order.id,
+                    idempotencyKey,
+                    customerName: customerDetails.customerName,
+                    customerAddress: customerDetails.customerAddress,
+                    customerCity: customerDetails.customerCity,
+                    customerZip: customerDetails.customerZip,
+                    shippingMethod: parsed.shippingMethod,
+                    subtotalCzk: String(subtotalCzk),
+                    shippingCzk: String(shipping.priceCzk),
+                    totalCzk: String(totalCzk),
+                  },
+                },
+                {
+                  idempotencyKey,
+                }
+              );
+
+              await tx
+                .update(orders)
+                .set({
+                  stripeCheckoutSessionId: recreatedSession.id,
+                  stripeCheckoutSessionCreatedAt: new Date(),
+                })
+                .where(eq(orders.id, order.id));
+
+              await tx
+                .update(orderIdempotencyKeys)
+                .set({
+                  stripeSessionId: recreatedSession.id,
+                  stripeSessionUrl: recreatedSession.url,
+                  updatedAt: new Date(),
+                })
+                .where(eq(orderIdempotencyKeys.idempotencyKey, idempotencyKey));
+
+              console.info("stripe_session_recreate_unusable", {
+                orderId: order.id,
+                oldSessionId: lockedOrder.stripe_checkout_session_id,
+                newSessionId: recreatedSession.id,
+              });
+
+              return recreatedSession;
             }
 
             throw new Error("SESSION_ALREADY_CREATED");
@@ -920,6 +1002,14 @@ export async function registerRoutes(app: Express) {
         if (e?.message === "SESSION_ALREADY_CREATED") {
           return res.status(409).json({
             code: "SESSION_ALREADY_CREATED",
+            orderId: order.id,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+          });
+        }
+        if (e?.message === "SESSION_RETRY_LATER") {
+          return res.status(409).json({
+            code: "SESSION_RETRY_LATER",
             orderId: order.id,
             status: order.status,
             paymentStatus: order.paymentStatus,
