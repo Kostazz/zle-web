@@ -425,11 +425,6 @@ export default function Checkout() {
       paymentMethod,
       paymentNetwork: isCryptoMethod ? paymentNetwork : undefined,
       items,
-      customerEmail: formData.email,
-      customerName: formData.name,
-      customerAddress: formData.address,
-      customerCity: formData.city,
-      customerZip: formData.zip,
     };
     appendOrder(localOrder);
   };
@@ -525,7 +520,13 @@ export default function Checkout() {
       createdAt: new Date().toISOString(),
     };
 
-    console.log("NEW ZLE ORDER", orderData);
+    if (import.meta.env.DEV) {
+      console.log("NEW ZLE ORDER", {
+        ...orderData,
+        customerEmail: "[redacted]",
+        customerAddress: "[redacted]",
+      });
+    }
 
     if (paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay") {
       checkoutMutation.mutate({
