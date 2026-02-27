@@ -23,3 +23,12 @@
   - `curl -i "$BASE/api/products"`
   - `curl -i "$BASE/api/checkout/verify/<sessionId>"` (known paid session)
   - `curl -i -X POST "$BASE/api/checkout/create-session" ...` (idempotent retry).
+
+## Recovery-mode smoke (expired/unusable checkout session)
+1. In test DB pick unpaid order with `stripe_checkout_session_id` and set it to non-existing / expired session ID.
+2. If `stripe_checkout_session_created_at` is recent, call `POST /api/checkout/create-session` and expect `409 SESSION_RETRY_LATER`.
+3. After cooldown, call `POST /api/checkout/create-session` again.
+4. PASS criteria:
+   - response contains fresh `url`
+   - `orders.stripe_checkout_session_id` changed to new session
+   - logs include `stripe_session_recreate_unusable`.
