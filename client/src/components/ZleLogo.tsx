@@ -28,6 +28,9 @@ export function ZleLogo({
     (logo as any).jpg ??
     "/images/logo/daily/01.jpg";
 
+  const webpSrc = (logo as any).webpSrc ?? (logo as any).webp;
+  const avifSrc = (logo as any).avifSrc ?? (logo as any).avif;
+
   return (
     <SafeImage
       src={src}
@@ -36,6 +39,8 @@ export function ZleLogo({
       priority={priority}
       loading={priority ? "eager" : "lazy"}
       decoding="async"
+      webpSrc={webpSrc}
+      avifSrc={avifSrc}
       preferModernFormats
     />
   );

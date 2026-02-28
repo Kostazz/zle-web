@@ -1,6 +1,20 @@
 // client/src/lib/imageLoader.ts
 
-const DAILY_LOGO_COUNT = 7;
+const LEGACY_DAILY_BASE = "/images/logo/daily";
+const FINAL_DAILY_BASE = "/zle/logo/daily";
+const DEFAULT_DAILY_DAY = 1;
+
+const AVAILABLE_DAILY_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+const FINAL_DAILY_VARIANTS: Record<number, { jpg?: boolean; webp?: boolean; avif?: boolean }> = {
+  1: { jpg: true },
+  2: { jpg: true },
+  3: { jpg: true },
+  4: { jpg: true },
+  5: { jpg: true },
+  6: { jpg: true },
+  7: { jpg: true },
+};
 
 export type ModernVariants = {
   src?: string;
@@ -56,19 +70,37 @@ export function getModernFormatVariants(src: string): ModernVariants {
   return buildVariants(src);
 }
 
+function toDayToken(day: number) {
+  return String(day).padStart(2, "0");
+}
+
+function pickDailyDayIndex(date: Date = new Date()) {
+  const slot = date.getDate();
+  const index = slot % AVAILABLE_DAILY_DAYS.length || AVAILABLE_DAILY_DAYS.length;
+  return AVAILABLE_DAILY_DAYS[index - 1] ?? DEFAULT_DAILY_DAY;
+}
+
+function getDailyVariantPath(day: number, ext: "avif" | "webp" | "jpg") {
+  const token = toDayToken(day);
+  const finalVariant = FINAL_DAILY_VARIANTS[day];
+
+  if (finalVariant?.[ext]) {
+    return `${FINAL_DAILY_BASE}/${token}.${ext}`;
+  }
+
+  return `${LEGACY_DAILY_BASE}/${token}.${ext}`;
+}
+
 /**
  * 🔒 Daily logo (same for whole site, changes max once per day)
  */
 export function getDailyLogoSrc() {
-  const dayIndex =
-    new Date().getDate() % DAILY_LOGO_COUNT || DAILY_LOGO_COUNT;
-
-  const base = `/images/logo/daily/${String(dayIndex).padStart(2, "0")}`;
+  const dayIndex = pickDailyDayIndex();
 
   return {
-    avif: `${base}.avif`,
-    webp: `${base}.webp`,
-    jpg: `${base}.jpg`,
+    avif: getDailyVariantPath(dayIndex, "avif"),
+    webp: getDailyVariantPath(dayIndex, "webp"),
+    jpg: getDailyVariantPath(dayIndex, "jpg"),
   };
 }
 
