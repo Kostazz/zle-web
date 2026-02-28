@@ -25,7 +25,7 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
   const requestId = typeof existingId === 'string' ? existingId : randomUUID();
   
   req.requestId = requestId;
-  res.setHeader('x-request-id', requestId);
+  res.setHeader('X-Request-Id', requestId);
   
   next();
 }

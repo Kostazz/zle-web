@@ -284,7 +284,18 @@ export default function Checkout() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw Object.assign(new Error(payload?.reason || "Nepodařilo se zpracovat objednávku."), {
+        const code = payload?.code;
+        const defaultMessage = payload?.message || payload?.reason || "Nepodařilo se zpracovat objednávku.";
+        const friendlyMessage =
+          code === "INVALID_CHECKOUT_REQUEST"
+            ? "Zkontroluj dopravu/platbu a zkus to znovu."
+            : code === "STRIPE_CONFIG_ERROR"
+              ? "Platba je dočasně nedostupná. Zkus to prosím za chvíli."
+              : code === "ORDER_STATE_CONFLICT"
+                ? "Objednávka už byla zaplacená nebo zpracovaná."
+                : defaultMessage;
+
+        throw Object.assign(new Error(friendlyMessage), {
           status: response.status,
           payload,
         });
@@ -309,7 +320,7 @@ export default function Checkout() {
     },
     onError: (error: Error & { status?: number; payload?: any }) => {
       setSubmitLocked(false);
-      if (error.status === 409 && error.payload?.code === "ORDER_ALREADY_PAID") {
+      if (error.status === 409 && error.payload?.code === "ORDER_STATE_CONFLICT") {
         const orderId = error.payload?.orderId;
         toast({
           title: "Už zaplaceno",
