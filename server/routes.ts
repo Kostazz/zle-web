@@ -260,6 +260,70 @@ function sendApiError(
   return res.status(status).json(payload);
 }
 
+function sendCheckoutError(
+  res: Response,
+  status: number,
+  payload: { code: string; message: string; details?: unknown }
+) {
+  return res.status(status).json(payload);
+}
+
+function checkoutLog(meta: {
+  requestId: string;
+  route: string;
+  result: "ok" | "fail";
+  code: string;
+  orderId?: string;
+  fingerprint?: string;
+  stripeRequestId?: string;
+}) {
+  console.info("checkout_create_session", meta);
+}
+
+function buildStripeIdempotencyKey(orderId: string, fingerprint: string, attempt: number): string {
+  return createHash("sha256")
+    .update(`${orderId}:${fingerprint}:${attempt}`)
+    .digest("hex");
+}
+
+function mapStripeError(err: unknown):
+  | { status: 500; code: "STRIPE_CONFIG_ERROR"; message: string; stripeRequestId?: string }
+  | { status: 400; code: "STRIPE_INVALID_PARAMS"; message: string; stripeRequestId?: string }
+  | { status: 409; code: "ORDER_STATE_CONFLICT"; message: string; stripeRequestId?: string }
+  | null {
+  const stripeErr = err as Stripe.StripeRawError & { type?: string; requestId?: string; code?: string };
+  const stripeRequestId = stripeErr?.requestId;
+
+  if (stripeErr?.message?.includes("apiKey") || stripeErr?.code === "api_key_expired") {
+    return {
+      status: 500,
+      code: "STRIPE_CONFIG_ERROR",
+      message: "Platba je dočasně nedostupná.",
+      stripeRequestId,
+    };
+  }
+
+  if (stripeErr?.type === "invalid_request_error") {
+    return {
+      status: 400,
+      code: "STRIPE_INVALID_PARAMS",
+      message: "Neplatné parametry platby.",
+      stripeRequestId,
+    };
+  }
+
+  if (stripeErr?.type === "idempotency_error") {
+    return {
+      status: 409,
+      code: "ORDER_STATE_CONFLICT",
+      message: "Objednávka je už ve stavu, který neumožňuje novou platbu.",
+      stripeRequestId,
+    };
+  }
+
+  return null;
+}
+
 function isCheckoutSessionId(value: string) {
   // Stripe checkout session IDs start with "cs_"
   return value.startsWith("cs_") && value.length > 10;
@@ -324,6 +388,8 @@ const CheckoutItemSchema = z.object({
   productId: z.string().min(1).max(80),
   quantity: z.coerce.number().int().min(1).max(20),
   size: z.string().optional().nullable(),
+  // Optional guard if FE ever sends minor units for price previews.
+  unitAmountMinor: z.number().int().positive().optional(),
 });
 
 const CustomerDetailsSchema = z.object({
@@ -347,6 +413,7 @@ const CustomerDetailsSchema = z.object({
 const CreateSessionSchema = z
   .object({
     items: z.array(CheckoutItemSchema).min(1),
+    currency: z.literal("CZK").or(z.literal("czk")).optional().default("czk"),
     // ✅ FIX: allow pickup too
     shippingMethod: z.enum(["gls", "pickup"]).default("gls"),
     paymentMethod: paymentMethodEnum.optional(),
@@ -473,18 +540,18 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, {
-            code: "unknown_product",
-            reason: "unknown_product",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku je neplatná.",
             details: { productId: item.productId },
           });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, {
-            code: "invalid_product_price",
-            reason: "invalid_product_price",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku má neplatnou cenu.",
             details: { productId: product.id },
           });
         }
@@ -563,28 +630,39 @@ export async function registerRoutes(app: Express) {
 
   // Checkout: create Stripe session (server-authoritative pricing + creates DB order)
   app.post("/api/checkout/create-session", async (req, res) => {
+    const requestId = req.requestId || "unknown";
+    const route = "/api/checkout/create-session";
+
     try {
       const stripe = await getUncachableStripeClient().catch(() => null);
       if (!stripe) {
-        return sendApiError(res, 500, {
-          code: "stripe_not_configured",
-          reason: "stripe_not_configured",
+        checkoutLog({ requestId, route, result: "fail", code: "STRIPE_CONFIG_ERROR" });
+        return sendCheckoutError(res, 500, {
+          code: "STRIPE_CONFIG_ERROR",
+          message: "Platba je dočasně nedostupná.",
         });
       }
 
       const parsed = CreateSessionSchema.parse(req.body);
       const customerDetails = resolveCustomerDetails(parsed);
-      if (!requireCustomerDetails(res, customerDetails)) {
-        return;
+      const missingCustomerFields = Object.entries(customerDetails)
+        .filter(([, value]) => !String(value || "").trim())
+        .map(([key]) => key);
+      if (missingCustomerFields.length > 0) {
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Vyplň prosím kontaktní a doručovací údaje.",
+          details: { missing: missingCustomerFields },
+        });
       }
 
       // If user selected crypto, we currently don't route through Stripe.
       const pm = (parsed.paymentMethod || "card") as PaymentMethod;
       const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
       if (!paymentCheck.ok) {
-        return sendApiError(res, 400, {
-          code: paymentCheck.code,
-          reason: paymentCheck.reason,
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zkontroluj dopravu/platbu a zkus to znovu.",
           details: {
             shippingMethod: parsed.shippingMethod,
             paymentMethod: pm,
@@ -593,9 +671,9 @@ export async function registerRoutes(app: Express) {
       }
       // This endpoint only supports Stripe-based methods.
       if (pm !== "card" && pm !== "gpay" && pm !== "applepay") {
-        return sendApiError(res, 400, {
-          code: "payment_not_allowed_for_shipping",
-          reason: "Zvolená platba není pro Stripe dostupná.",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zkontroluj dopravu/platbu a zkus to znovu.",
           details: {
             shippingMethod: parsed.shippingMethod,
             paymentMethod: pm,
@@ -611,18 +689,18 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, {
-            code: "unknown_product",
-            reason: "unknown_product",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku je neplatná.",
             details: { productId: item.productId },
           });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, {
-            code: "invalid_product_price",
-            reason: "invalid_product_price",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku má neplatnou cenu.",
             details: { productId: product.id },
           });
         }
@@ -658,9 +736,9 @@ export async function registerRoutes(app: Express) {
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       if (!shipping) {
-        return sendApiError(res, 400, {
-          code: "unknown_shipping_method",
-          reason: "unknown_shipping_method",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zvolený způsob dopravy není podporovaný.",
         });
       }
 
@@ -687,14 +765,20 @@ export async function registerRoutes(app: Express) {
 
       // Stripe minimum guard (avoid ugly 500s)
       if (totalCzk < 15) {
-        return sendApiError(res, 400, {
-          code: "amount_too_small",
-          reason: "amount_too_small",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Objednávka nedosahuje minimální částky pro platbu.",
           details: { totalCzk },
         });
       }
 
       const idempotencyKey = parsed.idempotencyKey;
+      if ((parsed.currency || "czk").toLowerCase() !== "czk") {
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Měna objednávky musí být CZK.",
+        });
+      }
       const fingerprint = buildOrderFingerprint({
         items: fingerprintItems,
         shippingMethod: parsed.shippingMethod,
@@ -739,9 +823,10 @@ export async function registerRoutes(app: Express) {
       });
 
       if (!order) {
-        return sendApiError(res, 409, {
-          code: "order_in_progress",
-          reason: "order_in_progress",
+        checkoutLog({ requestId, route, result: "fail", code: "ORDER_STATE_CONFLICT" });
+        return res.status(409).json({
+          code: "ORDER_STATE_CONFLICT",
+          message: "Objednávka je právě zpracovávaná. Zkus to prosím znovu.",
         });
       }
 
@@ -758,10 +843,10 @@ export async function registerRoutes(app: Express) {
           xfp: req.headers["x-forwarded-proto"],
           message: e?.message,
         });
-        return sendApiError(res, 500, {
-          code: "invalid_base_url",
-          reason: "invalid_base_url",
-          details: { message: e?.message || "invalid_url" },
+        checkoutLog({ requestId, route, result: "fail", code: "STRIPE_CONFIG_ERROR" });
+        return sendCheckoutError(res, 500, {
+          code: "STRIPE_CONFIG_ERROR",
+          message: "Platba je dočasně nedostupná.",
         });
       }
 
@@ -769,11 +854,18 @@ export async function registerRoutes(app: Express) {
 
       if (order.paymentStatus === "paid" || order.status === "confirmed" || order.status === "fulfilled") {
         console.warn(`[checkout] blocked already paid order=${order.id}`);
-        return res.status(409).json({
-          code: "ORDER_ALREADY_PAID",
+        checkoutLog({
+          requestId,
+          route,
           orderId: order.id,
-          status: order.status,
-          paymentStatus: order.paymentStatus,
+          fingerprint: fingerprint.slice(0, 16),
+          result: "fail",
+          code: "ORDER_STATE_CONFLICT",
+        });
+        return res.status(409).json({
+          code: "ORDER_STATE_CONFLICT",
+          message: "Objednávka už byla zaplacená nebo zpracovaná.",
+          orderId: order.id,
           redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
         });
       }
@@ -812,10 +904,17 @@ export async function registerRoutes(app: Express) {
           cancelUrl,
           message: e?.message,
         });
-        return sendApiError(res, 500, {
-          code: "invalid_redirect_url",
-          reason: "invalid_redirect_url",
-          details: { message: e?.message || "invalid_url" },
+        checkoutLog({
+          requestId,
+          route,
+          orderId: order.id,
+          fingerprint: fingerprint.slice(0, 16),
+          result: "fail",
+          code: "STRIPE_CONFIG_ERROR",
+        });
+        return sendCheckoutError(res, 500, {
+          code: "STRIPE_CONFIG_ERROR",
+          message: "Platba je dočasně nedostupná.",
         });
       }
 
@@ -910,7 +1009,7 @@ export async function registerRoutes(app: Express) {
                   },
                 },
                 {
-                  idempotencyKey,
+                  idempotencyKey: buildStripeIdempotencyKey(order.id, fingerprint, 1),
                 }
               );
 
@@ -966,7 +1065,7 @@ export async function registerRoutes(app: Express) {
               },
             },
             {
-              idempotencyKey,
+              idempotencyKey: buildStripeIdempotencyKey(order.id, fingerprint, 0),
             }
           );
 
@@ -990,29 +1089,19 @@ export async function registerRoutes(app: Express) {
           return createdSession;
         });
       } catch (e: any) {
-        if (e?.message === "ORDER_ALREADY_PAID") {
-          return res.status(409).json({
-            code: "ORDER_ALREADY_PAID",
+        if (e?.message === "ORDER_ALREADY_PAID" || e?.message === "SESSION_ALREADY_CREATED" || e?.message === "SESSION_RETRY_LATER") {
+          checkoutLog({
+            requestId,
+            route,
             orderId: order.id,
-            status: order.status,
-            paymentStatus: order.paymentStatus,
-            redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
+            fingerprint: fingerprint.slice(0, 16),
+            result: "fail",
+            code: "ORDER_STATE_CONFLICT",
           });
-        }
-        if (e?.message === "SESSION_ALREADY_CREATED") {
           return res.status(409).json({
-            code: "SESSION_ALREADY_CREATED",
+            code: "ORDER_STATE_CONFLICT",
+            message: "Objednávka už byla zaplacená nebo je právě zpracovávaná.",
             orderId: order.id,
-            status: order.status,
-            paymentStatus: order.paymentStatus,
-          });
-        }
-        if (e?.message === "SESSION_RETRY_LATER") {
-          return res.status(409).json({
-            code: "SESSION_RETRY_LATER",
-            orderId: order.id,
-            status: order.status,
-            paymentStatus: order.paymentStatus,
           });
         }
         // Prevent orphan orders only for newly-created orders if Stripe session creation fails
@@ -1030,27 +1119,64 @@ export async function registerRoutes(app: Express) {
       }
 
       if (!session.url) {
-        return sendApiError(res, 500, {
-          code: "missing_session_url",
-          reason: "missing_session_url",
+        checkoutLog({
+          requestId,
+          route,
+          orderId: order.id,
+          fingerprint: fingerprint.slice(0, 16),
+          result: "fail",
+          code: "STRIPE_INVALID_PARAMS",
+        });
+        return sendCheckoutError(res, 400, {
+          code: "STRIPE_INVALID_PARAMS",
+          message: "Neplatné parametry platby.",
         });
       }
+
+      checkoutLog({
+        requestId,
+        route,
+        orderId: order.id,
+        fingerprint: fingerprint.slice(0, 16),
+        result: "ok",
+        code: "OK",
+      });
       return res.json({ url: session.url, orderId: order.id, accessToken: order.accessToken });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
-        return sendApiError(res, 400, {
-          code: "invalid_payload",
-          reason: "invalid_payload",
+        checkoutLog({ requestId, route, result: "fail", code: "INVALID_CHECKOUT_REQUEST" });
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zkontroluj objednávku a zkus to znovu.",
           details: err.flatten(),
         });
       }
 
-      const message = err?.message || "unknown_error";
-      console.error("[checkout] create-session failed:", err);
-      return sendApiError(res, 500, {
-        code: "failed_to_create_session",
-        reason: "failed_to_create_session",
-        details: { message },
+      const mappedStripeError = mapStripeError(err);
+      if (mappedStripeError) {
+        checkoutLog({
+          requestId,
+          route,
+          result: "fail",
+          code: mappedStripeError.code,
+          stripeRequestId: mappedStripeError.stripeRequestId,
+        });
+        return sendCheckoutError(res, mappedStripeError.status, {
+          code: mappedStripeError.code,
+          message: mappedStripeError.message,
+        });
+      }
+
+      console.error("[checkout] create-session failed", {
+        requestId,
+        route,
+        code: "CHECKOUT_INTERNAL_ERROR",
+        message: err?.message || "unknown_error",
+      });
+      checkoutLog({ requestId, route, result: "fail", code: "CHECKOUT_INTERNAL_ERROR" });
+      return sendCheckoutError(res, 500, {
+        code: "CHECKOUT_INTERNAL_ERROR",
+        message: "Platbu se nepodařilo vytvořit. Zkus to prosím za chvíli.",
       });
     }
   });
@@ -1060,8 +1186,15 @@ export async function registerRoutes(app: Express) {
     try {
       const parsed = CreateCodOrderSchema.parse(req.body);
       const customerDetails = resolveCustomerDetails(parsed);
-      if (!requireCustomerDetails(res, customerDetails)) {
-        return;
+      const missingCustomerFields = Object.entries(customerDetails)
+        .filter(([, value]) => !String(value || "").trim())
+        .map(([key]) => key);
+      if (missingCustomerFields.length > 0) {
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Vyplň prosím kontaktní a doručovací údaje.",
+          details: { missing: missingCustomerFields },
+        });
       }
       const paymentMethod = parsed.paymentMethod;
 
@@ -1093,18 +1226,18 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, {
-            code: "unknown_product",
-            reason: "unknown_product",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku je neplatná.",
             details: { productId: item.productId },
           });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, {
-            code: "invalid_product_price",
-            reason: "invalid_product_price",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku má neplatnou cenu.",
             details: { productId: product.id },
           });
         }
@@ -1114,9 +1247,9 @@ export async function registerRoutes(app: Express) {
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       if (!shipping) {
-        return sendApiError(res, 400, {
-          code: "unknown_shipping_method",
-          reason: "unknown_shipping_method",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zvolený způsob dopravy není podporovaný.",
         });
       }
 
@@ -1128,9 +1261,9 @@ export async function registerRoutes(app: Express) {
 
       const totalCzk = totals.totalCzk;
       if (totalCzk < 15) {
-        return sendApiError(res, 400, {
-          code: "amount_too_small",
-          reason: "amount_too_small",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Objednávka nedosahuje minimální částky pro platbu.",
           details: { totalCzk },
         });
       }
@@ -1246,8 +1379,15 @@ export async function registerRoutes(app: Express) {
     try {
       const parsed = CreateInPersonOrderSchema.parse(req.body);
       const customerDetails = resolveCustomerDetails(parsed);
-      if (!requireCustomerDetails(res, customerDetails)) {
-        return;
+      const missingCustomerFields = Object.entries(customerDetails)
+        .filter(([, value]) => !String(value || "").trim())
+        .map(([key]) => key);
+      if (missingCustomerFields.length > 0) {
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Vyplň prosím kontaktní a doručovací údaje.",
+          details: { missing: missingCustomerFields },
+        });
       }
       const paymentMethod = parsed.paymentMethod;
 
@@ -1279,18 +1419,18 @@ export async function registerRoutes(app: Express) {
       for (const item of parsed.items) {
         const product = await storage.getProduct(item.productId);
         if (!product) {
-          return sendApiError(res, 400, {
-            code: "unknown_product",
-            reason: "unknown_product",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku je neplatná.",
             details: { productId: item.productId },
           });
         }
 
         const unitPriceCzk = Number(product.price) || 0;
         if (unitPriceCzk <= 0) {
-          return sendApiError(res, 400, {
-            code: "invalid_product_price",
-            reason: "invalid_product_price",
+          return sendCheckoutError(res, 400, {
+            code: "INVALID_CHECKOUT_REQUEST",
+            message: "Některá položka košíku má neplatnou cenu.",
             details: { productId: product.id },
           });
         }
@@ -1300,9 +1440,9 @@ export async function registerRoutes(app: Express) {
 
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       if (!shipping) {
-        return sendApiError(res, 400, {
-          code: "unknown_shipping_method",
-          reason: "unknown_shipping_method",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Zvolený způsob dopravy není podporovaný.",
         });
       }
 
@@ -1314,9 +1454,9 @@ export async function registerRoutes(app: Express) {
 
       const totalCzk = totals.totalCzk;
       if (totalCzk < 15) {
-        return sendApiError(res, 400, {
-          code: "amount_too_small",
-          reason: "amount_too_small",
+        return sendCheckoutError(res, 400, {
+          code: "INVALID_CHECKOUT_REQUEST",
+          message: "Objednávka nedosahuje minimální částky pro platbu.",
           details: { totalCzk },
         });
       }
