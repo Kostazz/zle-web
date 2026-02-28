@@ -26,7 +26,7 @@ Control which features are enabled via environment variables:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `ENABLE_AUTH` | `true` on Replit, `false` elsewhere | Enable Replit authentication |
+| `ENABLE_AUTH` | `false` | Reserved auth feature flag (disabled by default) |
 | `ENABLE_STRIPE` | `true` if keys exist | Enable Stripe payments |
 | `ENABLE_EMAIL` | `true` if RESEND_API_KEY set | Enable email notifications |
 | `ENABLE_OPS` | `false` | Enable OPS automation webhooks |
@@ -61,20 +61,7 @@ ENABLE_AUTH=false ENABLE_STRIPE=false npm run dev
 |----------|-------------|
 | `RESEND_API_KEY` | Resend API key for transactional emails |
 
-### Optional (Auth - Replit only)
-
-| Variable | Description |
-|----------|-------------|
-| `REPL_ID` | Set automatically on Replit |
-| `REPLIT_DOMAINS` | Set automatically on Replit |
-
 ## Platform Setup
-
-### Replit
-
-1. Click "Run" - everything auto-configures
-2. Stripe and auth work via Replit integrations
-3. Add custom secrets in "Secrets" tab if needed
 
 ### GitHub Codespaces / Local
 
@@ -101,7 +88,6 @@ npm run dev
 
 The app gracefully handles missing services:
 
-- **No REPL_ID?** → Auth routes return 503, app works without login
 - **No Stripe keys?** → Payments disabled, shop browsing works
 - **No Resend key?** → Emails disabled, orders still process
 - **No DATABASE_URL?** → Limited functionality mode with warnings
@@ -161,7 +147,6 @@ Returns JSON with enabled features and database connectivity status.
 ├── server/          # Express backend
 │   ├── env.ts       # Feature flags and env validation
 │   ├── index.ts     # Server entry point
-│   └── replitAuth.ts # Authentication (Replit OpenID)
 ├── shared/          # Shared TypeScript schemas
 ├── script/
 │   └── bootstrap.mjs # One-command dev setup

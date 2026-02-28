@@ -18,20 +18,18 @@ function getSessionSecret(): string {
 
 // Detect environment
 const isDev = process.env.NODE_ENV !== "production";
-const isReplit = Boolean(process.env.REPL_ID);
-
 // Feature flags with smart defaults
 export const flags = {
-  // Auth: enabled on Replit by default, disabled elsewhere unless explicitly enabled
-  ENABLE_AUTH: isReplit || isTruthy(process.env.ENABLE_AUTH),
+  // Auth: disabled by default unless explicitly enabled
+  ENABLE_AUTH: isTruthy(process.env.ENABLE_AUTH),
 
   // Stripe: enabled if key exists and not explicitly disabled
   ENABLE_STRIPE:
     process.env.ENABLE_STRIPE !== "false" &&
-    Boolean(process.env.STRIPE_SECRET_KEY || (isReplit && (process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL))),
+    Boolean(process.env.STRIPE_SECRET_KEY),
 
-  // Email: enabled if RESEND_API_KEY exists (prod) OR on Replit (connector)
-  ENABLE_EMAIL: process.env.ENABLE_EMAIL !== "false" && (Boolean(process.env.RESEND_API_KEY) || isReplit),
+  // Email: enabled if RESEND_API_KEY exists
+  ENABLE_EMAIL: process.env.ENABLE_EMAIL !== "false" && Boolean(process.env.RESEND_API_KEY),
 
   // OPS webhooks: disabled by default in dev
   ENABLE_OPS: isTruthy(process.env.ENABLE_OPS),
@@ -84,7 +82,6 @@ export const env = {
 
   // Dev helpers
   IS_DEV: isDev,
-  IS_REPLIT: isReplit,
 };
 
 // --- Missing exports used by server/index.ts ---
