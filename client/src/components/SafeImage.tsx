@@ -5,6 +5,8 @@ type SafeImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> & {
   src?: string | null;
   fallbackSrc?: string;
   preferModernFormats?: boolean;
+  webpSrc?: string;
+  avifSrc?: string;
   priority?: boolean;
 };
 
@@ -43,6 +45,8 @@ export function SafeImage({
   alt = "",
   fallbackSrc = DEFAULT_FALLBACK,
   preferModernFormats = true,
+  webpSrc,
+  avifSrc,
   priority = false,
   loading = "lazy",
   decoding = "async",
@@ -70,6 +74,14 @@ export function SafeImage({
   const fetchPriority = priority ? "high" : imgProps.fetchPriority;
 
   const variants: Variants = React.useMemo(() => {
+    if (avifSrc || webpSrc) {
+      return {
+        fallbackSrc: currentSrc,
+        webpSrc: webpSrc ?? undefined,
+        avifSrc: avifSrc ?? undefined,
+      };
+    }
+
     if (!preferModernFormats || isRemote(currentSrc)) {
       return { fallbackSrc: currentSrc };
     }
@@ -86,7 +98,7 @@ export function SafeImage({
       webpSrc: v.webpSrc ?? v.webp,
       avifSrc: v.avifSrc ?? v.avif,
     };
-  }, [preferModernFormats, currentSrc]);
+  }, [preferModernFormats, currentSrc, webpSrc, avifSrc]);
 
   const handleError: React.ReactEventHandler<HTMLImageElement> = (e) => {
     onError?.(e);
