@@ -1,20 +1,8 @@
 // client/src/lib/imageLoader.ts
 
-const LEGACY_DAILY_BASE = "/images/logo/daily";
 const FINAL_DAILY_BASE = "/zle/logo/daily";
-const DEFAULT_DAILY_DAY = 1;
-
-const AVAILABLE_DAILY_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-
-const FINAL_DAILY_VARIANTS: Record<number, { jpg?: boolean; webp?: boolean; avif?: boolean }> = {
-  1: { jpg: true },
-  2: { jpg: true },
-  3: { jpg: true },
-  4: { jpg: true },
-  5: { jpg: true },
-  6: { jpg: true },
-  7: { jpg: true },
-};
+const DEFAULT_DAILY_INDEX = 1;
+const DAILY_LOGO_COUNT = 19;
 
 export type ModernVariants = {
   src?: string;
@@ -39,7 +27,6 @@ function stripQueryAndHash(input: string) {
 function buildVariants(src: string): ModernVariants {
   const { path, suffix } = stripQueryAndHash(src);
 
-  // Already modern
   if (path.toLowerCase().endsWith(".avif")) {
     return { src, avifSrc: src };
   }
@@ -47,10 +34,8 @@ function buildVariants(src: string): ModernVariants {
     return { src, webpSrc: src };
   }
 
-  // Classic formats
   const m = path.match(/\.(png|jpe?g)$/i);
   if (!m) {
-    // Unknown extension → return as-is
     return { src };
   }
 
@@ -70,37 +55,30 @@ export function getModernFormatVariants(src: string): ModernVariants {
   return buildVariants(src);
 }
 
-function toDayToken(day: number) {
-  return String(day).padStart(2, "0");
+function toToken(index: number) {
+  return String(index).padStart(2, "0");
 }
 
-function pickDailyDayIndex(date: Date = new Date()) {
-  const slot = date.getDate();
-  const index = slot % AVAILABLE_DAILY_DAYS.length || AVAILABLE_DAILY_DAYS.length;
-  return AVAILABLE_DAILY_DAYS[index - 1] ?? DEFAULT_DAILY_DAY;
+function pickDailyLogoIndex(date: Date = new Date()) {
+  const day = date.getDate();
+  return ((day - 1) % DAILY_LOGO_COUNT) + 1;
 }
 
-function getDailyVariantPath(day: number, ext: "avif" | "webp" | "jpg") {
-  const token = toDayToken(day);
-  const finalVariant = FINAL_DAILY_VARIANTS[day];
-
-  if (finalVariant?.[ext]) {
-    return `${FINAL_DAILY_BASE}/${token}.${ext}`;
-  }
-
-  return `${LEGACY_DAILY_BASE}/${token}.${ext}`;
+function getDailyLogoPath(date: Date = new Date()) {
+  const index = pickDailyLogoIndex(date) || DEFAULT_DAILY_INDEX;
+  return `${FINAL_DAILY_BASE}/${toToken(index)}.png`;
 }
 
 /**
  * 🔒 Daily logo (same for whole site, changes max once per day)
  */
 export function getDailyLogoSrc() {
-  const dayIndex = pickDailyDayIndex();
+  const src = getDailyLogoPath();
 
   return {
-    avif: getDailyVariantPath(dayIndex, "avif"),
-    webp: getDailyVariantPath(dayIndex, "webp"),
-    jpg: getDailyVariantPath(dayIndex, "jpg"),
+    avif: undefined,
+    webp: undefined,
+    jpg: src,
   };
 }
 
@@ -108,11 +86,12 @@ export function getDailyLogoSrc() {
  * Variants for today's logo (used by ZleLogo / logoContext)
  */
 export function getTodaysLogoVariants(): ModernVariants {
-  const daily = getDailyLogoSrc();
+  const src = getDailyLogoPath();
+
   return {
-    src: daily.jpg,
-    webpSrc: daily.webp,
-    avifSrc: daily.avif,
+    src,
+    webpSrc: undefined,
+    avifSrc: undefined,
   };
 }
 
