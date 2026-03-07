@@ -405,36 +405,36 @@
 
 /* Header logo */
 .zle-header-logo {
-  height: 44px;
+  height: 46px;
 }
 
 @media (min-width: 768px) {
   .zle-header-logo {
-    height: 48px;
+    height: 50px;
   }
 }
 
 /* Hero logo (LCP / big) */
 .zle-hero-logo {
-  height: 156px;
-  max-width: 42vw;
+  height: 166px;
+  max-width: 44vw;
   margin-left: 0.9rem;
-  transform: translateY(8px);
+  transform: translateY(6px);
 }
 
 @media (min-width: 768px) {
   .zle-hero-logo {
-    height: 192px;
-    max-width: 46vw;
+    height: 206px;
+    max-width: 48vw;
     margin-left: 1.3rem;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
 }
 
 @media (min-width: 1280px) {
   .zle-hero-logo {
-    height: 210px;
-    max-width: 52vw;
+    height: 226px;
+    max-width: 54vw;
   }
 }
 
