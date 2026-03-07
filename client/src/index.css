@@ -416,16 +416,18 @@
 
 /* Hero logo (LCP / big) */
 .zle-hero-logo {
-  height: 148px;
+  height: 156px;
   max-width: 42vw;
-  margin-left: 1.5rem;
+  margin-left: 0.9rem;
+  transform: translateY(8px);
 }
 
 @media (min-width: 768px) {
   .zle-hero-logo {
-    height: 180px;
+    height: 192px;
     max-width: 46vw;
-    margin-left: 2.5rem;
+    margin-left: 1.3rem;
+    transform: translateY(10px);
   }
 }
 
