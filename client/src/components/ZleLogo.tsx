@@ -22,11 +22,10 @@ export function ZleLogo({
   const logo = React.useMemo(() => getTodaysLogoVariants(), []);
   const priority = variant === "hero";
 
-  // kompatibilní napříč staršími i novými variantami
   const src =
     (logo as any).src ??
     (logo as any).jpg ??
-    "/images/logo/daily/01.jpg";
+    "/zle/logo/daily/01.png";
 
   const webpSrc = (logo as any).webpSrc ?? (logo as any).webp;
   const avifSrc = (logo as any).avifSrc ?? (logo as any).avif;
@@ -41,7 +40,7 @@ export function ZleLogo({
       decoding="async"
       webpSrc={webpSrc}
       avifSrc={avifSrc}
-      preferModernFormats
+      preferModernFormats={false}
     />
   );
 }
