@@ -83,7 +83,7 @@ export function getDailyLogoSrc() {
 }
 
 /**
- * Variants for today's logo (used by ZleLogo / logoContext)
+ * Variants for today's logo (used by ZleLogo)
  */
 export function getTodaysLogoVariants(): ModernVariants {
   const src = getDailyLogoPath();
@@ -94,9 +94,3 @@ export function getTodaysLogoVariants(): ModernVariants {
     avifSrc: undefined,
   };
 }
-
-/**
- * 🔁 Backward compatibility alias
- * (logoContext imports getTodaysLogo)
- */
-export const getTodaysLogo = getTodaysLogoVariants;
