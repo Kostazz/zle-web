@@ -403,86 +403,7 @@
   background: transparent;
 }
 
-/* ✅ Header logo */
-.zle-header-logo {
-  height: 28px;
-}
-
-/* ✅ Hero logo (LCP / big) */
-.zle-hero-logo {
-  height: 72px;
-}
-
-@media (min-width: 768px) {
-  .zle-hero-logo {
-    height: 92px;
-  }
-}
-
-/* ✅ Footer logo */
-.zle-footer-logo {
-  height: 40px;
-  margin-top: 0.25rem;
-}
-
-/* ✅ Když je SafeImage uvnitř <picture>, picture nesmí dělat inline mezery */
-picture {
-  display: block;
-}
-
-/* (Optional) inline logo v textu – nechávám, ale už to nepleteme s hero */
-.hero-logo-inline {
-  height: 1.1em;
-  display: inline-block;
-  vertical-align: -0.12em;
-}
-
-/* ================================
-   ZLE LOGO – FINAL SIZE TUNING
-   (override – wins by position)
-================================ */
-
 /* Header logo */
-.zle-header-logo {
-  height: 36px;
-}
-
-@media (min-width: 768px) {
-  .zle-header-logo {
-    height: 40px;
-  }
-}
-
-/* Hero logo (LCP / big) */
-.zle-hero-logo {
-  height: 96px;
-}
-
-@media (min-width: 768px) {
-  .zle-hero-logo {
-    height: 120px;
-  }
-}
-
-/* Footer logo */
-.zle-footer-logo {
-  height: 52px;
-  margin-top: 0.25rem;
-}
-
-@media (min-width: 768px) {
-  .zle-footer-logo {
-    height: 56px;
-  }
-}
-
-
-/* ================================
-   ZLE LOGO – FINAL SCALE BOOST
-   (brand dominance tuning)
-================================ */
-
-/* 🔝 Header logo – čitelné, silnější */
 .zle-header-logo {
   height: 44px;
 }
@@ -493,45 +414,18 @@ picture {
   }
 }
 
-/* 🔥 Hero logo – MUSÍ být větší než "JEĎ TO" */
-.zle-hero-logo {
-  height: 128px;
-}
-
-@media (min-width: 768px) {
-  .zle-hero-logo {
-    height: 160px;
-  }
-}
-
-/* ⬇️ Footer logo – čitelné, ale sekundární */
-.zle-footer-logo {
-  height: 56px;
-  margin-top: 0.25rem;
-}
-
-@media (min-width: 768px) {
-  .zle-footer-logo {
-    height: 64px;
-  }
-}
-
-
-/* ================================
-   ZLE HERO LOGO – HORIZONTAL POWER
-   (fills space next to "JEĎ TO")
-================================ */
-
-/* Hero logo – víc do šířky + větší dominance */
+/* Hero logo (LCP / big) */
 .zle-hero-logo {
   height: 148px;
   max-width: 42vw;
+  margin-left: 1.5rem;
 }
 
 @media (min-width: 768px) {
   .zle-hero-logo {
     height: 180px;
     max-width: 46vw;
+    margin-left: 2.5rem;
   }
 }
 
@@ -542,35 +436,14 @@ picture {
   }
 }
 
-
-/* ================================
-   ZLE HERO – SPACING TUNING
-   (more air between JEĎ TO & ZLE)
-================================ */
-
-/* pokud jsou vedle sebe ve flexu / gridu */
-.hero-logo-row,
-.hero-headline,
-.hero-title {
-  gap: 2.5rem;
+/* Footer logo */
+.zle-footer-logo {
+  height: 56px;
+  margin-top: 0.25rem;
 }
 
 @media (min-width: 768px) {
-  .hero-logo-row,
-  .hero-headline,
-  .hero-title {
-    gap: 3.5rem;
+  .zle-footer-logo {
+    height: 64px;
   }
 }
-
-/* fallback: kdyby nebyl gap, přidáme jemný margin */
-.zle-hero-logo {
-  margin-left: 1.5rem;
-}
-
-@media (min-width: 768px) {
-  .zle-hero-logo {
-    margin-left: 2.5rem;
-  }
-}
-

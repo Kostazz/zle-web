@@ -5,7 +5,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart-context";
-import { LogoProvider } from "@/lib/logoContext";
 import { ScrollToTop } from "@/components/layout/ScrollToTop";
 import { Canonical } from "@/components/seo/Canonical";
 import { SeoManager } from "@/components/seo/SeoManager";
@@ -81,20 +80,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <LogoProvider>
-          <CartProvider>
-            <ScrollToTop />
-            <Canonical />
-            <SeoManager />
-            <SocialMeta />
-            <StructuredData />
-            <ShopProductSchema />
-            <Analytics />
-            <WebmasterVerification />
-            <Toaster />
-            <Router />
-          </CartProvider>
-        </LogoProvider>
+        <CartProvider>
+          <ScrollToTop />
+          <Canonical />
+          <SeoManager />
+          <SocialMeta />
+          <StructuredData />
+          <ShopProductSchema />
+          <Analytics />
+          <WebmasterVerification />
+          <Toaster />
+          <Router />
+        </CartProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
