@@ -421,6 +421,8 @@
   max-width: 44vw;
   margin-left: 0.9rem;
   transform: translateY(var(--zle-hero-logo-offset));
+  filter: brightness(1) contrast(1);
+  transition: transform 180ms ease-out, filter 180ms ease-out;
   opacity: 0;
   animation: zleHeroLogoReveal 520ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
   will-change: transform, opacity;
@@ -459,6 +461,24 @@
   .zle-hero-logo {
     animation: none;
     opacity: 1;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zle-hero-logo:hover {
+    transform: translateY(calc(var(--zle-hero-logo-offset) - 1px));
+    filter: brightness(1.02) contrast(1.01);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
+  .zle-hero-logo {
+    transition: none;
+  }
+
+  .zle-hero-logo:hover {
+    transform: translateY(var(--zle-hero-logo-offset));
+    filter: brightness(1) contrast(1);
   }
 }
 
