@@ -13,6 +13,7 @@ import { StructuredData } from "@/components/seo/StructuredData";
 import { ShopProductSchema } from "@/components/seo/ShopProductSchema";
 import { Analytics } from "@/components/seo/Analytics";
 import { WebmasterVerification } from "@/components/seo/WebmasterVerification";
+import { HomeHeroLogoPreload } from "@/components/seo/HomeHeroLogoPreload";
 import Home from "@/pages/Home";
 
 // Route-level code splitting (mobile speed): keep Home eager, lazy-load the rest.
@@ -87,6 +88,7 @@ function App() {
           <SocialMeta />
           <StructuredData />
           <ShopProductSchema />
+          <HomeHeroLogoPreload />
           <Analytics />
           <WebmasterVerification />
           <Toaster />
