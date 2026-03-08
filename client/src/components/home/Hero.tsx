@@ -18,7 +18,7 @@ export function Hero() {
             </h1>
 
             {/* Hero uses the same stable logo as header (no drift) */}
-            <ZleLogo variant="hero" className="zle-hero-logo" alt="ZLE" />
+            <ZleLogo variant="hero" className="zle-hero-logo" alt="ZLE" priority />
           </div>
 
           {/* subtitle */}
