@@ -64,7 +64,7 @@ function pickDailyLogoIndex(date: Date = new Date()) {
   return ((day - 1) % DAILY_LOGO_COUNT) + 1;
 }
 
-function getDailyLogoPath(date: Date = new Date()) {
+export function getDailyLogoPath(date: Date = new Date()) {
   const index = pickDailyLogoIndex(date) || DEFAULT_DAILY_INDEX;
   return `${FINAL_DAILY_BASE}/${toToken(index)}.png`;
 }
