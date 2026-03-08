@@ -6,6 +6,7 @@ type ZleLogoProps = {
   variant?: "header" | "hero" | "footer";
   className?: string;
   alt?: string;
+  priority?: boolean;
 };
 
 const VARIANT_CLASS: Record<NonNullable<ZleLogoProps["variant"]>, string> = {
@@ -18,9 +19,9 @@ export function ZleLogo({
   variant = "header",
   className = "",
   alt = "ZLE",
+  priority = false,
 }: ZleLogoProps) {
   const logo = React.useMemo(() => getTodaysLogoVariants(), []);
-  const priority = variant === "hero";
 
   const src =
     (logo as any).src ??

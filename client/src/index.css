@@ -416,18 +416,23 @@
 
 /* Hero logo (LCP / big) */
 .zle-hero-logo {
+  --zle-hero-logo-offset: 6px;
   height: 166px;
   max-width: 44vw;
   margin-left: 0.9rem;
-  transform: translateY(6px);
+  transform: translateY(var(--zle-hero-logo-offset));
+  opacity: 0;
+  animation: zleHeroLogoReveal 520ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+  will-change: transform, opacity;
 }
 
 @media (min-width: 768px) {
   .zle-hero-logo {
+    --zle-hero-logo-offset: 8px;
     height: 206px;
     max-width: 48vw;
     margin-left: 1.3rem;
-    transform: translateY(8px);
+    transform: translateY(var(--zle-hero-logo-offset));
   }
 }
 
@@ -435,6 +440,25 @@
   .zle-hero-logo {
     height: 226px;
     max-width: 54vw;
+  }
+}
+
+@keyframes zleHeroLogoReveal {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--zle-hero-logo-offset) + 5px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(var(--zle-hero-logo-offset));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zle-hero-logo {
+    animation: none;
+    opacity: 1;
   }
 }
 
