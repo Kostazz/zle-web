@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { ArrowLeft } from "lucide-react";
+import { legalConfig } from "@/config/legal";
 
 export default function LegalReturns() {
   return (
@@ -24,8 +25,7 @@ export default function LegalReturns() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">2. Kontakt pro reklamace</h2>
           <p>
-            {/* TODO: doplň e-mail */}
-            Reklamaci můžete uplatnit e-mailem na adrese: ________________________________ <br />
+            Reklamaci můžete uplatnit e-mailem na adrese: {legalConfig.contactEmail} <br />
             Do zprávy prosím uveďte:
           </p>
           <ul className="list-disc list-inside mt-2">
@@ -39,7 +39,8 @@ export default function LegalReturns() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">3. Lhůta pro vyřízení</h2>
           <p>
-            Reklamace bude vyřízena bez zbytečného odkladu, nejpozději do 30 dnů od jejího uplatnění, pokud se nedohodneme jinak.
+            Reklamace bude vyřízena bez zbytečného odkladu, nejpozději do 30 dnů od jejího uplatnění,
+            pokud se nedohodneme jinak.
           </p>
         </section>
 

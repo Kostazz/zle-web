@@ -63,17 +63,17 @@ export default function LegalTerms() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">4. Cena a způsoby platby</h2>
           <p>
-            Cena zboží je vždy uvedena u konkrétního produktu. Ceny jsou konečné. Available payment methods
-            are shown directly in checkout (card via Stripe, and COD if available for selected shipping).
+            Cena zboží je vždy uvedena u konkrétního produktu. Ceny jsou konečné.
+            Dostupné platební metody jsou vždy zobrazené přímo v checkoutu podle aktuální dostupnosti.
           </p>
         </section>
 
         <section className="mb-6">
           <h2 className="font-semibold mb-2">5. Dodání zboží</h2>
           <p>
-            Zboží je doručováno prostřednictvím dopravců (např. výdejní místa, kurýr) nebo osobním předáním,
-            pokud je tak domluveno. Obvyklá doba dodání je 2–7 pracovních dnů od potvrzení objednávky /
-            přijetí platby.
+            Zboží je doručováno prostřednictvím dostupných dopravních metod zobrazených v checkoutu
+            (např. výdejní místo nebo doručení na adresu). Konkrétní cena dopravy a očekávaný termín doručení
+            se zobrazují před dokončením objednávky podle zvoleného způsobu doručení.
           </p>
         </section>
 

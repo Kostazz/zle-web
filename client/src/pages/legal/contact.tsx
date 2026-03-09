@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { ArrowLeft } from "lucide-react";
+import { legalConfig } from "@/config/legal";
 
 export default function LegalContact() {
   return (
@@ -18,8 +19,7 @@ export default function LegalContact() {
         </p>
 
         <p className="mb-4">
-          {/* TODO: doplň e-mail pro legal / support */}
-          E-mail: ________________________________
+          E-mail: {legalConfig.contactEmail}
         </p>
 
         <p className="text-neutral-400 text-xs">
