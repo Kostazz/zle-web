@@ -36,8 +36,8 @@ function createShippingDetails(methodName: string, transitMinDays: number, trans
 
 export function buildOfferShippingDetails(): SchemaNode[] {
   return [
-    createShippingDetails("GLS", 1, 3),
-    createShippingDetails("In-store pickup", 0, 1),
+    createShippingDetails("GLS – doručení na adresu", 1, 3),
+    createShippingDetails("Osobní odběr", 0, 1),
   ];
 }
 
@@ -50,7 +50,7 @@ export function buildMerchantReturnPolicy(): SchemaNode {
     merchantReturnDays: 14,
     returnMethod: ["https://schema.org/ReturnByMail", "https://schema.org/ReturnInStore"],
     returnFees: "https://schema.org/ReturnShippingFees",
-    description: "Returns accepted within 14 days. Customer pays return shipping.",
+    description: "Consumer returns are accepted within 14 days from delivery. Return shipping costs are borne by the customer unless stated otherwise.",
   };
 }
 
