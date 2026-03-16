@@ -41,6 +41,18 @@ function pushOverlayState(type: OverlayType) {
   );
 }
 
+function moveOverlayToTop(overlays: OverlayEntry[], entry: OverlayEntry): OverlayEntry[] {
+  const existingIndex = overlays.findIndex((overlay) => overlay.type === entry.type);
+  if (existingIndex === -1) {
+    return [...overlays, entry];
+  }
+
+  const next = [...overlays];
+  next.splice(existingIndex, 1);
+  next.push(entry);
+  return next;
+}
+
 export function OverlayProvider({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [overlays, setOverlays] = useState<OverlayEntry[]>([]);
@@ -53,15 +65,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, [overlays]);
 
   const openOverlay = useCallback((entry: OverlayEntry) => {
-    setOverlays((prev) => {
-      const next = [...prev.filter((existing) => existing.type !== entry.type), entry];
+    setOverlays((prev) => moveOverlayToTop(prev, entry));
 
-      if (typeof window !== "undefined") {
-        pushOverlayState(entry.type);
-      }
-
-      return next;
-    });
+    if (typeof window !== "undefined") {
+      pushOverlayState(entry.type);
+    }
   }, []);
 
   const closeTopOverlay = useCallback(() => {
