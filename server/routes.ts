@@ -113,6 +113,8 @@ async function createOrderWithIdempotency(params: {
   values: InsertOrder;
   fingerprint?: string;
 }) {
+  const isCancelledOrder = (order: Order | null | undefined) => order?.status === "cancelled";
+
   return db.transaction(async (tx) => {
     if (params.fingerprint) {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${params.fingerprint}))`);
@@ -173,6 +175,19 @@ async function createOrderWithIdempotency(params: {
         .limit(1);
 
       if (existingOrder) {
+        if (isCancelledOrder(existingOrder)) {
+          const [createdOrder] = await tx.insert(orders).values(params.values).returning();
+          await tx
+            .update(orderIdempotencyKeys)
+            .set({ orderId: createdOrder.id, paymentMethod: params.paymentMethod, updatedAt: new Date() })
+            .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey));
+          console.info("[checkout] cancelled-order idempotency remap", {
+            idempotencyKey: params.idempotencyKey.slice(0, 16),
+            fromOrderId: existingOrder.id,
+            toOrderId: createdOrder.id,
+          });
+          return { order: createdOrder, idempotencyHit: false, row: existingRow, fingerprintHit: false };
+        }
         return { order: existingOrder, idempotencyHit: true, row: existingRow, fingerprintHit: false };
       }
     }
@@ -201,6 +216,19 @@ async function createOrderWithIdempotency(params: {
           .limit(1);
 
         if (conflictOrder) {
+          if (isCancelledOrder(conflictOrder)) {
+            const [createdOrder] = await tx.insert(orders).values(params.values).returning();
+            await tx
+              .update(orderIdempotencyKeys)
+              .set({ orderId: createdOrder.id, paymentMethod: params.paymentMethod, updatedAt: new Date() })
+              .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey));
+            console.info("[checkout] cancelled-order idempotency remap", {
+              idempotencyKey: params.idempotencyKey.slice(0, 16),
+              fromOrderId: conflictOrder.id,
+              toOrderId: createdOrder.id,
+            });
+            return { order: createdOrder, idempotencyHit: false, row: conflictRow, fingerprintHit: false };
+          }
           return { order: conflictOrder, idempotencyHit: true, row: conflictRow, fingerprintHit: false };
         }
       }

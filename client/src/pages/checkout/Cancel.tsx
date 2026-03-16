@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearch } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { useMutation } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ export default function CheckoutCancel() {
   const paymentMethod = params.get("pm") as PaymentMethod | null;
   const tokenFromQuery = params.get("token");
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const cancelTriggeredRef = useRef(false);
 
   const cancelMutation = useMutation({
     mutationFn: async ({ id, token }: { id: string; token: string }) => {
@@ -24,6 +25,7 @@ export default function CheckoutCancel() {
 
   useEffect(() => {
     if (!orderId) return;
+    if (cancelTriggeredRef.current) return;
 
     const sessionStorageKey = `zle_order_token_${orderId}`;
     const queryToken = (tokenFromQuery || "").trim();
@@ -41,9 +43,11 @@ export default function CheckoutCancel() {
 
     if (!effectiveToken) {
       setTokenError("Nelze zrušit objednávku – chybí bezpečnostní token.");
+      cancelTriggeredRef.current = true;
       return;
     }
 
+    cancelTriggeredRef.current = true;
     cancelMutation.mutate({ id: orderId, token: effectiveToken });
   }, [orderId, tokenFromQuery, searchString, cancelMutation]);
 

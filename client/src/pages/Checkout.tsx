@@ -15,6 +15,16 @@ import { appendOrder, type ZleOrder } from "@/utils/orderStorage";
 import type { PaymentMethod, CartItem } from "@shared/schema";
 import type { ShippingMethodId } from "@shared/config/shipping";
 
+const ACTIVE_STRIPE_CHECKOUT_KEY = "zle_active_stripe_checkout";
+
+type ActiveStripeCheckoutAttempt = {
+  orderId: string;
+  accessToken: string;
+  paymentMethod: PaymentMethod;
+  createdAt: string;
+  state: "redirected_to_stripe";
+};
+
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { value: "card", label: "Platba kartou (online)", icon: CreditCard },
   { value: "cod", label: "Dobírka (platíš při převzetí)", icon: HandCoins },
@@ -117,6 +127,8 @@ export default function Checkout() {
   const quoteTimerRef = useRef<number | null>(null);
   const quoteAbortRef = useRef<AbortController | null>(null);
   const quoteToastCooldownRef = useRef<number>(0);
+  const recoveryInFlightRef = useRef(false);
+  const recoveryHandledRef = useRef(false);
 
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [quote, setQuote] = useState<null | {
@@ -147,18 +159,114 @@ export default function Checkout() {
 
 
   useEffect(() => {
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        setSubmitLocked(false);
+    const runStripeRecovery = async () => {
+      if (recoveryInFlightRef.current || recoveryHandledRef.current) {
+        return;
       }
+
+      const path = window.location.pathname;
+      const isSuccessFlow = path.includes("/success");
+      if (isSuccessFlow) {
+        return;
+      }
+
+      const rawMarker = sessionStorage.getItem(ACTIVE_STRIPE_CHECKOUT_KEY);
+      if (!rawMarker) {
+        return;
+      }
+
+      let marker: ActiveStripeCheckoutAttempt | null = null;
+      try {
+        marker = JSON.parse(rawMarker) as ActiveStripeCheckoutAttempt;
+      } catch {
+        sessionStorage.removeItem(ACTIVE_STRIPE_CHECKOUT_KEY);
+        return;
+      }
+
+      if (
+        !marker ||
+        marker.state !== "redirected_to_stripe" ||
+        !marker.orderId ||
+        !marker.accessToken ||
+        !["card", "gpay", "applepay"].includes(marker.paymentMethod)
+      ) {
+        sessionStorage.removeItem(ACTIVE_STRIPE_CHECKOUT_KEY);
+        return;
+      }
+
+      recoveryInFlightRef.current = true;
+      recoveryHandledRef.current = true;
+      console.info("[checkout] recovery start", {
+        orderId: marker.orderId,
+        paymentMethod: marker.paymentMethod,
+      });
+
+      try {
+        const summaryResponse = await fetch(`/api/checkout/order-summary/${encodeURIComponent(marker.orderId)}`, {
+          method: "GET",
+          headers: {
+            "x-order-token": marker.accessToken,
+          },
+          credentials: "include",
+        });
+
+        if (summaryResponse.ok) {
+          const summaryPayload = await summaryResponse.json().catch(() => ({}));
+          const alreadyPaid =
+            summaryPayload?.paymentStatus === "paid" ||
+            summaryPayload?.status === "confirmed" ||
+            summaryPayload?.status === "fulfilled";
+
+          if (alreadyPaid) {
+            console.info("[checkout] recovery skip already paid", {
+              orderId: marker.orderId,
+              status: summaryPayload?.status,
+              paymentStatus: summaryPayload?.paymentStatus,
+            });
+            return;
+          }
+        }
+
+        const response = await fetch(`/api/checkout/cancel/${encodeURIComponent(marker.orderId)}`, {
+          method: "POST",
+          headers: {
+            "x-order-token": marker.accessToken,
+          },
+          credentials: "include",
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok || response.status === 409) {
+          console.info("[checkout] recovery cancel ok/no-op", {
+            orderId: marker.orderId,
+            status: response.status,
+            code: payload?.code,
+          });
+          toast({
+            title: "Checkout obnoven",
+            description: "Předchozí checkout byl ukončen, můžeš zkusit nový pokus.",
+          });
+        }
+      } catch {
+        // Best-effort recovery, keep checkout interactive.
+      } finally {
+        sessionStorage.removeItem(ACTIVE_STRIPE_CHECKOUT_KEY);
+        setSubmitLocked(false);
+        recoveryInFlightRef.current = false;
+      }
+    };
+
+    const handlePageShow = () => {
+      void runStripeRecovery();
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        setSubmitLocked(false);
+        void runStripeRecovery();
       }
     };
 
+    void runStripeRecovery();
     window.addEventListener("pageshow", handlePageShow);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -166,7 +274,7 @@ export default function Checkout() {
       window.removeEventListener("pageshow", handlePageShow);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (!items || items.length === 0) {
@@ -332,6 +440,26 @@ export default function Checkout() {
       if (data.url) {
         if (data.orderId) {
           persistLocalOrder(String(data.orderId));
+        }
+        if (data.orderId && data.accessToken && ["card", "gpay", "applepay"].includes(paymentMethod)) {
+          const marker: ActiveStripeCheckoutAttempt = {
+            orderId: String(data.orderId),
+            accessToken: String(data.accessToken),
+            paymentMethod,
+            createdAt: new Date().toISOString(),
+            state: "redirected_to_stripe",
+          };
+          try {
+            sessionStorage.setItem(ACTIVE_STRIPE_CHECKOUT_KEY, JSON.stringify(marker));
+          } catch {
+            setSubmitLocked(false);
+            toast({
+              title: "Chyba",
+              description: "Nepodařilo se připravit checkout. Zkus to prosím znovu.",
+              variant: "destructive",
+            });
+            return;
+          }
         }
         clearCart();
         window.location.href = data.url;
