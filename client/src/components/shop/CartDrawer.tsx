@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -6,8 +7,50 @@ import { useCart } from "@/lib/cart-context";
 import { CartItem } from "./CartItem";
 import { ShoppingBag, ArrowRight } from "lucide-react";
 
+const CART_INLINE_STATUS_EVENT = "zle:cart-inline-status";
+const INLINE_STATUS_HIDE_DELAY = 3000;
+
+type CartInlineStatus = {
+  name: string;
+  size: string;
+  quantity: number;
+};
+
 export function CartDrawer() {
   const { items, total, isOpen, setIsOpen } = useCart();
+  const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
+  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handleInlineStatus = (event: Event) => {
+      const customEvent = event as CustomEvent<CartInlineStatus>;
+      if (!customEvent.detail) {
+        return;
+      }
+
+      setInlineStatus(customEvent.detail);
+
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+
+      statusTimeoutRef.current = setTimeout(() => {
+        setInlineStatus(null);
+        statusTimeoutRef.current = null;
+      }, INLINE_STATUS_HIDE_DELAY);
+    };
+
+    window.addEventListener(CART_INLINE_STATUS_EVENT, handleInlineStatus);
+
+    return () => {
+      window.removeEventListener(CART_INLINE_STATUS_EVENT, handleInlineStatus);
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -18,6 +61,15 @@ export function CartDrawer() {
             KOŠÍK
           </SheetTitle>
         </SheetHeader>
+
+        {inlineStatus && (
+          <div className="mt-4 border border-white/20 bg-white/[0.03] px-4 py-3">
+            <p className="font-heading text-xs tracking-wider text-white">PŘIDÁNO DO KOŠÍKU</p>
+            <p className="mt-1 font-sans text-xs text-white/65 break-words">
+              {inlineStatus.name} · {inlineStatus.size} · {inlineStatus.quantity} ks
+            </p>
+          </div>
+        )}
 
         {items.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
@@ -42,8 +94,8 @@ export function CartDrawer() {
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-4 py-4">
+            <ScrollArea className="flex-1 mt-4">
+              <div className="space-y-3 pb-4">
                 {items.map((item) => (
                   <CartItem key={`${item.productId}-${item.size}`} item={item} />
                 ))}
