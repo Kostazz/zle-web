@@ -1,12 +1,18 @@
 import { useState } from "react";
 import type { Product } from "@shared/schema";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Minus, ShoppingBag, X, AlertTriangle, ImageOff } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { closeOverlayWithHistory, useOverlayHistory } from "@/lib/overlay-history";
+import { useOverlay } from "@/lib/overlay-context";
 
 const CART_INLINE_STATUS_EVENT = "zle:cart-inline-status";
 
@@ -20,36 +26,33 @@ function ModalImagePlaceholder({ name }: { name: string }) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-white/5">
       <ImageOff className="w-16 h-16 text-white/30 mb-3" />
-      <span className="font-heading text-sm text-white/40 tracking-wider text-center px-6">
-        {name}
-      </span>
+      <span className="font-heading text-sm text-white/40 tracking-wider text-center px-6">{name}</span>
     </div>
   );
 }
 
 interface ProductModalProps {
   product: Product;
-  isOpen: boolean;
-  onClose: () => void;
 }
 
-export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
+export function ProductModal({ product }: ProductModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [imageError, setImageError] = useState(false);
-  const { addItem, setIsOpen: setCartOpen } = useCart();
+  const { addItem } = useCart();
   const { toast } = useToast();
-  
+  const { closeOverlay, getOverlay, openOverlay } = useOverlay();
+
+  const productOverlay = getOverlay("product");
+  const isOpen = productOverlay?.productId === product.id;
+
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   const maxQuantity = Math.min(product.stock, 10);
   const showPlaceholder = !product.image || imageError;
-  const overlayId = `product-modal-${product.id}`;
-
-  useOverlayHistory(overlayId, isOpen, onClose);
 
   const handleClose = () => {
-    closeOverlayWithHistory(overlayId, onClose);
+    closeOverlay("product");
   };
 
   const handleAddToCart = () => {
@@ -101,7 +104,7 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
 
     setSelectedSize(null);
     setQuantity(1);
-    closeOverlayWithHistory(overlayId, onClose, () => setCartOpen(true));
+    openOverlay({ type: "cart" });
   };
 
   return (
@@ -120,7 +123,7 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
         >
           <X className="h-6 w-6" />
         </button>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="relative aspect-[4/3] md:aspect-square bg-black">
             {showPlaceholder ? (
@@ -148,9 +151,7 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
                 {product.name}
               </DialogTitle>
               <div className="flex items-center gap-3 mt-1.5">
-                <p className="font-sans text-lg md:text-2xl font-bold text-white">
-                  {product.price} Kc
-                </p>
+                <p className="font-sans text-lg md:text-2xl font-bold text-white">{product.price} Kc</p>
                 {isLowStock && (
                   <span className="flex items-center gap-1 font-heading text-xs tracking-wider text-yellow-400">
                     <AlertTriangle className="h-3 w-3" />
@@ -222,8 +223,8 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
             onClick={handleAddToCart}
             disabled={isSoldOut}
             className={`w-full font-heading text-sm tracking-wider py-4 md:py-6 ${
-              isSoldOut 
-                ? "bg-white/20 text-white/40 cursor-not-allowed" 
+              isSoldOut
+                ? "bg-white/20 text-white/40 cursor-not-allowed"
                 : "bg-white text-black hover:bg-white/90 zle-button-3d"
             }`}
             data-testid="button-add-to-cart"
