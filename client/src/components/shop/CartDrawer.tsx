@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,6 +19,7 @@ type CartInlineStatus = {
 
 export function CartDrawer() {
   const { items, total, isOpen, setIsOpen } = useCart();
+  const [, setLocation] = useLocation();
   const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -26,6 +27,12 @@ export function CartDrawer() {
 
   const handleClose = () => {
     closeOverlayWithHistory("cart-drawer", () => setIsOpen(false));
+  };
+
+  const handleCheckout = () => {
+    closeOverlayWithHistory("cart-drawer", () => setIsOpen(false), () => {
+      setLocation("/checkout");
+    });
   };
 
   useEffect(() => {
@@ -129,13 +136,11 @@ export function CartDrawer() {
 
               <Button
                 className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 group"
-                onClick={handleClose}
-                asChild
+                onClick={handleCheckout}
+                data-testid="link-cart-checkout"
               >
-                <Link href="/checkout" data-testid="link-cart-checkout">
-                  POKRAČOVAT K OBJEDNÁVCE
-                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </Link>
+                POKRAČOVAT K OBJEDNÁVCE
+                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Button>
             </div>
           </>
