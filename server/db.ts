@@ -32,8 +32,12 @@ function safeDbInfo(u: string) {
 }
 
 console.log("[db] Using pg Pool (transaction-capable)");
-console.log("[db] DATABASE_URL present:", Boolean(rawUrl), "len:", rawUrl.length);
-console.log("[db] DATABASE_URL info:", safeDbInfo(rawUrl));
+if (process.env.NODE_ENV === "production") {
+  console.log("[db] DATABASE_URL present:", Boolean(rawUrl));
+} else {
+  console.log("[db] DATABASE_URL present:", Boolean(rawUrl), "len:", rawUrl.length);
+  console.log("[db] DATABASE_URL info:", safeDbInfo(rawUrl));
+}
 
 if (!rawUrl) {
   throw new Error("DATABASE_URL is missing/empty on Render. Check Environment variables.");
