@@ -7,6 +7,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Minus, ShoppingBag, X, AlertTriangle, ImageOff } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
+const CART_INLINE_STATUS_EVENT = "zle:cart-inline-status";
+
+type CartInlineStatusDetail = {
+  name: string;
+  size: string;
+  quantity: number;
+};
+
 function ModalImagePlaceholder({ name }: { name: string }) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-white/5">
@@ -73,10 +81,15 @@ export function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
       image: product.image,
     });
 
-    toast({
-      title: "Pridano do kosiku",
-      description: `${product.name} (${selectedSize}) x${quantity}`,
-    });
+    window.dispatchEvent(
+      new CustomEvent<CartInlineStatusDetail>(CART_INLINE_STATUS_EVENT, {
+        detail: {
+          name: product.name,
+          size: selectedSize,
+          quantity,
+        },
+      })
+    );
 
     setSelectedSize(null);
     setQuantity(1);
