@@ -22,7 +22,7 @@ export function CartDrawer() {
   const [, setLocation] = useLocation();
   const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { isOpen, openOverlay, closeOverlay } = useOverlay();
+  const { isOpen, openOverlay, closeOverlay, closeOverlayAndWait } = useOverlay();
 
   const isCartOpen = isOpen("cart");
 
@@ -30,8 +30,8 @@ export function CartDrawer() {
     closeOverlay("cart");
   };
 
-  const handleCheckout = () => {
-    closeOverlay("cart");
+  const handleCheckout = async () => {
+    await closeOverlayAndWait("cart");
     setLocation("/checkout");
   };
 

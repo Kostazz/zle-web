@@ -23,6 +23,7 @@ type OverlayContextValue = {
   openOverlay: (entry: OverlayEntry) => void;
   closeTopOverlay: () => void;
   closeOverlay: (type: OverlayType) => void;
+  closeOverlayAndWait: (type: OverlayType) => Promise<void>;
   isOpen: (type: OverlayType) => boolean;
   isTopOverlay: (type: OverlayType) => boolean;
   getOverlay: <T extends OverlayType>(type: T) => Extract<OverlayEntry, { type: T }> | null;
@@ -66,6 +67,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   const overlaysRef = useRef<OverlayEntry[]>([]);
   const isHandlingPopstateRef = useRef(false);
   const previousBodyOverflowRef = useRef<string | null>(null);
+  const closeWaitersRef = useRef<Partial<Record<OverlayType, Array<() => void>>>>({});
 
   useEffect(() => {
     overlaysRef.current = overlays;
@@ -93,21 +95,58 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     setOverlays((prev) => prev.slice(0, -1));
   }, []);
 
-  const closeOverlay = useCallback((type: OverlayType) => {
-    const current = overlaysRef.current;
-    const index = current.findIndex((entry) => entry.type === type);
-    if (index === -1) {
-      return;
-    }
+  const closeOverlay = useCallback(
+    (type: OverlayType) => {
+      const current = overlaysRef.current;
+      const index = current.findIndex((entry) => entry.type === type);
+      if (index === -1) {
+        return;
+      }
 
-    const isTop = index === current.length - 1;
-    if (isTop) {
-      closeTopOverlay();
-      return;
-    }
+      const isTop = index === current.length - 1;
+      if (isTop) {
+        closeTopOverlay();
+        return;
+      }
 
-    setOverlays((prev) => prev.filter((entry) => entry.type !== type));
-  }, [closeTopOverlay]);
+      setOverlays((prev) => prev.filter((entry) => entry.type !== type));
+    },
+    [closeTopOverlay]
+  );
+
+  const closeOverlayAndWait = useCallback(
+    async (type: OverlayType) => {
+      if (!overlaysRef.current.some((entry) => entry.type === type)) {
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        const waiters = closeWaitersRef.current[type] ?? [];
+        waiters.push(resolve);
+        closeWaitersRef.current[type] = waiters;
+        closeOverlay(type);
+      });
+    },
+    [closeOverlay]
+  );
+
+  useEffect(() => {
+    const openTypes = new Set(overlays.map((entry) => entry.type));
+
+    for (const type of Object.keys(closeWaitersRef.current) as OverlayType[]) {
+      if (openTypes.has(type)) {
+        continue;
+      }
+
+      const waiters = closeWaitersRef.current[type];
+      if (!waiters || waiters.length === 0) {
+        continue;
+      }
+
+      delete closeWaitersRef.current[type];
+      waiters.forEach((resolve) => resolve());
+    }
+  }, [overlays]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -183,6 +222,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       openOverlay,
       closeTopOverlay,
       closeOverlay,
+      closeOverlayAndWait,
       isOpen: (type) => overlays.some((entry) => entry.type === type),
       isTopOverlay: (type) => topOverlay?.type === type,
       getOverlay: (type) => {
@@ -193,7 +233,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         return match as Extract<OverlayEntry, { type: typeof type }>;
       },
     }),
-    [closeOverlay, closeTopOverlay, openOverlay, overlays, topOverlay]
+    [closeOverlay, closeOverlayAndWait, closeTopOverlay, openOverlay, overlays, topOverlay]
   );
 
   return <OverlayContext.Provider value={contextValue}>{children}</OverlayContext.Provider>;
