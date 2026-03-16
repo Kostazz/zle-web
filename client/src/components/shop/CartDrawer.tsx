@@ -22,7 +22,7 @@ export function CartDrawer() {
   const [, setLocation] = useLocation();
   const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { isOpen, openOverlay, closeOverlay, closeOverlayAndWait } = useOverlay();
+  const { isOpen, closeOverlay, closeOverlayAndWait } = useOverlay();
 
   const isCartOpen = isOpen("cart");
 
@@ -43,7 +43,6 @@ export function CartDrawer() {
       }
 
       setInlineStatus(customEvent.detail);
-      openOverlay({ type: "cart" });
 
       if (statusTimeoutRef.current) {
         clearTimeout(statusTimeoutRef.current);
@@ -65,7 +64,7 @@ export function CartDrawer() {
         statusTimeoutRef.current = null;
       }
     };
-  }, [openOverlay]);
+  }, []);
 
   return (
     <Sheet
