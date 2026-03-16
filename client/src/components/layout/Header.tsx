@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, ShoppingBag, LogOut, Package, MapPin, Shield } from "lucide-react";
 
@@ -19,6 +19,7 @@ import {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
+import { useOverlay } from "@/lib/overlay-context";
 
 const navLinks = [
   { href: "/", label: "HOME" },
@@ -29,10 +30,12 @@ const navLinks = [
 ];
 
 export function Header() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location] = useLocation();
-  const { itemCount, setIsOpen } = useCart();
+  const { itemCount } = useCart();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const { closeOverlay, isOpen, openOverlay } = useOverlay();
+
+  const isMenuOpen = isOpen("mobile-menu");
 
   const getInitials = () => {
     if (user?.firstName && user?.lastName) {
@@ -49,12 +52,12 @@ export function Header() {
 
     const handleDesktopBreakpointChange = (event: MediaQueryListEvent) => {
       if (event.matches) {
-        setIsMenuOpen(false);
+        closeOverlay("mobile-menu");
       }
     };
 
     if (desktopQuery.matches) {
-      setIsMenuOpen(false);
+      closeOverlay("mobile-menu");
     }
 
     desktopQuery.addEventListener("change", handleDesktopBreakpointChange);
@@ -62,7 +65,7 @@ export function Header() {
     return () => {
       desktopQuery.removeEventListener("change", handleDesktopBreakpointChange);
     };
-  }, []);
+  }, [closeOverlay]);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">
@@ -99,11 +102,7 @@ export function Header() {
               (isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="relative text-white hover:bg-white/10"
-                    >
+                    <Button variant="ghost" size="icon" className="relative text-white hover:bg-white/10">
                       <Avatar className="h-8 w-8 border border-white/20">
                         <AvatarImage
                           src={user?.profileImageUrl || undefined}
@@ -119,9 +118,7 @@ export function Header() {
                   <DropdownMenuContent align="end" className="w-48 bg-black border-white/20">
                     <div className="px-2 py-1.5">
                       <p className="text-sm font-medium text-white truncate">
-                        {user?.firstName
-                          ? `${user.firstName} ${user.lastName || ""}`
-                          : user?.email}
+                        {user?.firstName ? `${user.firstName} ${user.lastName || ""}` : user?.email}
                       </p>
                       {user?.email && user?.firstName && (
                         <p className="text-xs text-white/60 truncate">{user.email}</p>
@@ -131,20 +128,14 @@ export function Header() {
                     <DropdownMenuSeparator className="bg-white/10" />
 
                     <DropdownMenuItem asChild>
-                      <Link
-                        href="/account/orders"
-                        className="flex items-center gap-2 text-white"
-                      >
+                      <Link href="/account/orders" className="flex items-center gap-2 text-white">
                         <Package className="h-4 w-4" />
                         Moje objednávky
                       </Link>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem asChild>
-                      <Link
-                        href="/account/addresses"
-                        className="flex items-center gap-2 text-white"
-                      >
+                      <Link href="/account/addresses" className="flex items-center gap-2 text-white">
                         <MapPin className="h-4 w-4" />
                         Adresy
                       </Link>
@@ -179,7 +170,7 @@ export function Header() {
               variant="ghost"
               size="icon"
               className="relative text-white hover:bg-white/10"
-              onClick={() => setIsOpen(true)}
+              onClick={() => openOverlay({ type: "cart" })}
             >
               <ShoppingBag className="h-5 w-5" />
               {itemCount > 0 && (
@@ -195,7 +186,7 @@ export function Header() {
               size="icon"
               className="md:hidden text-white hover:bg-white/10"
               aria-label={isMenuOpen ? "Zavřít navigaci" : "Otevřít navigaci"}
-              onClick={() => setIsMenuOpen(true)}
+              onClick={() => openOverlay({ type: "mobile-menu" })}
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -203,7 +194,7 @@ export function Header() {
         </div>
       </div>
 
-      <MobileNavDrawer isOpen={isMenuOpen} onOpenChange={setIsMenuOpen} location={location} />
+      <MobileNavDrawer location={location} />
     </header>
   );
 }

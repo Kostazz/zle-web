@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCart } from "@/lib/cart-context";
-import { closeOverlayWithHistory, useOverlayHistory } from "@/lib/overlay-history";
+import { useOverlay } from "@/lib/overlay-context";
 import { CartItem } from "./CartItem";
 import { ShoppingBag, ArrowRight } from "lucide-react";
 
@@ -18,21 +18,21 @@ type CartInlineStatus = {
 };
 
 export function CartDrawer() {
-  const { items, total, isOpen, setIsOpen } = useCart();
+  const { items, total } = useCart();
   const [, setLocation] = useLocation();
   const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { isOpen, closeOverlay, closeOverlayAndWait } = useOverlay();
 
-  useOverlayHistory("cart-drawer", isOpen, () => setIsOpen(false));
+  const isCartOpen = isOpen("cart");
 
   const handleClose = () => {
-    closeOverlayWithHistory("cart-drawer", () => setIsOpen(false));
+    closeOverlay("cart");
   };
 
-  const handleCheckout = () => {
-    closeOverlayWithHistory("cart-drawer", () => setIsOpen(false), () => {
-      setLocation("/checkout");
-    });
+  const handleCheckout = async () => {
+    await closeOverlayAndWait("cart");
+    setLocation("/checkout");
   };
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export function CartDrawer() {
 
   return (
     <Sheet
-      open={isOpen}
+      open={isCartOpen}
       onOpenChange={(open) => {
         if (!open) {
           handleClose();
@@ -97,9 +97,7 @@ export function CartDrawer() {
             <div className="w-20 h-20 mb-6 rounded-full bg-white/5 flex items-center justify-center">
               <ShoppingBag className="h-10 w-10 text-white/30" />
             </div>
-            <p className="font-heading text-lg text-white mb-2">
-              Košík je prázdný
-            </p>
+            <p className="font-heading text-lg text-white mb-2">Košík je prázdný</p>
             <p className="font-sans text-sm text-white/60 mb-8">
               Podívej se do shopu a najdi něco pro sebe.
             </p>
@@ -126,10 +124,7 @@ export function CartDrawer() {
             <div className="border-t border-white/20 pt-6 mt-auto">
               <div className="flex items-center justify-between mb-6">
                 <span className="font-heading text-lg text-white">CELKEM</span>
-                <span 
-                  className="font-sans text-2xl font-bold text-white"
-                  data-testid="text-cart-total"
-                >
+                <span className="font-sans text-2xl font-bold text-white" data-testid="text-cart-total">
                   {total} Kč
                 </span>
               </div>

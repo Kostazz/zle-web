@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useOverlay } from "@/lib/overlay-context";
 import type { Product } from "@shared/schema";
 import { ProductModal } from "./ProductModal";
 import { ImageOff } from "lucide-react";
@@ -19,10 +20,10 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [secondaryImageError, setSecondaryImageError] = useState(false);
+  const { openOverlay } = useOverlay();
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   
@@ -36,7 +37,7 @@ export function ProductCard({ product }: ProductCardProps) {
       <div 
         id={`product-${product.id}`}
         className={`group cursor-pointer zle-card p-3 ${isSoldOut ? "opacity-60" : ""}`}
-        onClick={() => setIsModalOpen(true)}
+        onClick={() => openOverlay({ type: "product", productId: product.id })}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         data-testid={`card-product-${product.id}`}
@@ -117,11 +118,7 @@ export function ProductCard({ product }: ProductCardProps) {
         </div>
       </div>
 
-      <ProductModal
-        product={product}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
+      <ProductModal product={product} />
     </>
   );
 }

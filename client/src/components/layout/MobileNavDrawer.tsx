@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link } from "wouter";
 
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { useOverlay } from "@/lib/overlay-context";
 
 const secondaryLinks = [
   { href: "/story", label: "STORY" },
@@ -10,17 +11,18 @@ const secondaryLinks = [
 ];
 
 type MobileNavDrawerProps = {
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
   location: string;
 };
 
 const isShopRoute = (location: string) => location === "/shop" || location.startsWith("/shop/");
 
-export function MobileNavDrawer({ isOpen, onOpenChange, location }: MobileNavDrawerProps) {
+export function MobileNavDrawer({ location }: MobileNavDrawerProps) {
+  const { isOpen, closeOverlay } = useOverlay();
+  const isMenuOpen = isOpen("mobile-menu");
   const isShopActive = isShopRoute(location);
+
   useEffect(() => {
-    if (!isOpen) {
+    if (!isMenuOpen) {
       return;
     }
 
@@ -28,14 +30,21 @@ export function MobileNavDrawer({ isOpen, onOpenChange, location }: MobileNavDra
     if (closeButton) {
       closeButton.setAttribute("aria-label", "Zavřít navigaci");
     }
-  }, [isOpen]);
+  }, [isMenuOpen]);
 
   const closeDrawer = () => {
-    onOpenChange(false);
+    closeOverlay("mobile-menu");
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+    <Sheet
+      open={isMenuOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          closeDrawer();
+        }
+      }}
+    >
       <SheetContent
         side="right"
         aria-describedby="zle-mobile-nav-description"
@@ -92,11 +101,7 @@ export function MobileNavDrawer({ isOpen, onOpenChange, location }: MobileNavDra
             >
               Instagram
             </a>
-            <a
-              href="mailto:info@zleskate.cz"
-              className="zle-mobile-nav-utility-link"
-              onClick={closeDrawer}
-            >
+            <a href="mailto:info@zleskate.cz" className="zle-mobile-nav-utility-link" onClick={closeDrawer}>
               Email
             </a>
           </div>
