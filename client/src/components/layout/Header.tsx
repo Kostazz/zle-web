@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ShoppingBag, LogOut, Package, MapPin, Shield } from "lucide-react";
+import { Menu, ShoppingBag, LogOut, Package, MapPin, Shield } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
 
 const navLinks = [
   { href: "/", label: "HOME" },
@@ -151,16 +152,7 @@ export function Header() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="hidden md:flex text-white hover:bg-white/10 font-heading text-xs tracking-wider"
-                  asChild
-                >
-                  <a href="/api/login">PŘIHLÁSIT</a>
-                </Button>
-              ))}
+              ) : null)}
 
             {/* CART */}
             <Button
@@ -182,34 +174,16 @@ export function Header() {
               variant="ghost"
               size="icon"
               className="md:hidden text-white hover:bg-white/10"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-label={isMenuOpen ? "Zavřít navigaci" : "Otevřít navigaci"}
+              onClick={() => setIsMenuOpen(true)}
             >
-              {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <Menu className="h-5 w-5" />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* MOBILE NAV */}
-      {isMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-16 bg-black z-30">
-          <nav className="flex flex-col items-center justify-center h-full gap-8">
-            {navLinks.map((link, index) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`font-display text-3xl tracking-wider transition-colors ${
-                  location === link.href ? "text-white" : "text-white/60 hover:text-white"
-                }`}
-                style={{ animationDelay: `${index * 0.1}s` }}
-                onClick={() => setIsMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      )}
+      <MobileNavDrawer isOpen={isMenuOpen} onOpenChange={setIsMenuOpen} location={location} />
     </header>
   );
 }
