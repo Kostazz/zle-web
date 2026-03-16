@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCart } from "@/lib/cart-context";
+import { closeOverlayWithHistory, useOverlayHistory } from "@/lib/overlay-history";
 import { CartItem } from "./CartItem";
 import { ShoppingBag, ArrowRight } from "lucide-react";
 
@@ -20,6 +21,12 @@ export function CartDrawer() {
   const { items, total, isOpen, setIsOpen } = useCart();
   const [inlineStatus, setInlineStatus] = useState<CartInlineStatus | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useOverlayHistory("cart-drawer", isOpen, () => setIsOpen(false));
+
+  const handleClose = () => {
+    closeOverlayWithHistory("cart-drawer", () => setIsOpen(false));
+  };
 
   useEffect(() => {
     const handleInlineStatus = (event: Event) => {
@@ -53,7 +60,14 @@ export function CartDrawer() {
   }, []);
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleClose();
+        }
+      }}
+    >
       <SheetContent className="w-full sm:max-w-md bg-black border-l border-white/20 flex flex-col">
         <SheetHeader>
           <SheetTitle className="font-display text-2xl text-white tracking-tight flex items-center gap-3">
@@ -83,7 +97,7 @@ export function CartDrawer() {
               Podívej se do shopu a najdi něco pro sebe.
             </p>
             <Button
-              onClick={() => setIsOpen(false)}
+              onClick={handleClose}
               className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
               asChild
             >
@@ -115,7 +129,7 @@ export function CartDrawer() {
 
               <Button
                 className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 group"
-                onClick={() => setIsOpen(false)}
+                onClick={handleClose}
                 asChild
               >
                 <Link href="/checkout" data-testid="link-cart-checkout">
