@@ -815,7 +815,7 @@ export async function registerRoutes(app: Express) {
         userId: null as any,
       };
 
-      const { order, idempotencyHit, row, fingerprintHit } = await createOrderWithIdempotency({
+      const { order, idempotencyHit, fingerprintHit } = await createOrderWithIdempotency({
         idempotencyKey,
         paymentMethod: pm,
         values: orderValues,
@@ -852,6 +852,24 @@ export async function registerRoutes(app: Express) {
 
       console.log(`[checkout] create-session order=${order.id} status=${order.status} paymentStatus=${order.paymentStatus}`);
 
+      if (order.status === "cancelled") {
+        console.warn(`[checkout] blocked cancelled order=${order.id}`);
+        checkoutLog({
+          requestId,
+          route,
+          orderId: order.id,
+          fingerprint: fingerprint.slice(0, 16),
+          result: "fail",
+          code: "ORDER_CANCELLED",
+        });
+        return res.status(409).json({
+          code: "ORDER_CANCELLED",
+          message: "Předchozí checkout už není aktivní. Spusť prosím nový pokus.",
+          orderId: order.id,
+          restartCheckout: true,
+        });
+      }
+
       if (order.paymentStatus === "paid" || order.status === "confirmed" || order.status === "fulfilled") {
         console.warn(`[checkout] blocked already paid order=${order.id}`);
         checkoutLog({
@@ -867,15 +885,6 @@ export async function registerRoutes(app: Express) {
           message: "Objednávka už byla zaplacená nebo zpracovaná.",
           orderId: order.id,
           redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
-        });
-      }
-
-      if (idempotencyHit && row?.stripeSessionUrl) {
-        return res.json({
-          url: row.stripeSessionUrl,
-          orderId: order.id,
-          accessToken: order.accessToken,
-          idempotency: "hit",
         });
       }
 
@@ -937,6 +946,12 @@ export async function registerRoutes(app: Express) {
           }
 
           if (
+            lockedOrder.status === "cancelled"
+          ) {
+            throw new Error("ORDER_CANCELLED");
+          }
+
+          if (
             lockedOrder.payment_status === "paid" ||
             lockedOrder.status === "confirmed" ||
             lockedOrder.status === "fulfilled"
@@ -949,18 +964,28 @@ export async function registerRoutes(app: Express) {
             let shouldRecoverSession = false;
             try {
               const existingSession = await stripe.checkout.sessions.retrieve(String(lockedOrder.stripe_checkout_session_id));
-              const sessionUnusable =
-                existingSession.status === "expired" ||
-                !existingSession.url ||
-                existingSession.payment_status === "paid";
+              const canReuseExistingSession =
+                existingSession.status === "open" &&
+                Boolean(existingSession.url) &&
+                existingSession.payment_status !== "paid";
 
-              if (!sessionUnusable && existingSession.url) {
+              if (canReuseExistingSession && existingSession.url) {
                 console.info("stripe_session_reuse_ok", {
                   orderId: order.id,
                   stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
+                  stripeStatus: existingSession.status,
+                  stripePaymentStatus: existingSession.payment_status,
                 });
                 return existingSession;
               }
+
+              console.info("stripe_session_reuse_recreate", {
+                orderId: order.id,
+                stripeCheckoutSessionId: lockedOrder.stripe_checkout_session_id,
+                stripeStatus: existingSession.status,
+                stripePaymentStatus: existingSession.payment_status,
+                hasUrl: Boolean(existingSession.url),
+              });
 
               shouldRecoverSession = true;
             } catch (retrieveError) {
@@ -1089,6 +1114,23 @@ export async function registerRoutes(app: Express) {
           return createdSession;
         });
       } catch (e: any) {
+        if (e?.message === "ORDER_CANCELLED") {
+          checkoutLog({
+            requestId,
+            route,
+            orderId: order.id,
+            fingerprint: fingerprint.slice(0, 16),
+            result: "fail",
+            code: "ORDER_CANCELLED",
+          });
+          return res.status(409).json({
+            code: "ORDER_CANCELLED",
+            message: "Předchozí checkout už není aktivní. Spusť prosím nový pokus.",
+            orderId: order.id,
+            restartCheckout: true,
+          });
+        }
+
         if (e?.message === "ORDER_ALREADY_PAID" || e?.message === "SESSION_ALREADY_CREATED" || e?.message === "SESSION_RETRY_LATER") {
           checkoutLog({
             requestId,
@@ -1652,6 +1694,8 @@ export async function registerRoutes(app: Express) {
               stockDeductedAt: null,
               status: "cancelled",
               paymentStatus: order.paymentStatus || "unpaid",
+              stripeCheckoutSessionId: null,
+              stripeCheckoutSessionCreatedAt: null,
             })
             .where(eq(orders.id, orderId));
         });
@@ -1659,6 +1703,8 @@ export async function registerRoutes(app: Express) {
         await storage.updateOrder(orderId, {
           status: "cancelled",
           paymentStatus: order.paymentStatus || "unpaid",
+          stripeCheckoutSessionId: null,
+          stripeCheckoutSessionCreatedAt: null,
         });
       }
 

@@ -144,6 +144,30 @@ export default function Checkout() {
       });
   }, [toast]);
 
+
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        setSubmitLocked(false);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setSubmitLocked(false);
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   useEffect(() => {
     if (!items || items.length === 0) {
       setQuote(null);
@@ -291,9 +315,11 @@ export default function Checkout() {
             ? "Zkontroluj dopravu/platbu a zkus to znovu."
             : code === "STRIPE_CONFIG_ERROR"
               ? "Platba je dočasně nedostupná. Zkus to prosím za chvíli."
-              : code === "ORDER_STATE_CONFLICT"
-                ? "Objednávka už byla zaplacená nebo zpracovaná."
-                : defaultMessage;
+              : code === "ORDER_CANCELLED"
+                ? "Předchozí checkout už není aktivní. Spusť prosím nový pokus."
+                : code === "ORDER_STATE_CONFLICT"
+                  ? "Objednávka už byla zaplacená nebo zpracovaná."
+                  : defaultMessage;
 
         throw Object.assign(new Error(friendlyMessage), {
           status: response.status,
@@ -320,6 +346,15 @@ export default function Checkout() {
     },
     onError: (error: Error & { status?: number; payload?: any }) => {
       setSubmitLocked(false);
+      if (error.status === 409 && error.payload?.code === "ORDER_CANCELLED") {
+        toast({
+          title: "Checkout vypršel",
+          description: "Předchozí checkout už není aktivní. Spusť prosím nový pokus.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       if (error.status === 409 && error.payload?.code === "ORDER_STATE_CONFLICT") {
         const orderId = error.payload?.orderId;
         toast({
