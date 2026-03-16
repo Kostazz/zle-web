@@ -703,6 +703,8 @@ export default function Checkout() {
     }
 
     if (paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay") {
+      recoveryHandledRef.current = false;
+      recoveryInFlightRef.current = false;
       checkoutMutation.mutate({
         items,
         customerName: formData.name,

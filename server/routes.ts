@@ -161,6 +161,13 @@ async function createOrderWithIdempotency(params: {
       }
     }
 
+    await tx.execute(sql`
+      SELECT idempotency_key
+      FROM order_idempotency_keys
+      WHERE idempotency_key = ${params.idempotencyKey}
+      FOR UPDATE
+    `);
+
     const [existingRow] = await tx
       .select()
       .from(orderIdempotencyKeys)
@@ -202,6 +209,13 @@ async function createOrderWithIdempotency(params: {
       .returning();
 
     if (!insertedRow) {
+      await tx.execute(sql`
+        SELECT idempotency_key
+        FROM order_idempotency_keys
+        WHERE idempotency_key = ${params.idempotencyKey}
+        FOR UPDATE
+      `);
+
       const [conflictRow] = await tx
         .select()
         .from(orderIdempotencyKeys)
