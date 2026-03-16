@@ -42,7 +42,14 @@ function pushOverlayState(type: OverlayType) {
 }
 
 function moveOverlayToTop(overlays: OverlayEntry[], entry: OverlayEntry): OverlayEntry[] {
-  const existingIndex = overlays.findIndex((overlay) => overlay.type === entry.type);
+  let existingIndex = -1;
+  for (let index = overlays.length - 1; index >= 0; index -= 1) {
+    if (overlays[index]?.type === entry.type) {
+      existingIndex = index;
+      break;
+    }
+  }
+
   if (existingIndex === -1) {
     return [...overlays, entry];
   }
