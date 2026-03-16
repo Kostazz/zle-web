@@ -113,6 +113,62 @@ async function createOrderWithIdempotency(params: {
   values: InsertOrder;
   fingerprint?: string;
 }) {
+  const isCancelledOrder = (order: Order | null | undefined) => order?.status === "cancelled";
+  const lockIdempotencyRow = async (tx: any) => {
+    const lockResult = await tx.execute(sql<{ idempotency_key: string; order_id: string | null; payment_method: string | null }>`
+      SELECT idempotency_key, order_id, payment_method
+      FROM order_idempotency_keys
+      WHERE idempotency_key = ${params.idempotencyKey}
+      FOR UPDATE
+    `);
+    return lockResult.rows?.[0] ?? null;
+  };
+
+  const resolveLockedMappedOrder = async (tx: any, lockedRow: { idempotency_key: string; order_id: string | null; payment_method: string | null } | null) => {
+    if (!lockedRow?.order_id) {
+      return null;
+    }
+
+    const [mappedOrder] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, String(lockedRow.order_id)))
+      .limit(1);
+
+    if (!mappedOrder) {
+      return null;
+    }
+
+    if (!isCancelledOrder(mappedOrder)) {
+      const [currentRow] = await tx
+        .select()
+        .from(orderIdempotencyKeys)
+        .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
+        .limit(1);
+      return { order: mappedOrder, idempotencyHit: true, row: currentRow ?? null, fingerprintHit: false as const };
+    }
+
+    const [createdOrder] = await tx.insert(orders).values(params.values).returning();
+    await tx
+      .update(orderIdempotencyKeys)
+      .set({ orderId: createdOrder.id, paymentMethod: params.paymentMethod, updatedAt: new Date() })
+      .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey));
+
+    const [remappedRow] = await tx
+      .select()
+      .from(orderIdempotencyKeys)
+      .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
+      .limit(1);
+
+    console.info("[checkout] cancelled-order idempotency remap", {
+      idempotencyKey: params.idempotencyKey.slice(0, 16),
+      fromOrderId: mappedOrder.id,
+      toOrderId: createdOrder.id,
+    });
+
+    return { order: createdOrder, idempotencyHit: false, row: remappedRow ?? null, fingerprintHit: false as const };
+  };
+
   return db.transaction(async (tx) => {
     if (params.fingerprint) {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${params.fingerprint}))`);
@@ -159,22 +215,10 @@ async function createOrderWithIdempotency(params: {
       }
     }
 
-    const [existingRow] = await tx
-      .select()
-      .from(orderIdempotencyKeys)
-      .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
-      .limit(1);
-
-    if (existingRow?.orderId) {
-      const [existingOrder] = await tx
-        .select()
-        .from(orders)
-        .where(eq(orders.id, existingRow.orderId))
-        .limit(1);
-
-      if (existingOrder) {
-        return { order: existingOrder, idempotencyHit: true, row: existingRow, fingerprintHit: false };
-      }
+    const lockedExistingRow = await lockIdempotencyRow(tx);
+    const lockedExistingResolution = await resolveLockedMappedOrder(tx, lockedExistingRow);
+    if (lockedExistingResolution) {
+      return lockedExistingResolution;
     }
 
     const [insertedRow] = await tx
@@ -187,23 +231,17 @@ async function createOrderWithIdempotency(params: {
       .returning();
 
     if (!insertedRow) {
+      const lockedConflictRow = await lockIdempotencyRow(tx);
+      const lockedConflictResolution = await resolveLockedMappedOrder(tx, lockedConflictRow);
+      if (lockedConflictResolution) {
+        return lockedConflictResolution;
+      }
+
       const [conflictRow] = await tx
         .select()
         .from(orderIdempotencyKeys)
         .where(eq(orderIdempotencyKeys.idempotencyKey, params.idempotencyKey))
         .limit(1);
-
-      if (conflictRow?.orderId) {
-        const [conflictOrder] = await tx
-          .select()
-          .from(orders)
-          .where(eq(orders.id, conflictRow.orderId))
-          .limit(1);
-
-        if (conflictOrder) {
-          return { order: conflictOrder, idempotencyHit: true, row: conflictRow, fingerprintHit: false };
-        }
-      }
 
       return { order: null, idempotencyHit: true, row: conflictRow ?? null, fingerprintHit: false };
     }
