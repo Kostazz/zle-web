@@ -61,6 +61,7 @@ export function MobileNavDrawer({ isOpen, onOpenChange, location }: MobileNavDra
               <span>SHOP</span>
               <span aria-hidden="true">→</span>
             </Link>
+            <p className="zle-mobile-nav-shop-support">Vstup do shopu.</p>
 
             <ul className="zle-mobile-nav-links" role="list">
               {secondaryLinks.map((link) => {

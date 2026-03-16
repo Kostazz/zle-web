@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, ShoppingBag, LogOut, Package, MapPin, Shield } from "lucide-react";
 
@@ -43,6 +43,26 @@ export function Header() {
     }
     return "U";
   };
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 768px)");
+
+    const handleDesktopBreakpointChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (desktopQuery.matches) {
+      setIsMenuOpen(false);
+    }
+
+    desktopQuery.addEventListener("change", handleDesktopBreakpointChange);
+
+    return () => {
+      desktopQuery.removeEventListener("change", handleDesktopBreakpointChange);
+    };
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/10">

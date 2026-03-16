@@ -610,6 +610,15 @@ body:has(.zle-mobile-nav-sheet[data-state="open"]) .fixed.inset-0.z-50.bg-black\
   box-shadow: 0 10px 24px rgba(255, 255, 255, 0.14);
 }
 
+.zle-mobile-nav-shop-support {
+  margin: -0.65rem 0 0;
+  padding: 0 0.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.54);
+}
+
 .zle-mobile-nav-links {
   margin: 0;
   padding: 0;
