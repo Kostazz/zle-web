@@ -1759,7 +1759,7 @@ export async function registerRoutes(app: Express) {
           iban: env.BANK_IBAN || null,
           accountName: env.BANK_ACCOUNT_NAME || null,
           amount: totals.totalCzk,
-          reference: persistedOrder.providerReference,
+          reference: persistedOrder.providerReference ?? String(persistedOrder.id),
           expiresAt: persistedOrder.bankTransferExpiresAt,
         },
       });
@@ -2251,6 +2251,18 @@ export async function registerRoutes(app: Express) {
         codFeeCzk: payload?.codFeeCzk ?? null,
         codCzk: payload?.codCzk ?? null,
         subtotalCzk: payload?.subtotalCzk ?? null,
+        bankInstructions:
+          order.paymentMethod === "bank"
+            ? {
+                accountNumber: env.BANK_ACCOUNT_NUMBER || null,
+                bankCode: env.BANK_CODE || null,
+                iban: env.BANK_IBAN || null,
+                accountName: env.BANK_ACCOUNT_NAME || null,
+                amount: typeof (order as any).total === "number" ? (order as any).total : Number((order as any).total),
+                reference: (order as any).providerReference ?? String(order.id),
+                expiresAt: (order as any).bankTransferExpiresAt ?? null,
+              }
+            : null,
       };
 
       if (!hasValidToken) {

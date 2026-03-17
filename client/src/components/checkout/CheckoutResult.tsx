@@ -16,6 +16,15 @@ type CheckoutResultProps = {
   orderId?: string | null;
   paymentMethod?: PaymentMethod | null;
   totals?: CheckoutTotals | null;
+  bankInstructions?: {
+    accountNumber?: string | null;
+    bankCode?: string | null;
+    iban?: string | null;
+    accountName?: string | null;
+    amount?: number | null;
+    reference?: string | null;
+    expiresAt?: string | null;
+  } | null;
 };
 
 const formatCzk = (value?: number | null) => (typeof value === "number" ? `${value} Kč` : "—");
@@ -83,7 +92,7 @@ const getNextSteps = (paymentMethod?: PaymentMethod | null) => {
   }
 };
 
-export function CheckoutResult({ status, orderId, paymentMethod, totals }: CheckoutResultProps) {
+export function CheckoutResult({ status, orderId, paymentMethod, totals, bankInstructions }: CheckoutResultProps) {
   const isSuccess = status === "success";
   const title = isSuccess ? getSuccessTitle(paymentMethod) : "PLATBA NEPROŠLA";
   const description = isSuccess
@@ -91,6 +100,17 @@ export function CheckoutResult({ status, orderId, paymentMethod, totals }: Check
     : "Platba nezdařena nebo zrušena. Zkontrolujte údaje a zkuste to znovu.";
 
   const nextSteps = isSuccess ? getNextSteps(paymentMethod) : [];
+
+  const formattedDueDate = (() => {
+    if (!bankInstructions?.expiresAt) return null;
+    const dueDate = new Date(bankInstructions.expiresAt);
+    if (Number.isNaN(dueDate.getTime())) return null;
+    return dueDate.toLocaleDateString("cs-CZ", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  })();
 
   return (
     <div className="border border-white/15 bg-black/35 p-6 md:p-8">
@@ -130,6 +150,50 @@ export function CheckoutResult({ status, orderId, paymentMethod, totals }: Check
         </div>
       </div>
 
+
+      {isSuccess && paymentMethod === "bank" && (
+        <div className="border border-white/15 bg-black/25 p-4 mb-6">
+          <div className="font-heading text-xs tracking-wider text-white/60 mb-3">PLATEBNÍ ÚDAJE</div>
+          <div className="space-y-2 text-sm text-white/75">
+            <div className="flex items-center justify-between">
+              <span>Částka</span>
+              <span className="text-white">{formatCzk(bankInstructions?.amount ?? totals?.totalCzk ?? null)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Číslo účtu</span>
+              <span className="text-white">{bankInstructions?.accountNumber ?? "—"}</span>
+            </div>
+            {bankInstructions?.bankCode && (
+              <div className="flex items-center justify-between">
+                <span>Kód banky</span>
+                <span className="text-white">{bankInstructions.bankCode}</span>
+              </div>
+            )}
+            {bankInstructions?.iban && (
+              <div className="flex items-center justify-between">
+                <span>IBAN</span>
+                <span className="text-white">{bankInstructions.iban}</span>
+              </div>
+            )}
+            {bankInstructions?.accountName && (
+              <div className="flex items-center justify-between">
+                <span>Název účtu</span>
+                <span className="text-white">{bankInstructions.accountName}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-white/10 pt-2">
+              <span>Variabilní symbol / Reference</span>
+              <span className="font-heading text-white">{bankInstructions?.reference ?? "—"}</span>
+            </div>
+            {formattedDueDate && (
+              <div className="flex items-center justify-between">
+                <span>Splatnost</span>
+                <span className="text-white">{formattedDueDate}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {isSuccess && (
         <div className="border border-white/15 bg-black/25 p-4 mb-6">
           <div className="font-heading text-xs tracking-wider text-white/60 mb-2">CO DALŠÍHO</div>

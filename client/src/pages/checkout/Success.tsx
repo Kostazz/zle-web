@@ -34,6 +34,15 @@ type OrderSummaryResponse = {
   codCzk?: number | null;
   totalCzk?: number | null;
   shippingLabel?: string | null;
+  bankInstructions?: {
+    accountNumber?: string | null;
+    bankCode?: string | null;
+    iban?: string | null;
+    accountName?: string | null;
+    amount?: number | null;
+    reference?: string | null;
+    expiresAt?: string | null;
+  } | null;
 };
 
 const STRIPE_LIKE_METHODS: PaymentMethod[] = ["card", "gpay", "applepay"];
@@ -225,6 +234,7 @@ export default function CheckoutSuccess() {
                     }
                   : null
               }
+              bankInstructions={orderSummary?.bankInstructions ?? null}
             />
           </div>
         </div>
