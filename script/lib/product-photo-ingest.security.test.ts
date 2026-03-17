@@ -42,6 +42,7 @@ test("rejects symlinked direct output parent chain", async () => {
 
   try {
     await makePng(path.join(work, "in", "zle-tee-classic.png"), { r: 10, g: 10, b: 10 });
+    await fs.promises.mkdir(LIVE_ROOT, { recursive: true });
     await fs.promises.symlink(work, symlinkPath);
 
     await assert.rejects(
@@ -155,6 +156,62 @@ test("rejects direct output outside live root", async () => {
       /Direct mode output must stay inside/,
     );
   } finally {
+    await cleanupWorkDir(work);
+  }
+});
+
+test("staged:false without direct:true cannot bypass live output guard", async () => {
+  const work = await freshWorkDir();
+
+  try {
+    await makePng(path.join(work, "in", "zle-tee-classic.png"), { r: 2, g: 2, b: 2 });
+
+    await assert.rejects(
+      runProductPhotoIngest({
+        inputDir: path.join(work, "in"),
+        outputDir: path.join("client", "public", "images", "products"),
+        reportPath: path.join("tmp", "agent-reports", "t5.json"),
+        lockDir: path.join("script", ".locks"),
+        dryRun: false,
+        maxImagesPerProduct: 8,
+        staged: false,
+        direct: false,
+        runId: "t5",
+      }),
+      /staged:false requires direct:true/,
+    );
+  } finally {
+    await cleanupWorkDir(work);
+  }
+});
+
+test("direct run with review items is not marked published", async () => {
+  const work = await freshWorkDir();
+  const runId = `t6-${Date.now()}`;
+
+  try {
+    const inputDir = path.join(work, "in");
+    await makePng(path.join(inputDir, "zle-tee-classic-1.png"), { r: 20, g: 20, b: 20 });
+    await fs.promises.copyFile(path.join(inputDir, "zle-tee-classic-1.png"), path.join(inputDir, "zle-tee-classic-2.png"));
+
+    const result = await runProductPhotoIngest({
+      inputDir,
+      outputDir: path.join("client", "public", "images", "products", `security-${runId}`),
+      reportPath: path.join("tmp", "agent-reports", `${runId}.json`),
+      lockDir: path.join("script", ".locks"),
+      dryRun: false,
+      maxImagesPerProduct: 8,
+      staged: false,
+      direct: true,
+      runId,
+    });
+
+    assert.ok(result.runManifest);
+    assert.notEqual(result.runManifest.publishState, "published");
+    assert.equal(result.runManifest.publishState, "partial");
+    assert.ok(result.report.reviewItems.length > 0);
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, `security-${runId}`), { recursive: true, force: true });
     await cleanupWorkDir(work);
   }
 });

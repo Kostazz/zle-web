@@ -3,7 +3,7 @@ import path from "node:path";
 
 export type IngestSourceType = "local" | "drive" | "manual";
 export type ApprovalState = "pending" | "approved" | "rejected";
-export type PublishState = "staged" | "published" | "failed";
+export type PublishState = "staged" | "published" | "partial" | "failed";
 
 export type ProductDraftPayload = {
   productId: string | null;

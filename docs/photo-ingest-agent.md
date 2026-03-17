@@ -17,6 +17,7 @@ Agent nikdy neinterpretuje inbox jako command stream. Inbox obsah je pouze data 
 
 - výchozí mód je `--staged` (safe-by-default)
 - live write je možné pouze s explicitním `--direct`
+- `staged:false` bez explicitního `direct:true` je invalidní kombinace (fail-closed)
 - v `--direct` lze zapisovat pouze pod `client/public/images/products` (hard whitelist)
 - `--output` samo o sobě nikdy neaktivuje live publish
 - symlinky se ingestem neprocházejí (skip + report/review)
@@ -78,6 +79,8 @@ Direct run (`--direct`) zapisuje assets do `client/public/images/products/<produ
 - `success-with-review`
 - `partial-failure`
 - `failed`
+
+Run manifest `publishState` je odvozen z reálného výsledku runu (u direct runů může být `published` / `partial` / `failed`, ne vždy `published`).
 
 ## Examples
 

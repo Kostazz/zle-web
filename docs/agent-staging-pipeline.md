@@ -25,6 +25,7 @@ Pipeline je staged-first a fail-closed pro ingest produktových assetů.
 - Výchozí ingest je staged.
 - Live write je možný jen s explicitním `--direct`.
 - `--direct` výstup je hard-whitelisted na `client/public/images/products` (ne libovolná cesta).
+- legacy pattern `staged:false` bez explicitního direct módu je rejectnutý (nelze tím obejít live guard).
 - Nejednoznačný/unmatched/suspicious vstup se nikdy nepublikuje.
 
 ## Operator workflow (safe)

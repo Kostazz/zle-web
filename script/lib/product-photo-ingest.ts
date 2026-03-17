@@ -3,7 +3,14 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { products } from "../../client/src/data/products.ts";
-import { createRunId, type AssetManifest, type IngestSourceType, type ProductDraftPayload, type RunManifest } from "./ingest-manifest.ts";
+import {
+  createRunId,
+  type AssetManifest,
+  type IngestSourceType,
+  type ProductDraftPayload,
+  type PublishState,
+  type RunManifest,
+} from "./ingest-manifest.ts";
 import { computeAssetFingerprint, loadAssetIndex, saveAssetIndex, upsertAssetFingerprint } from "./asset-fingerprint.ts";
 import type {
   IngestFileCandidate,
@@ -427,12 +434,40 @@ function toVerdict(report: IngestReport): IngestReport["verdict"] {
   return "success";
 }
 
+function resolveMode(options: IngestOptions): IngestReport["mode"] {
+  if (options.dryRun) {
+    return "dry-run";
+  }
+
+  if (options.staged === false && options.direct !== true) {
+    throw new Error("Invalid mode: staged:false requires direct:true");
+  }
+
+  return options.direct === true ? "direct" : "staged";
+}
+
+function deriveRunPublishState(report: IngestReport): PublishState {
+  if (report.mode !== "direct") {
+    return "staged";
+  }
+
+  if (report.verdict === "failed") {
+    return "failed";
+  }
+
+  if (report.verdict === "success") {
+    return "published";
+  }
+
+  return "partial";
+}
+
 export async function runProductPhotoIngest(options: IngestOptions): Promise<IngestRunResult> {
   const runId = options.runId ?? createRunId("ingest");
   const sourceType: IngestSourceType = options.sourceType ?? "local";
-  const direct = options.direct ?? false;
-  const staged = options.staged ?? !direct;
-  const mode: IngestReport["mode"] = options.dryRun ? "dry-run" : direct ? "direct" : "staged";
+  const mode = resolveMode(options);
+  const direct = mode === "direct";
+  const staged = mode !== "direct";
 
   const normalizedInput = path.resolve(process.cwd(), options.inputDir);
   const normalizedOutputBase = staged
@@ -460,6 +495,10 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
       throw new Error(`Direct mode output must stay inside ${toPortablePath(path.relative(process.cwd(), LIVE_OUTPUT_ROOT))}`);
     }
     await assertNoSymlinkInPathChain(normalizedOutputBase, LIVE_OUTPUT_ROOT);
+  }
+
+  if (!direct && isPathInside(LIVE_OUTPUT_ROOT, normalizedOutputBase)) {
+    throw new Error("Live output path is forbidden unless mode is direct");
   }
 
   const knownProducts = new Set(PRODUCT_DESCRIPTORS.map((item) => item.id));
@@ -833,7 +872,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     createdAt: report.startedAt,
     updatedAt: report.finishedAt,
     approvalState: "pending",
-    publishState: direct ? "published" : "staged",
+    publishState: deriveRunPublishState(report),
     requiresReview: report.reviewItems.length > 0 || report.unmatchedFiles.length > 0,
     inputDir: options.inputDir,
     outputDir: report.outputDir,
