@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { normalizeText } from "./catalog-index.ts";
+import { canonicalizeCategory } from "./category-normalization.ts";
 import type { CatalogIndexEntry, DeltaResult } from "./reconciliation-types.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 
@@ -17,7 +18,7 @@ function hashPayload(payload: unknown): string {
 }
 
 function normalizeCategory(raw: string): string {
-  return normalizeText(raw);
+  return canonicalizeCategory(raw) ?? normalizeText(raw);
 }
 
 function normalizeSizes(values: string[]): string[] {

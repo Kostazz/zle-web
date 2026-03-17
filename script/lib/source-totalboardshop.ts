@@ -98,7 +98,17 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     }
 
     const sourceSlug = parsed.product.sourceSlug;
-    const sourceProductKey = createSourceProductKey(sourceSlug, sourceUrl);
+    let sourceProductKey = "";
+    try {
+      sourceProductKey = createSourceProductKey(sourceSlug);
+    } catch (error) {
+      crawlLog.skippedProducts.push({
+        sourceUrl,
+        reasonCode: "missing_stable_source_identity",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
     const productImageDir = path.join(imageRoot, sourceProductKey);
     await fs.promises.mkdir(productImageDir, { recursive: true });
 

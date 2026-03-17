@@ -141,9 +141,13 @@ export function sanitizeSlug(slug: string): string {
     .slice(0, 80);
 }
 
-export function createSourceProductKey(slug: string, sourceUrl: string): string {
-  const hash = crypto.createHash("sha256").update(`${slug}|${sourceUrl}`).digest("hex").slice(0, 10);
-  return `${sanitizeSlug(slug) || "product"}--${hash}`;
+export function createSourceProductKey(sourceSlug: string): string {
+  const stableSlug = sanitizeSlug(sourceSlug);
+  if (!stableSlug) {
+    throw new Error("Missing stable source slug for sourceProductKey");
+  }
+  const hash = crypto.createHash("sha256").update(stableSlug).digest("hex").slice(0, 10);
+  return `${stableSlug}--${hash}`;
 }
 
 export function parseTbsProductPage(sourceUrl: string, html: string): { product?: ParsedProductPage; failure?: ParseFailure } {
