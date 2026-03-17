@@ -72,7 +72,6 @@ export const paymentMethodEnum = z.enum([
   "btc",
   "eth",
   "sol",
-  "pi",
 ]);
 
 export type PaymentMethod = z.infer<typeof paymentMethodEnum>;
@@ -95,6 +94,15 @@ export const orders = pgTable("orders", {
   paymentStatus: text("payment_status").default("unpaid"),
   paymentIntentId: text("payment_intent_id"),
   paymentMethod: text("payment_method").default("card"),
+  paymentProvider: text("payment_provider").default("stripe"),
+  providerOrderId: text("provider_order_id"),
+  providerPaymentUrl: text("provider_payment_url"),
+  providerStatus: text("provider_status"),
+  providerReference: text("provider_reference"),
+  bankTransferExpiresAt: timestamp("bank_transfer_expires_at"),
+  paidAt: timestamp("paid_at"),
+  paymentConfirmedAt: timestamp("payment_confirmed_at"),
+  paymentConfirmedBy: text("payment_confirmed_by"),
   paymentNetwork: text("payment_network"),
   fingerprint: text("fingerprint"),
   fingerprintCreatedAt: timestamp("fingerprint_created_at"),
@@ -123,6 +131,8 @@ export const orders = pgTable("orders", {
   uniqueIndex("UQ_orders_stripe_checkout_session_non_null")
     .on(table.stripeCheckoutSessionId)
     .where(sql`${table.stripeCheckoutSessionId} IS NOT NULL`),
+  index("IDX_orders_provider_order_id").on(table.providerOrderId),
+  index("IDX_orders_payment_provider_order_id").on(table.paymentProvider, table.providerOrderId),
 ]);
 
 export const insertOrderSchema = createInsertSchema(orders).omit({

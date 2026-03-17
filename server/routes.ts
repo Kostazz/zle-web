@@ -22,6 +22,8 @@ import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emai
 import { finalizePaidOrder } from "./paymentPipeline";
 import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { resolveAuthoritativeStripeOrder } from "./stripeOrderAuthority";
+import { createCoinGateOrder, mapCoinGateStatus, retrieveCoinGateOrder } from "./coingate";
+import { env } from "./env";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
@@ -834,6 +836,7 @@ export async function registerRoutes(app: Express) {
         }),
         total: Math.round(totalCzk),
         paymentMethod: pm,
+        paymentProvider: "stripe",
         fingerprint,
         fingerprintCreatedAt: new Date(),
         // userId is optional (guest checkout)
@@ -1646,6 +1649,178 @@ export async function registerRoutes(app: Express) {
   });
 
   // ✅ Cancel an unpaid order (requires order access token; used by /checkout/cancel page)
+
+
+  app.post("/api/checkout/create-bank-order", async (req, res) => {
+    try {
+      const parsed = CreateSessionSchema.parse(req.body);
+      const customerDetails = resolveCustomerDetails(parsed);
+      const pm = (parsed.paymentMethod || "bank") as PaymentMethod;
+      if (pm !== "bank") {
+        return sendApiError(res, 400, { code: "invalid_payment_method", reason: "invalid_payment_method" });
+      }
+      const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
+      if (!paymentCheck.ok) {
+        return sendApiError(res, 400, { code: paymentCheck.code, reason: paymentCheck.reason });
+      }
+
+      let subtotalCzk = 0;
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) return sendApiError(res, 400, { code: "invalid_product", reason: "invalid_product" });
+        subtotalCzk += Number(product.price) * item.quantity;
+      }
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      const totals = calculateTotals({ subtotalCzk, shippingId: parsed.shippingMethod as ShippingMethodId, paymentMethod: pm });
+      const dueDays = Math.max(1, Number(env.BANK_TRANSFER_DUE_DAYS || 3));
+      const expiresAt = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
+      const providerReference = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
+
+      const { order } = await createOrderWithIdempotency({
+        idempotencyKey: parsed.idempotencyKey,
+        paymentMethod: pm,
+        values: {
+          accessToken: generateOrderAccessToken(),
+          customerName: customerDetails.customerName,
+          customerEmail: customerDetails.customerEmail,
+          customerAddress: customerDetails.customerAddress,
+          customerCity: customerDetails.customerCity,
+          customerZip: customerDetails.customerZip,
+          items: JSON.stringify({ items: parsed.items, shippingMethod: parsed.shippingMethod, shippingLabel: shipping.label, subtotalCzk, shippingCzk: shipping.priceCzk, totalCzk: totals.totalCzk }),
+          total: Math.round(totals.totalCzk),
+          paymentMethod: pm,
+          paymentProvider: "bank_transfer",
+          providerReference,
+          providerStatus: "pending",
+          bankTransferExpiresAt: expiresAt,
+          userId: null as any,
+        },
+      });
+
+      await storage.updateOrder(order.id, { paymentStatus: "pending", status: "pending" });
+      console.info("bank_transfer_created", { orderId: order.id, reference: providerReference });
+      return res.json({
+        success: true,
+        orderId: order.id,
+        instructions: {
+          accountNumber: env.BANK_ACCOUNT_NUMBER || null,
+          bankCode: env.BANK_CODE || null,
+          iban: env.BANK_IBAN || null,
+          accountName: env.BANK_ACCOUNT_NAME || null,
+          amount: totals.totalCzk,
+          reference: providerReference,
+          expiresAt,
+        },
+      });
+    } catch (err: any) {
+      return sendApiError(res, 500, { code: "bank_order_failed", reason: "bank_order_failed", details: { message: err?.message || "unknown" } });
+    }
+  });
+
+  app.post("/api/checkout/create-coingate-order", async (req, res) => {
+    try {
+      const parsed = CreateSessionSchema.parse(req.body);
+      const customerDetails = resolveCustomerDetails(parsed);
+      const pm = (parsed.paymentMethod || "btc") as PaymentMethod;
+      if (!["btc", "eth", "usdc", "sol"].includes(pm)) {
+        return sendApiError(res, 400, { code: "invalid_payment_method", reason: "invalid_payment_method" });
+      }
+      const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
+      if (!paymentCheck.ok) {
+        return sendApiError(res, 400, { code: paymentCheck.code, reason: paymentCheck.reason });
+      }
+
+      let subtotalCzk = 0;
+      for (const item of parsed.items) {
+        const product = await storage.getProduct(item.productId);
+        if (!product) return sendApiError(res, 400, { code: "invalid_product", reason: "invalid_product" });
+        subtotalCzk += Number(product.price) * item.quantity;
+      }
+      const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
+      const totals = calculateTotals({ subtotalCzk, shippingId: parsed.shippingMethod as ShippingMethodId, paymentMethod: pm });
+
+      const { order } = await createOrderWithIdempotency({
+        idempotencyKey: parsed.idempotencyKey,
+        paymentMethod: pm,
+        values: {
+          accessToken: generateOrderAccessToken(),
+          customerName: customerDetails.customerName,
+          customerEmail: customerDetails.customerEmail,
+          customerAddress: customerDetails.customerAddress,
+          customerCity: customerDetails.customerCity,
+          customerZip: customerDetails.customerZip,
+          items: JSON.stringify({ items: parsed.items, shippingMethod: parsed.shippingMethod, shippingLabel: shipping.label, subtotalCzk, shippingCzk: shipping.priceCzk, totalCzk: totals.totalCzk }),
+          total: Math.round(totals.totalCzk),
+          paymentMethod: pm,
+          paymentProvider: "coingate",
+          providerStatus: "pending",
+          userId: null as any,
+        },
+      });
+
+      await storage.updateOrder(order.id, { paymentStatus: "pending", status: "pending" });
+      const providerOrder = await createCoinGateOrder({ orderId: order.id, amountCzk: totals.totalCzk, receiveCurrency: pm.toUpperCase() as any });
+      await storage.updateOrder(order.id, {
+        providerOrderId: String(providerOrder.id),
+        providerPaymentUrl: providerOrder.payment_url,
+        providerStatus: providerOrder.status,
+      });
+
+      return res.json({ success: true, orderId: order.id, redirectUrl: providerOrder.payment_url });
+    } catch (err: any) {
+      return sendApiError(res, 500, { code: "coingate_order_failed", reason: "coingate_order_failed", details: { message: err?.message || "unknown" } });
+    }
+  });
+
+  app.get("/api/checkout/coingate/verify/:orderId", async (req, res) => {
+    try {
+      const orderId = String(req.params.orderId || "");
+      const order = await storage.getOrder(orderId);
+      if (!order) return sendApiError(res, 404, { code: "order_not_found", reason: "order_not_found" });
+      if (order.paymentProvider !== "coingate") return sendApiError(res, 400, { code: "invalid_provider", reason: "invalid_provider" });
+      if (!order.providerOrderId) return sendApiError(res, 400, { code: "missing_provider_order", reason: "missing_provider_order" });
+
+      const providerOrder = await retrieveCoinGateOrder(order.providerOrderId);
+      const mapped = mapCoinGateStatus(providerOrder.status);
+      await storage.updateOrder(order.id, { providerStatus: providerOrder.status });
+
+      if (mapped === "paid") {
+        await storage.updateOrder(order.id, { paymentStatus: "paid", status: "confirmed", paidAt: new Date(), paymentConfirmedAt: new Date() });
+        await finalizePaidOrder({ orderId: order.id, provider: "coingate", providerEventId: `verify:${providerOrder.id}`, meta: { source: "coingate-verify" } });
+        return res.json({ success: true, state: "paid", orderId: order.id });
+      }
+      if (mapped === "pending") return res.json({ success: false, state: "pending", orderId: order.id });
+      return res.json({ success: false, state: mapped, orderId: order.id });
+    } catch (err: any) {
+      return sendApiError(res, 500, { code: "coingate_verify_failed", reason: "coingate_verify_failed", details: { message: err?.message || "unknown" } });
+    }
+  });
+
+  app.post("/api/coingate/webhook", async (req, res) => {
+    try {
+      const secret = req.header("x-coingate-secret");
+      if (env.COINGATE_WEBHOOK_SECRET && secret !== env.COINGATE_WEBHOOK_SECRET) {
+        return sendApiError(res, 401, { code: "invalid_webhook_secret", reason: "invalid_webhook_secret" });
+      }
+      const providerOrderId = String(req.body?.id || req.body?.order_id || "");
+      if (!providerOrderId) return sendApiError(res, 400, { code: "missing_provider_order", reason: "missing_provider_order" });
+
+      const [order] = await db.select().from(orders).where(eq(orders.providerOrderId, providerOrderId)).limit(1);
+      if (!order) return res.json({ ok: true });
+      if (order.status === "cancelled") return res.json({ ok: true, skipped: "cancelled" });
+
+      const mapped = mapCoinGateStatus(String(req.body?.status || "pending"));
+      await storage.updateOrder(order.id, { providerStatus: String(req.body?.status || "pending") });
+      if (mapped === "paid") {
+        await storage.updateOrder(order.id, { paymentStatus: "paid", status: "confirmed", paidAt: new Date(), paymentConfirmedAt: new Date() });
+        await finalizePaidOrder({ orderId: order.id, provider: "coingate", providerEventId: `webhook:${providerOrderId}:${req.body?.status || "unknown"}`, meta: { source: "coingate-webhook" } });
+      }
+      return res.json({ ok: true });
+    } catch (err: any) {
+      return sendApiError(res, 500, { code: "coingate_webhook_failed", reason: "coingate_webhook_failed", details: { message: err?.message || "unknown" } });
+    }
+  });
+
   app.post("/api/checkout/cancel/:orderId", async (req, res) => {
     try {
       const orderId = String(req.params.orderId || "");
@@ -1790,10 +1965,11 @@ export async function registerRoutes(app: Express) {
       const providedToken = getOrderAccessTokenFromRequest(req);
       const hasValidToken = Boolean(order.accessToken && providedToken && providedToken === order.accessToken);
       const isStripeLikeMethod = STRIPE_LIKE_PAYMENT_METHODS.has((order.paymentMethod || "card") as PaymentMethod);
+      const isCoinGateMethod = ["btc", "eth", "usdc", "sol"].includes(String(order.paymentMethod || "").toLowerCase());
       const hasSafeFinalStatus = ["paid", "confirmed", "fulfilled"].includes(String(order.paymentStatus || order.status || "").toLowerCase())
         || ["confirmed", "fulfilled"].includes(String(order.status || "").toLowerCase());
 
-      if (!hasValidToken && isStripeLikeMethod && !hasSafeFinalStatus) {
+      if (!hasValidToken && (isStripeLikeMethod || isCoinGateMethod) && !hasSafeFinalStatus) {
         return sendApiError(res, 403, {
           code: "order_summary_forbidden",
           reason: "order_summary_forbidden",
@@ -1806,6 +1982,10 @@ export async function registerRoutes(app: Express) {
         status: order.status,
         paymentStatus: order.paymentStatus,
         paymentMethod: order.paymentMethod,
+        paymentProvider: (order as any).paymentProvider ?? null,
+        providerStatus: (order as any).providerStatus ?? null,
+        providerReference: (order as any).providerReference ?? null,
+        bankTransferExpiresAt: (order as any).bankTransferExpiresAt ?? null,
         totalCzk: typeof (order as any).total === "number" ? (order as any).total : Number((order as any).total),
         shippingMethod: payload?.shippingMethod ?? null,
         shippingLabel: payload?.shippingLabel ?? null,

@@ -36,7 +36,6 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Credi
   { value: "btc", label: "Bitcoin (BTC)", icon: Bitcoin },
   { value: "eth", label: "Ethereum (ETH)", icon: Coins },
   { value: "sol", label: "Solana (SOL)", icon: Coins },
-  { value: "pi", label: "Pi Network (PI)", icon: Coins },
 ];
 
 const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
@@ -47,10 +46,9 @@ const CRYPTO_NETWORKS: Record<string, { value: string; label: string }[]> = {
   btc: [{ value: "bitcoin", label: "Bitcoin mainnet" }],
   eth: [{ value: "ethereum-mainnet", label: "Ethereum mainnet" }],
   sol: [{ value: "solana-mainnet", label: "Solana mainnet" }],
-  pi: [{ value: "pi-mainnet", label: "Pi Network (Mainnet)" }],
 };
 
-const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol", "pi"];
+const CRYPTO_METHODS = ["usdc", "btc", "eth", "sol"];
 
 const buildIdempotencyPayload = (
   items: CartItem[],
@@ -740,16 +738,52 @@ export default function Checkout() {
         paymentMethod: "in_person",
         idempotencyKey,
       });
+    } else if (paymentMethod === "bank") {
+      try {
+        const response = await apiRequest("POST", "/api/checkout/create-bank-order", {
+          items,
+          customerName: formData.name,
+          customerEmail: formData.email,
+          customerAddress: formData.address,
+          customerCity: formData.city,
+          customerZip: formData.zip,
+          shippingMethod,
+          paymentMethod: "bank",
+          idempotencyKey,
+        });
+        const payload = await response.json();
+        persistLocalOrder(String(payload.orderId));
+        clearCart();
+        window.location.href = `/checkout/success?order_id=${encodeURIComponent(String(payload.orderId))}&pm=bank`;
+      } catch (e: any) {
+        setSubmitLocked(false);
+        toast({ title: "Chyba", description: e?.message || "Nepodařilo se vytvořit bankovní objednávku.", variant: "destructive" });
+      }
     } else {
-      clearCart();
-      toast({
-        title: "Objednávka přijata",
-        description:
-          paymentMethod === "bank"
-            ? "Platební údaje ti pošleme emailem."
-            : `Krypto platba (${paymentMethod.toUpperCase()}) bude zpracována. Pokyny obdržíš emailem.`,
-      });
-      window.location.href = `/checkout/success?pm=${encodeURIComponent(paymentMethod)}`;
+      try {
+        const response = await apiRequest("POST", "/api/checkout/create-coingate-order", {
+          items,
+          customerName: formData.name,
+          customerEmail: formData.email,
+          customerAddress: formData.address,
+          customerCity: formData.city,
+          customerZip: formData.zip,
+          shippingMethod,
+          paymentMethod,
+          idempotencyKey,
+        });
+        const payload = await response.json();
+        persistLocalOrder(String(payload.orderId));
+        if (payload.redirectUrl) {
+          clearCart();
+          window.location.href = String(payload.redirectUrl);
+          return;
+        }
+        throw new Error("missing_redirect_url");
+      } catch (e: any) {
+        setSubmitLocked(false);
+        toast({ title: "Chyba", description: e?.message || "Nepodařilo se vytvořit crypto objednávku.", variant: "destructive" });
+      }
     }
   };
 

@@ -109,6 +109,7 @@ export function registerOpsRoutes(app: Express) {
       const status = req.query.status ? String(req.query.status) : null;
       const paymentStatus = req.query.paymentStatus ? String(req.query.paymentStatus) : null;
       const paymentMethod = req.query.paymentMethod ? String(req.query.paymentMethod) : null;
+      const paymentProvider = req.query.paymentProvider ? String(req.query.paymentProvider) : null;
       const hasStockDeducted = parseBool(req.query.hasStockDeducted);
       const q = req.query.q ? String(req.query.q).trim() : "";
 
@@ -117,6 +118,7 @@ export function registerOpsRoutes(app: Express) {
       if (status) filters.push(eq(orders.status, status));
       if (paymentStatus) filters.push(eq(orders.paymentStatus, paymentStatus));
       if (paymentMethod) filters.push(eq(orders.paymentMethod, paymentMethod));
+      if (paymentProvider) filters.push(eq(orders.paymentProvider, paymentProvider));
       if (hasStockDeducted === true) filters.push(sql`${orders.stockDeductedAt} is not null`);
       if (hasStockDeducted === false) filters.push(sql`${orders.stockDeductedAt} is null`);
 
@@ -139,6 +141,10 @@ export function registerOpsRoutes(app: Express) {
           status: orders.status,
           paymentStatus: orders.paymentStatus,
           paymentMethod: orders.paymentMethod,
+          paymentProvider: orders.paymentProvider,
+          providerStatus: orders.providerStatus,
+          providerReference: orders.providerReference,
+          bankTransferExpiresAt: orders.bankTransferExpiresAt,
           total: orders.total,
           stockDeductedAt: orders.stockDeductedAt,
           customerName: orders.customerName,

@@ -11,16 +11,14 @@ export type PaymentMethod =
   | "usdc"
   | "btc"
   | "eth"
-  | "sol"
-  | "pi";
+  | "sol";
 
 export type CryptoNetwork =
   | "bitcoin"
   | "ethereum"
   | "ethereum-mainnet"
   | "solana"
-  | "solana-mainnet"
-  | "pi-mainnet";
+  | "solana-mainnet";
 
 export const PAYMENT_METHODS: PaymentMethod[] = [
   "card",
@@ -31,7 +29,6 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   "btc",
   "eth",
   "sol",
-  "pi",
 ];
 
 export const CRYPTO_NETWORKS: CryptoNetwork[] = [
@@ -40,10 +37,9 @@ export const CRYPTO_NETWORKS: CryptoNetwork[] = [
   "ethereum-mainnet",
   "solana",
   "solana-mainnet",
-  "pi-mainnet",
 ];
 
-export const CRYPTO_METHODS: PaymentMethod[] = ["usdc", "btc", "eth", "sol", "pi"];
+export const CRYPTO_METHODS: PaymentMethod[] = ["usdc", "btc", "eth", "sol"];
 
 export function isValidPaymentMethod(value: string): value is PaymentMethod {
   return PAYMENT_METHODS.includes(value as PaymentMethod);

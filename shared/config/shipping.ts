@@ -35,7 +35,6 @@ export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
       "btc",
       "eth",
       "sol",
-      "pi",
     ],
     disallowedPaymentReasons: {
       in_person: "Platba na místě je jen při osobním odběru.",
@@ -58,7 +57,6 @@ export const SHIPPING_METHODS: Record<ShippingMethodId, ShippingMethod> = {
       "btc",
       "eth",
       "sol",
-      "pi",
       "in_person",
     ],
     disallowedPaymentReasons: {
@@ -118,7 +116,7 @@ export function calculateTotals({
 }: {
   subtotalCzk: number;
   shippingId: ShippingMethodId;
-  paymentMethod: "card" | "cod";
+  paymentMethod: PaymentMethod;
 }) {
   const shipping = SHIPPING_METHODS[shippingId];
 

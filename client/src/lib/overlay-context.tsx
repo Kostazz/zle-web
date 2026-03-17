@@ -77,15 +77,20 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     let shouldPushHistory = false;
 
     setOverlays((prev) => {
-      const currentTop = prev[prev.length - 1];
+      const currentTop = prev[prev.length - 1] ?? null;
       const next = moveOverlayToTop(prev, entry);
-      const nextTop = next[next.length - 1];
-      const isNoopReopen = currentTop && nextTop && currentTop.type === nextTop.type && JSON.stringify(currentTop) === JSON.stringify(nextTop);
-      shouldPushHistory = Boolean(nextTop && (!currentTop || (currentTop.type !== nextTop.type && !isNoopReopen)));
+      const nextTop = next[next.length - 1] ?? null;
+
+      const topChanged = Boolean(
+        (!currentTop && nextTop) ||
+        (currentTop && nextTop && JSON.stringify(currentTop) !== JSON.stringify(nextTop))
+      );
+
+      shouldPushHistory = topChanged && !isHandlingPopstateRef.current;
       return next;
     });
 
-    if (typeof window !== "undefined" && shouldPushHistory && !isHandlingPopstateRef.current) {
+    if (typeof window !== "undefined" && shouldPushHistory) {
       pushOverlayState(entry.type);
     }
   }, []);

@@ -55,6 +55,21 @@ export const env = {
   // Optional hardening for the webhook route: /api/stripe/webhook/:uuid
   STRIPE_WEBHOOK_UUID: process.env.STRIPE_WEBHOOK_UUID,
 
+
+  // CoinGate
+  COINGATE_API_TOKEN: process.env.COINGATE_API_TOKEN,
+  COINGATE_ENV: process.env.COINGATE_ENV,
+  COINGATE_CALLBACK_URL: process.env.COINGATE_CALLBACK_URL,
+  COINGATE_RETURN_URL: process.env.COINGATE_RETURN_URL,
+  COINGATE_CANCEL_URL: process.env.COINGATE_CANCEL_URL,
+  COINGATE_WEBHOOK_SECRET: process.env.COINGATE_WEBHOOK_SECRET,
+
+  // Bank transfer
+  BANK_ACCOUNT_NUMBER: process.env.BANK_ACCOUNT_NUMBER,
+  BANK_CODE: process.env.BANK_CODE,
+  BANK_IBAN: process.env.BANK_IBAN,
+  BANK_ACCOUNT_NAME: process.env.BANK_ACCOUNT_NAME,
+  BANK_TRANSFER_DUE_DAYS: process.env.BANK_TRANSFER_DUE_DAYS,
   // Email
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   // IMPORTANT (production): must be on a VERIFIED domain in Resend

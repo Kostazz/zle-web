@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 export type StripeOrderAuthorityFailureReason =
   | "stale_session_order_mismatch"
   | "cancelled_order_session"
-  | "order_not_found";
+  | "missing_authoritative_order";
 
 export type StripeOrderAuthorityResult =
   | {
@@ -70,7 +70,7 @@ export async function resolveAuthoritativeStripeOrder(
   if (!authoritativeOrder) {
     return {
       ok: false,
-      reason: "order_not_found",
+      reason: "missing_authoritative_order",
       orderIdFromMeta,
       clientReferenceId,
       mappedOrderId: mappedOrder?.id ?? null,
