@@ -87,6 +87,96 @@ export async function writeCatalogIndex(index: CatalogIndex, indexPath = DEFAULT
   await fs.promises.rename(tempPath, indexPath);
 }
 
+type CatalogIndexLockMeta = {
+  pid: number;
+  createdAtMs: number;
+};
+
+const LOCK_STALE_MS = 5 * 60 * 1000;
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    throw error;
+  }
+}
+
+async function readLockMeta(lockPath: string): Promise<CatalogIndexLockMeta> {
+  const raw = await fs.promises.readFile(lockPath, "utf8");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Invalid catalog lock metadata: ${lockPath}`);
+  }
+
+  const pid = Number((parsed as { pid?: unknown }).pid);
+  const createdAtMs = Number((parsed as { createdAtMs?: unknown }).createdAtMs);
+  if (!Number.isInteger(pid) || pid <= 0 || !Number.isFinite(createdAtMs) || createdAtMs <= 0) {
+    throw new Error(`Invalid catalog lock metadata fields: ${lockPath}`);
+  }
+
+  return { pid, createdAtMs };
+}
+
+async function tryRecoverStaleLock(lockPath: string): Promise<void> {
+  if (!fs.existsSync(lockPath)) return;
+
+  const meta = await readLockMeta(lockPath);
+  const ageMs = Date.now() - meta.createdAtMs;
+  const alive = isProcessAlive(meta.pid);
+  if (alive) return;
+  if (ageMs < LOCK_STALE_MS) {
+    throw new Error(`Catalog index lock held by dead process but not stale yet: ${lockPath}`);
+  }
+
+  await fs.promises.unlink(lockPath);
+}
+
+async function acquireFileLock(lockPath: string, retries = 40, delayMs = 100): Promise<number> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      const lockMeta: CatalogIndexLockMeta = { pid: process.pid, createdAtMs: Date.now() };
+      fs.writeFileSync(fd, `${JSON.stringify(lockMeta)}
+`, "utf8");
+      return fd;
+    } catch {
+      await tryRecoverStaleLock(lockPath);
+      if (attempt === retries) break;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw new Error(`Catalog index lock contention: ${lockPath}`);
+}
+
+async function releaseFileLock(lockPath: string, fd: number): Promise<void> {
+  fs.closeSync(fd);
+  if (fs.existsSync(lockPath)) {
+    await fs.promises.unlink(lockPath);
+  }
+}
+
+export async function mergeCatalogEntriesWithLock(updates: CatalogIndexEntry[], indexPath = DEFAULT_CATALOG_INDEX_PATH): Promise<CatalogIndex> {
+  const lockPath = `${indexPath}.lock`;
+  await fs.promises.mkdir(path.dirname(indexPath), { recursive: true });
+  const fd = await acquireFileLock(lockPath);
+  try {
+    const current = await readCatalogIndex(indexPath);
+    const merged = upsertCatalogEntries(current, updates);
+    await writeCatalogIndex(merged, indexPath);
+    return merged;
+  } finally {
+    await releaseFileLock(lockPath, fd);
+  }
+}
+
 export function upsertCatalogEntries(existing: CatalogIndex, updates: CatalogIndexEntry[]): CatalogIndex {
   const map = new Map(existing.entries.map((entry) => [entry.sourceProductKey, entry]));
   for (const update of updates) {

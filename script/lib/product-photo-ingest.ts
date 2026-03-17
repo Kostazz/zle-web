@@ -563,10 +563,14 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
   const matchedProductSet = new Set<string>();
   const assetManifests: AssetManifest[] = [];
   let assetIndex;
-  try {
-    assetIndex = await loadAssetIndex();
-  } catch (error) {
-    throw new Error(`Asset index unreadable: ${error instanceof Error ? error.message : String(error)}`);
+  if (direct && !options.dryRun) {
+    try {
+      assetIndex = await loadAssetIndex();
+    } catch (error) {
+      throw new Error(`Asset index unreadable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    assetIndex = { version: 1 as const, records: [] };
   }
 
   try {
@@ -699,7 +703,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
 
       try {
         const fingerprint = await computeAssetFingerprint(candidate.absolutePath);
-        const dedupe = options.dryRun ? { duplicateCandidateOf: null } : upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
+        const dedupe = options.dryRun || !direct ? { duplicateCandidateOf: null } : upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
 
         if (dedupe.duplicateCandidateOf) {
           trace.sources.push({
@@ -835,7 +839,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     }
   }
 
-  if (!options.dryRun) {
+  if (!options.dryRun && direct) {
     try {
       await saveAssetIndex(assetIndex);
     } catch (error) {

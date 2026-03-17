@@ -1,5 +1,6 @@
 import { deriveProductFingerprints, evaluateDelta } from "./delta-engine.ts";
 import { normalizeText } from "./catalog-index.ts";
+import { canonicalizeCategory } from "./category-normalization.ts";
 import type {
   CatalogIndex,
   CatalogIndexEntry,
@@ -26,9 +27,10 @@ function overlapScore(left: Set<string>, right: Set<string>): number {
 
 function compatibleCategory(source: SourceProductRecord, local: LocalCatalogProduct): boolean {
   if (!source.structured.productType && !source.categoryRaw) return false;
-  const sourceCategory = normalizeText(source.structured.productType ?? source.categoryRaw);
-  if (!sourceCategory || !local.categoryNormalized) return false;
-  return sourceCategory.includes(local.categoryNormalized) || local.categoryNormalized.includes(sourceCategory);
+  const sourceCategory = canonicalizeCategory(source.structured.productType ?? source.categoryRaw);
+  const localCategory = canonicalizeCategory(local.category ?? local.categoryNormalized);
+  if (!sourceCategory || !localCategory) return false;
+  return sourceCategory === localCategory;
 }
 
 function compatibleColors(source: SourceProductRecord, local: LocalCatalogProduct): boolean {
@@ -205,8 +207,13 @@ function canEmitArchiveCandidates(input: ReconciliationInput, allItems: Reconcil
 }
 export function reconcileSourceProducts(input: ReconciliationInput): { report: ReconciliationReport; updatedEntries: CatalogIndexEntry[] } {
   const byKey = new Map(input.index.entries.map((entry) => [entry.sourceProductKey, entry]));
+  const filterCategory = canonicalizeCategory(input.filters.category);
   const filtered = input.sourceProducts
-    .filter((product) => (input.filters.category ? normalizeText(product.categoryRaw).includes(normalizeText(input.filters.category)) : true))
+    .filter((product) => {
+      if (!filterCategory) return true;
+      const sourceCategory = canonicalizeCategory(product.structured.productType ?? product.categoryRaw);
+      return sourceCategory === filterCategory;
+    })
     .slice(0, input.filters.limit ?? Number.MAX_SAFE_INTEGER);
 
   const candidates: ReconciliationItem[] = [];

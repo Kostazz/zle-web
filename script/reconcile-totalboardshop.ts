@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_CATALOG_INDEX_PATH, loadLocalCatalog, readCatalogIndex, upsertCatalogEntries, writeCatalogIndex } from "./lib/catalog-index.ts";
+import { DEFAULT_CATALOG_INDEX_PATH, loadLocalCatalog, mergeCatalogEntriesWithLock, readCatalogIndex } from "./lib/catalog-index.ts";
 import { reconcileSourceProducts } from "./lib/reconciliation-agent.ts";
 import type { ReconciliationFilters, ReconciliationLimits, ReconciliationMode } from "./lib/reconciliation-types.ts";
 import type { SourceDatasetManifest, SourceProductRecord } from "./lib/source-dataset.ts";
@@ -141,12 +141,10 @@ async function main(): Promise<void> {
     lastDecision,
   });
 
-  const updatedIndex = upsertCatalogEntries(index, updatedEntries);
-
   await fs.promises.mkdir(args.outputDir, { recursive: true });
   const outPath = path.join(args.outputDir, `${args.runId}.reconciliation.json`);
   await fs.promises.writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
-  await writeCatalogIndex(updatedIndex, args.indexPath);
+  await mergeCatalogEntriesWithLock(updatedEntries, args.indexPath);
 
   console.log(`run ${args.runId}`);
   console.log(`mode ${args.mode}`);

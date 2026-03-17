@@ -65,7 +65,7 @@ test("rejects symlinked direct output parent chain", async () => {
   }
 });
 
-test("duplicate-to-review does not consume next slot", async () => {
+test("staged ingest does not self-collide in duplicate detection", async () => {
   const work = await freshWorkDir();
 
   try {
@@ -89,13 +89,13 @@ test("duplicate-to-review does not consume next slot", async () => {
 
     const product = result.report.products.find((item) => item.productId === "zle-tee-classic");
     assert.ok(product);
-    assert.deepEqual(product.reservedSlots, ["01", "cover"]);
+    assert.deepEqual(product.reservedSlots, ["01", "02", "cover"]);
+    assert.equal(result.report.reviewItems.filter((item) => item.reason.includes("duplicate candidate")).length, 0);
 
-    const duplicateReview = result.report.reviewItems.find((item) => item.reason.includes("duplicate candidate"));
-    assert.ok(duplicateReview);
-
-    const writtenOutputs = result.report.writtenFiles.filter((file) => file.endsWith("cover.jpg") || file.endsWith("01.jpg"));
-    assert.equal(writtenOutputs.length, 2);
+    const writtenOutputs = result.report.writtenFiles.filter(
+      (file) => file.endsWith("cover.jpg") || file.endsWith("01.jpg") || file.endsWith("02.jpg"),
+    );
+    assert.equal(writtenOutputs.length, 3);
   } finally {
     await cleanupWorkDir(work);
   }
@@ -212,6 +212,32 @@ test("direct run with review items is not marked published", async () => {
     assert.ok(result.report.reviewItems.length > 0);
   } finally {
     await fs.promises.rm(path.join(LIVE_ROOT, `security-${runId}`), { recursive: true, force: true });
+    await cleanupWorkDir(work);
+  }
+});
+
+test("staged run does not write global asset fingerprint index", async () => {
+  const work = await freshWorkDir();
+
+  try {
+    const inputDir = path.join(work, "in");
+    await makePng(path.join(inputDir, "zle-tee-classic.png"), { r: 3, g: 3, b: 3 });
+
+    await runProductPhotoIngest({
+      inputDir,
+      outputDir: path.join("client", "public", "images", "products"),
+      reportPath: path.join("tmp", "agent-reports", "t7.json"),
+      lockDir: path.join("script", ".locks"),
+      dryRun: false,
+      maxImagesPerProduct: 8,
+      staged: true,
+      direct: false,
+      stagingDir: path.join("tmp", "agent-staging", "t7"),
+      runId: "t7",
+    });
+
+    assert.equal(fs.existsSync(path.join(process.cwd(), "tmp", "agent-manifests", "asset-index.json")), false);
+  } finally {
     await cleanupWorkDir(work);
   }
 });

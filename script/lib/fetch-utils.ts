@@ -84,11 +84,24 @@ export async function safeFetchBinary(rawUrl: string, limits: FetchLimits, expec
       throw new Error(`Unsupported content-type for image fetch: ${contentType}`);
     }
 
-    const bytes = Buffer.from(await response.arrayBuffer());
     const maxBytes = expectedType === "html" ? limits.maxHtmlBytes : limits.maxImageBytes;
-    if (bytes.byteLength > maxBytes) {
-      throw new Error(`Payload too large (${bytes.byteLength} bytes > ${maxBytes}) at ${url.toString()}`);
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error(`Response body missing for ${url.toString()}`);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      totalBytes += chunk.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel("payload_too_large");
+        controller.abort();
+        throw new Error(`Payload too large (${totalBytes} bytes > ${maxBytes}) at ${url.toString()}`);
+      }
+      chunks.push(chunk);
     }
+    const bytes = Buffer.concat(chunks, totalBytes);
 
     return {
       url: url.toString(),
