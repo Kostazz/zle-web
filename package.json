@@ -17,7 +17,11 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
     "images:optimize": "tsx script/optimize-images.ts",
-    "photos:ingest": "tsx script/photo-ingest-agent.ts"
+    "photos:ingest": "tsx script/photo-ingest-agent.ts",
+    "source:totalboardshop": "tsx script/source-totalboardshop-agent.ts",
+    "photos:decision": "tsx script/decision-agent.ts",
+    "pipeline:totalboardshop": "tsx script/totalboardshop-pipeline.ts",
+    "photos:reconcile": "tsx script/reconcile-totalboardshop.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
