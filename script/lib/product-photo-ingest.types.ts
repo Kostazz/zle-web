@@ -23,6 +23,33 @@ export type IngestFileCandidate = {
   parentDir: string;
 };
 
+export type ReviewIssueType =
+  | "unmatched"
+  | "ambiguous"
+  | "suspicious"
+  | "symlink"
+  | "unsupported"
+  | "malformed"
+  | "lock-conflict";
+
+export type ReviewItem = {
+  sourceRelativePath: string;
+  reason: string;
+  issueType: ReviewIssueType;
+  proposedProductId?: string;
+  confidence?: number;
+  humanActionRequired: boolean;
+};
+
+export type MatchDecision = {
+  sourceRelativePath: string;
+  productId: string | null;
+  level: MatchLevel | "none" | "ambiguous";
+  alias: string | null;
+  confidence: number;
+  reason: string;
+};
+
 export type SourceItemTrace = {
   sourceRelativePath: string;
   productId: string;
@@ -54,6 +81,8 @@ export type IngestOptions = {
   inputDir: string;
   outputDir: string;
   reportPath: string;
+  summaryPath?: string;
+  reviewDir?: string;
   dryRun: boolean;
   productOverride?: string;
   maxImagesPerProduct: number;
@@ -61,6 +90,7 @@ export type IngestOptions = {
   runId?: string;
   sourceType?: IngestSourceType;
   staged?: boolean;
+  direct?: boolean;
   stagingDir?: string;
   manifestDir?: string;
 };
@@ -72,8 +102,10 @@ export type IngestReport = {
   finishedAt: string;
   inputDir: string;
   outputDir: string;
+  mode: "dry-run" | "staged" | "direct";
   dryRun: boolean;
   staged: boolean;
+  direct: boolean;
   maxImagesPerProduct: number;
   totalFilesScanned: number;
   imageFilesAccepted: number;
@@ -86,6 +118,12 @@ export type IngestReport = {
   writtenFiles: string[];
   simulatedFiles: string[];
   lockConflicts: LockConflict[];
+  matchDecisions: MatchDecision[];
+  suspiciousInputs: string[];
+  reviewItems: ReviewItem[];
+  reviewManifestPath?: string;
+  summaryPath?: string;
+  verdict: "success" | "success-with-review" | "partial-failure" | "failed";
   errors: string[];
   products: IngestProductTrace[];
 };
