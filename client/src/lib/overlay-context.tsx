@@ -74,9 +74,18 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   }, [overlays]);
 
   const openOverlay = useCallback((entry: OverlayEntry) => {
-    setOverlays((prev) => moveOverlayToTop(prev, entry));
+    let shouldPushHistory = false;
 
-    if (typeof window !== "undefined") {
+    setOverlays((prev) => {
+      const currentTop = prev[prev.length - 1];
+      const next = moveOverlayToTop(prev, entry);
+      const nextTop = next[next.length - 1];
+      const isNoopReopen = currentTop && nextTop && currentTop.type === nextTop.type && JSON.stringify(currentTop) === JSON.stringify(nextTop);
+      shouldPushHistory = Boolean(nextTop && (!currentTop || (currentTop.type !== nextTop.type && !isNoopReopen)));
+      return next;
+    });
+
+    if (typeof window !== "undefined" && shouldPushHistory && !isHandlingPopstateRef.current) {
       pushOverlayState(entry.type);
     }
   }, []);
@@ -158,6 +167,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const stateOverlay = window.history.state?.__zleOverlay;
+      if (!stateOverlay) {
+        return;
+      }
+
       isHandlingPopstateRef.current = true;
       setOverlays((prev) => prev.slice(0, -1));
       queueMicrotask(() => {
@@ -201,7 +215,10 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       if (previousBodyOverflowRef.current !== null) {
         document.body.style.overflow = previousBodyOverflowRef.current;
         previousBodyOverflowRef.current = null;
+        return;
       }
+
+      document.body.style.overflow = "";
     };
   }, []);
 

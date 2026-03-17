@@ -21,6 +21,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { deductStockOnceWithOrderLock } from "./webhookHandlers";
+import { resolveAuthoritativeStripeOrder } from "./stripeOrderAuthority";
 import { exportLedgerCsv, exportOrdersCsv, exportPayoutsCsv } from "./exports";
 import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
@@ -38,6 +39,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 const CZK_TO_STRIPE = (czk: number) => Math.round(czk * 100);
 const STRIPE_TO_CZK = (unitAmount: number | null | undefined) =>
   typeof unitAmount === "number" ? unitAmount / 100 : null;
+const STRIPE_LIKE_PAYMENT_METHODS = new Set<PaymentMethod>(["card", "gpay", "applepay"]);
 
 // -----------------------------
 // Shipping (server authority)
@@ -90,21 +92,6 @@ function getBaseUrl(req: Request) {
 
   // Build and validate
   return normalizeBaseUrl(`${proto}://${host}`);
-}
-
-async function fetchOrderByIdempotencyKey(key: string) {
-  const [row] = await db
-    .select()
-    .from(orderIdempotencyKeys)
-    .where(eq(orderIdempotencyKeys.idempotencyKey, key))
-    .limit(1);
-
-  if (!row?.orderId) {
-    return { row, order: null as Order | null };
-  }
-
-  const [order] = await db.select().from(orders).where(eq(orders.id, row.orderId)).limit(1);
-  return { row, order: order ?? null };
 }
 
 async function createOrderWithIdempotency(params: {
@@ -1025,6 +1012,22 @@ export async function registerRoutes(app: Express) {
                 hasUrl: Boolean(existingSession.url),
               });
 
+              if (existingSession.status === "open") {
+                try {
+                  await stripe.checkout.sessions.expire(String(existingSession.id));
+                  console.info("stripe_session_recreate_expire_old_session_ok", {
+                    orderId: order.id,
+                    oldSessionId: existingSession.id,
+                  });
+                } catch (expireError: any) {
+                  console.warn("stripe_session_recreate_expire_old_session_failed", {
+                    orderId: order.id,
+                    oldSessionId: existingSession.id,
+                    error: expireError?.message || "unknown_error",
+                  });
+                }
+              }
+
               shouldRecoverSession = true;
             } catch (retrieveError) {
               console.warn("[checkout] failed to retrieve existing stripe session", {
@@ -1786,6 +1789,16 @@ export async function registerRoutes(app: Express) {
 
       const providedToken = getOrderAccessTokenFromRequest(req);
       const hasValidToken = Boolean(order.accessToken && providedToken && providedToken === order.accessToken);
+      const isStripeLikeMethod = STRIPE_LIKE_PAYMENT_METHODS.has((order.paymentMethod || "card") as PaymentMethod);
+      const hasSafeFinalStatus = ["paid", "confirmed", "fulfilled"].includes(String(order.paymentStatus || order.status || "").toLowerCase())
+        || ["confirmed", "fulfilled"].includes(String(order.status || "").toLowerCase());
+
+      if (!hasValidToken && isStripeLikeMethod && !hasSafeFinalStatus) {
+        return sendApiError(res, 403, {
+          code: "order_summary_forbidden",
+          reason: "order_summary_forbidden",
+        });
+      }
 
       const safePayload = {
         success: true,
@@ -1848,13 +1861,35 @@ export async function registerRoutes(app: Express) {
         expand: ["payment_intent"],
       });
 
-      const paymentStatus = session.payment_status; // "paid" | "unpaid" | "no_payment_required"
-      let orderIdFromMeta = (session.metadata?.orderId || session.client_reference_id || null) as string | null;
-      const idempotencyKey = session.metadata?.idempotencyKey || null;
+      const paymentStatus = session.payment_status;
+      const authority = await resolveAuthoritativeStripeOrder(session);
+      if (!authority.ok) {
+        console.warn("[checkout] verify rejected session/order mismatch", {
+          sessionId: authority.sessionId,
+          orderIdFromMeta: authority.orderIdFromMeta,
+          clientReferenceId: authority.clientReferenceId,
+          mappedOrderId: authority.mappedOrderId,
+          reason: authority.reason,
+        });
 
-      if (!orderIdFromMeta && idempotencyKey) {
-        const { order } = await fetchOrderByIdempotencyKey(String(idempotencyKey));
-        orderIdFromMeta = order?.id ?? null;
+        await db.insert(auditLog).values({
+          action: "verify_session_rejected",
+          entity: "order",
+          entityId: authority.mappedOrderId || authority.orderIdFromMeta || authority.clientReferenceId || authority.sessionId,
+          severity: "warning",
+          meta: {
+            reason: authority.reason,
+            sessionId: authority.sessionId,
+            orderIdFromMeta: authority.orderIdFromMeta,
+            clientReferenceId: authority.clientReferenceId,
+            mappedOrderId: authority.mappedOrderId,
+          },
+        });
+
+        return res.json({
+          success: false,
+          reason: authority.reason,
+        });
       }
 
       if (paymentStatus !== "paid" && paymentStatus !== "no_payment_required") {
@@ -1862,118 +1897,113 @@ export async function registerRoutes(app: Express) {
           success: false,
           reason: "not_paid",
           paymentStatus,
-          orderId: orderIdFromMeta,
+          orderId: authority.authoritativeOrderId,
           retryAfterMs: 2500,
         });
       }
 
-      // If we have an orderId, finalize it (idempotent) as a webhook failsafe.
-      if (orderIdFromMeta) {
-        const paymentIntentId =
-          typeof session.payment_intent === "string"
-            ? session.payment_intent
-            : session.payment_intent?.id;
+      const orderIdFromAuthority = authority.authoritativeOrderId;
+      const paymentIntentId =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id;
 
-        // A) Ensure order is marked paid/confirmed
-        await storage.updateOrder(orderIdFromMeta, {
-          paymentStatus: "paid",
-          status: "confirmed",
-          paymentIntentId: paymentIntentId || null,
-          paymentNetwork: null,
-        });
+      await storage.updateOrder(orderIdFromAuthority, {
+        paymentStatus: "paid",
+        status: "confirmed",
+        paymentIntentId: paymentIntentId || null,
+        paymentNetwork: null,
+      });
 
-        // B) Stock deduction fallback (order lock + exactly-once claim)
-        const dbOrder = await storage.getOrder(orderIdFromMeta);
-        if (dbOrder) {
-          const parsedItems = (() => {
-            try {
-              const raw = JSON.parse(dbOrder.items);
-              if (Array.isArray(raw)) return raw;
-              if (raw && Array.isArray(raw.items)) return raw.items;
-              return [];
-            } catch {
-              return [];
-            }
-          })();
+      const dbOrder = await storage.getOrder(orderIdFromAuthority);
+      if (dbOrder) {
+        const parsedItems = (() => {
+          try {
+            const raw = JSON.parse(dbOrder.items);
+            if (Array.isArray(raw)) return raw;
+            if (raw && Array.isArray(raw.items)) return raw.items;
+            return [];
+          } catch {
+            return [];
+          }
+        })();
 
-          if (parsedItems.length > 0) {
-            const stockResult = await deductStockOnceWithOrderLock(orderIdFromMeta, parsedItems as any);
-            if (!stockResult.success) {
-              await db
-                .update(orders)
-                .set({
-                  manualReview: true,
-                  opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join("; ")}`,
-                })
-                .where(eq(orders.id, orderIdFromMeta));
+        if (parsedItems.length > 0) {
+          const stockResult = await deductStockOnceWithOrderLock(orderIdFromAuthority, parsedItems as any);
+          if (!stockResult.success) {
+            await db
+              .update(orders)
+              .set({
+                manualReview: true,
+                opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join("; ")}`,
+              })
+              .where(eq(orders.id, orderIdFromAuthority));
 
-              await db.insert(auditLog).values({
-                action: "stock_deduction_failed",
-                entity: "order",
-                entityId: orderIdFromMeta,
-                severity: "important",
-                meta: { failures: stockResult.failures },
-              });
+            await db.insert(auditLog).values({
+              action: "stock_deduction_failed",
+              entity: "order",
+              entityId: orderIdFromAuthority,
+              severity: "important",
+              meta: { failures: stockResult.failures },
+            });
 
-              emitOrderEvent(OpsEventType.STOCK_ISSUE, orderIdFromMeta, {
-                reason: stockResult.failures.join("; "),
-              });
-            }
+            emitOrderEvent(OpsEventType.STOCK_ISSUE, orderIdFromAuthority, {
+              reason: stockResult.failures.join("; "),
+            });
           }
         }
+      }
 
-        // C) Financial + payout pipeline (idempotent)
-        await finalizePaidOrder({
-          orderId: orderIdFromMeta,
-          provider: "stripe",
-          providerEventId: `verify:${session.id}`,
-          meta: { source: "verify", sessionId: session.id },
-        });
+      await finalizePaidOrder({
+        orderId: orderIdFromAuthority,
+        provider: "stripe",
+        providerEventId: `verify:${session.id}`,
+        meta: { source: "verify", sessionId: session.id },
+      });
 
-        const orderForEmail = await storage.getOrder(orderIdFromMeta);
-        if (orderForEmail) {
-          console.log(`[verify] sending emails for order ${orderForEmail.id}`);
+      const orderForEmail = await storage.getOrder(orderIdFromAuthority);
+      if (orderForEmail) {
+        console.log(`[verify] sending emails for order ${orderForEmail.id}`);
 
-          const markEmailEventSent = async (type: "email_customer_sent" | "email_fulfillment_sent", providerEventId: string) => {
-            const result = await db
-              .insert(orderEvents)
-              .values({
-                orderId: orderForEmail.id,
-                provider: "system",
-                providerEventId,
-                type,
-                payload: { source: "stripe:verify", sessionId: session.id },
-              })
-              .onConflictDoNothing()
-              .returning({ id: orderEvents.id });
+        const markEmailEventSent = async (type: "email_customer_sent" | "email_fulfillment_sent", providerEventId: string) => {
+          const result = await db
+            .insert(orderEvents)
+            .values({
+              orderId: orderForEmail.id,
+              provider: "system",
+              providerEventId,
+              type,
+              payload: { source: "stripe:verify", sessionId: session.id },
+            })
+            .onConflictDoNothing()
+            .returning({ id: orderEvents.id });
 
-            return result.length > 0;
-          };
+          return result.length > 0;
+        };
 
-          const shouldSendFulfillment = await markEmailEventSent(
-            "email_fulfillment_sent",
-            `email_fulfillment:${orderForEmail.id}`,
+        const shouldSendFulfillment = await markEmailEventSent(
+          "email_fulfillment_sent",
+          `email_fulfillment:${orderForEmail.id}`,
+        );
+        if (shouldSendFulfillment) {
+          sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
+            console.error("[verify] Failed to send fulfillment email:", err)
           );
-          if (shouldSendFulfillment) {
-            sendFulfillmentNewOrderEmail(orderForEmail).catch((err) =>
-              console.error("[verify] Failed to send fulfillment email:", err)
-            );
-          }
+        }
 
-          const shouldSendCustomer =
-            !orderForEmail.manualReview &&
-            await markEmailEventSent("email_customer_sent", `email_customer:${orderForEmail.id}`);
-          if (shouldSendCustomer) {
-            sendOrderConfirmationEmail(orderForEmail).catch((err) =>
-              console.error("[verify] Failed to send customer confirmation email:", err)
-            );
-          }
+        const shouldSendCustomer =
+          !orderForEmail.manualReview &&
+          await markEmailEventSent("email_customer_sent", `email_customer:${orderForEmail.id}`);
+        if (shouldSendCustomer) {
+          sendOrderConfirmationEmail(orderForEmail).catch((err) =>
+            console.error("[verify] Failed to send customer confirmation email:", err)
+          );
         }
       }
 
       return res.json({
         success: true,
-        orderId: orderIdFromMeta,
+        orderId: orderIdFromAuthority,
         paymentStatus,
         amountTotalCzk: STRIPE_TO_CZK(session.amount_total),
         currency: session.currency,
@@ -1988,4 +2018,5 @@ export async function registerRoutes(app: Express) {
       });
     }
   });
+
 }

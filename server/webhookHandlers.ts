@@ -7,12 +7,13 @@ import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { sendOrderConfirmationEmail, sendFulfillmentNewOrderEmail } from './emailService';
 import { db } from './db';
-import { orders, orderEvents, products, auditLog, orderIdempotencyKeys, type CartItem } from '@shared/schema';
+import { orders, orderEvents, products, auditLog, type CartItem } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { emitOrderEvent, OpsEventType } from './ops/events';
 import { handleChargeback } from './refunds';
 import { finalizePaidOrder } from './paymentPipeline';
 import { env } from './env';
+import { resolveAuthoritativeStripeOrder } from './stripeOrderAuthority';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
@@ -223,25 +224,35 @@ export async function deductStockOnceWithOrderLock(
 }
 
 async function handleCheckoutCompleted(session: any, stripeEventId: string) {
-  let orderId = session.metadata?.orderId;
-  const idempotencyKey = session.metadata?.idempotencyKey;
+  const authority = await resolveAuthoritativeStripeOrder(session);
+  if (!authority.ok) {
+    console.warn('[webhook] checkout session rejected by authority resolver', {
+      sessionId: authority.sessionId,
+      orderIdFromMeta: authority.orderIdFromMeta,
+      clientReferenceId: authority.clientReferenceId,
+      mappedOrderId: authority.mappedOrderId,
+      reason: authority.reason,
+    });
 
-  if (!orderId && idempotencyKey) {
-    const [row] = await db
-      .select()
-      .from(orderIdempotencyKeys)
-      .where(eq(orderIdempotencyKeys.idempotencyKey, String(idempotencyKey)))
-      .limit(1);
-    orderId = row?.orderId ?? null;
-  }
-  console.log(`Checkout session completed for order: ${orderId}`);
-  
-  if (!orderId) {
-    console.warn('[webhook] No orderId in session metadata');
+    await db.insert(auditLog).values({
+      action: 'webhook_checkout_rejected',
+      entity: 'order',
+      entityId: authority.mappedOrderId || authority.orderIdFromMeta || authority.clientReferenceId || authority.sessionId,
+      severity: 'warning',
+      meta: {
+        reason: authority.reason,
+        sessionId: authority.sessionId,
+        orderIdFromMeta: authority.orderIdFromMeta,
+        clientReferenceId: authority.clientReferenceId,
+        mappedOrderId: authority.mappedOrderId,
+      },
+    });
     return;
   }
 
-  // Idempotency check via order_events
+  const orderId = authority.authoritativeOrderId;
+  console.log(`Checkout session completed for order: ${orderId}`);
+
   if (await isEventProcessed('stripe', stripeEventId)) {
     console.log(`[webhook] Event ${stripeEventId} already processed, skipping`);
     return;
@@ -253,12 +264,27 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     return;
   }
 
+  if (order.status === 'cancelled') {
+    console.warn('[webhook] checkout completed ignored for cancelled order', {
+      orderId,
+      sessionId: session.id,
+      stripeEventId,
+    });
+    await db.insert(auditLog).values({
+      action: 'webhook_cancelled_order_ignored',
+      entity: 'order',
+      entityId: orderId,
+      severity: 'warning',
+      meta: { source: 'checkout.session.completed', sessionId: session.id, stripeEventId },
+    });
+    return;
+  }
+
   if (order.paymentStatus === 'paid') {
     console.log(`[webhook] Order ${orderId} already paid, skipping`);
     return;
   }
 
-  // Record the event (idempotency guard)
   await recordEvent(orderId, 'stripe', stripeEventId, 'checkout_completed', {
     sessionId: session.id,
     paymentIntent: session.payment_intent,
@@ -271,7 +297,6 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
 
   if (!stockResult.success) {
     stockDeductionFailed = true;
-    // Stock issues detected - mark for manual review but don't block payment
     await db.update(orders).set({
       manualReview: true,
       opsNotes: `Stock deduction failed — possible oversell: ${stockResult.failures.join('; ')}`,
@@ -290,7 +315,6 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
     });
   }
 
-  // Update order status
   const updatedOrder = await storage.updateOrder(orderId, {
     paymentStatus: 'paid',
     paymentIntentId: session.payment_intent,
@@ -298,24 +322,20 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   });
   console.log(`Order ${orderId} payment completed via checkout.session.completed`);
 
-  // Emit payment confirmed event
   emitOrderEvent(OpsEventType.PAYMENT_CONFIRMED, orderId, {
     amount: order.total,
     currency: 'CZK',
   });
 
-  // Finalize order: ledger entry + payouts (idempotent via paymentPipeline)
   await finalizePaidOrder({
     orderId,
     provider: 'stripe',
     providerEventId: stripeEventId,
     meta: { source: 'webhook-checkout', sessionId: session.id },
   });
-  
+
   emitOrderEvent(OpsEventType.PAYOUTS_GENERATED, orderId);
-  
-  // INTENTIONAL business decision: on stock-deduction failure we keep payment+status settled
-  // for accounting continuity, but we must not send a customer "order complete" confirmation.
+
   if (updatedOrder) {
     if (!stockDeductionFailed) {
       const shouldSendCustomer = await markEmailEventSent(orderId, 'email_customer_sent', `email_customer:${orderId}`);
@@ -326,7 +346,6 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
       }
     }
 
-    // Send fulfillment/admin email immediately (also serves as urgent alert on manual review)
     const shouldSendFulfillment = await markEmailEventSent(orderId, 'email_fulfillment_sent', `email_fulfillment:${orderId}`);
     if (shouldSendFulfillment) {
       sendFulfillmentNewOrderEmail(updatedOrder).catch((err) =>
@@ -353,6 +372,22 @@ async function handlePaymentSucceeded(paymentIntent: any, stripeEventId: string)
 
   const order = await storage.getOrder(orderId);
   if (!order || order.paymentStatus === 'paid') {
+    return;
+  }
+
+  if (order.status === 'cancelled') {
+    console.warn('[webhook] payment_intent.succeeded ignored for cancelled order', {
+      orderId,
+      paymentIntentId: paymentIntent.id,
+      stripeEventId,
+    });
+    await db.insert(auditLog).values({
+      action: 'webhook_cancelled_order_ignored',
+      entity: 'order',
+      entityId: orderId,
+      severity: 'warning',
+      meta: { source: 'payment_intent.succeeded', paymentIntentId: paymentIntent.id, stripeEventId },
+    });
     return;
   }
 
