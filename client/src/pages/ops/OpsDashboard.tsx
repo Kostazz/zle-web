@@ -23,6 +23,11 @@ type OpsOrderRow = {
   status: string;
   paymentStatus: string | null;
   paymentMethod: string | null;
+  paymentProvider?: string | null;
+  providerReference?: string | null;
+  bankTransferExpiresAt?: string | null;
+  canMarkPaid?: boolean;
+  canMarkExpired?: boolean;
   total: number;
   stockDeductedAt: string | null;
   customerName: string;
@@ -43,6 +48,10 @@ type OpsOrderDetail = {
     customerCity: string;
     customerZip: string;
     paymentIntentId?: string | null;
+  };
+  ops?: {
+    canMarkPaid?: boolean;
+    canMarkExpired?: boolean;
   };
   parsedItems: {
     items: Array<{ name?: string; productId?: string; quantity?: number; size?: string }>;
@@ -70,6 +79,7 @@ export default function OpsDashboard() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+  const [actionBusy, setActionBusy] = useState<"paid" | "expired" | null>(null);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(STORAGE_KEY) || "";
@@ -131,6 +141,27 @@ export default function OpsDashboard() {
 
   const handleSelectOrder = (id: string) => {
     fetchDetail(id).catch(() => null);
+  };
+
+  const runOrderAction = async (action: "mark-paid" | "mark-expired") => {
+    if (!token || !detail?.order?.id) return;
+    setActionBusy(action === "mark-paid" ? "paid" : "expired");
+    try {
+      const response = await fetch(`/api/ops/orders/${encodeURIComponent(detail.order.id)}/${action}`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.message || body?.error || "OPS action failed");
+      }
+      await Promise.all([fetchSummary(), fetchOrders(), fetchDetail(detail.order.id)]);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Nepodařilo se provést OPS akci.");
+    } finally {
+      setActionBusy(null);
+    }
   };
 
   return (
@@ -287,6 +318,9 @@ export default function OpsDashboard() {
                     <div>
                       Payment: {detail.order.paymentStatus} / {detail.order.paymentMethod}
                     </div>
+                    <div>Provider: {detail.order.paymentProvider ?? "-"}</div>
+                    <div>Reference: {detail.order.providerReference ?? "-"}</div>
+                    <div>Bank due: {detail.order.bankTransferExpiresAt ?? "-"}</div>
                     <div>Shipping: {detail.parsedItems?.shippingLabel ?? "-"}</div>
                     <div>Total: {detail.parsedItems?.totalCzk ?? detail.order.total} Kč</div>
                   </div>
@@ -299,6 +333,24 @@ export default function OpsDashboard() {
                     <div>PaymentIntent: {detail.order.paymentIntentId ?? "-"}</div>
                     <div>StockDeductedAt: {detail.order.stockDeductedAt ?? "-"}</div>
                   </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Button
+                    onClick={() => runOrderAction("mark-paid")}
+                    disabled={!detail.ops?.canMarkPaid || actionBusy !== null}
+                    className="font-heading text-xs tracking-wider"
+                  >
+                    {actionBusy === "paid" ? "MARKING..." : "MARK AS PAID"}
+                  </Button>
+                  <Button
+                    onClick={() => runOrderAction("mark-expired")}
+                    disabled={!detail.ops?.canMarkExpired || actionBusy !== null}
+                    variant="outline"
+                    className="font-heading text-xs tracking-wider border-white/20 text-white"
+                  >
+                    {actionBusy === "expired" ? "EXPIRING..." : "MARK AS EXPIRED"}
+                  </Button>
                 </div>
 
                 <div className="mt-4 border-t border-white/10 pt-4">

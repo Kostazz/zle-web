@@ -18,7 +18,7 @@ import {
 import { storage } from "./storage";
 import { paymentMethodEnum, type PaymentMethod, orders, orderEvents, auditLog, orderIdempotencyKeys, products, type CartItem, type Order, type InsertOrder } from "../shared/schema";
 import { getUncachableStripeClient } from "./stripeClient";
-import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
+import { sendBankTransferPendingEmail, sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { resolveAuthoritativeStripeOrder } from "./stripeOrderAuthority";
@@ -1730,6 +1730,24 @@ export async function registerRoutes(app: Express) {
         console.info("bank_transfer_reference_reused", { orderId: order.id, reference: order.providerReference });
       } else {
         console.info("bank_transfer_created", { orderId: order.id, reference: persistedOrder.providerReference });
+      }
+
+      const pendingEmailEvent = await db
+        .insert(orderEvents)
+        .values({
+          orderId: persistedOrder.id,
+          provider: "system",
+          providerEventId: `email_bank_pending:${persistedOrder.id}`,
+          type: "email_bank_pending_sent",
+          payload: { source: "checkout:create-bank-order" },
+        })
+        .onConflictDoNothing()
+        .returning({ id: orderEvents.id });
+
+      if (pendingEmailEvent.length > 0) {
+        sendBankTransferPendingEmail(persistedOrder as any).catch((err) =>
+          console.error("[bank] Failed to send pending bank transfer email:", err)
+        );
       }
 
       return res.json({
