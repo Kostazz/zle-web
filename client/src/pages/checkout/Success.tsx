@@ -124,19 +124,14 @@ export default function CheckoutSuccess() {
   const isStripeLikePaymentMethod =
     !!effectivePaymentMethod && STRIPE_LIKE_METHODS.includes(effectivePaymentMethod);
   const hasVerifiedStripeSuccess = !!sessionId && !!data?.success;
-  const hasPaidOrderSummary =
-    orderSummary?.success === true &&
-    !!orderSummary.paymentStatus &&
-    ["paid", "succeeded", "succeeded_capture", "captured", "complete"].includes(
-      orderSummary.paymentStatus.toLowerCase(),
-    );
-  const shouldBlockSuccessWithoutVerification = isStripeLikePaymentMethod && !hasVerifiedStripeSuccess;
+  const hasPaidOrderState = ["paid", "succeeded", "succeeded_capture", "captured", "complete"].includes(
+    orderSummary?.paymentStatus?.toLowerCase?.() ?? "",
+  );
+  const shouldBlockSuccessWithoutVerification =
+    isStripeLikePaymentMethod && !sessionId && !hasPaidOrderState;
   const canRenderOfflineSuccess = !isStripeLikePaymentMethod && !!resolvedOrderId;
   const shouldRenderCancel =
-    (sessionId && (error || !data?.success)) ||
-    timedOutWaiting ||
-    shouldBlockSuccessWithoutVerification ||
-    (!sessionId && isStripeLikePaymentMethod && !hasPaidOrderSummary);
+    (sessionId && (error || !data?.success)) || timedOutWaiting || shouldBlockSuccessWithoutVerification;
 
   if (sessionId && isLoading) {
     return (
@@ -196,20 +191,6 @@ export default function CheckoutSuccess() {
     );
   }
 
-  if (shouldRenderCancel) {
-    return (
-      <Layout>
-        <section className="py-10 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-2xl mx-auto">
-              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
   if (isSummaryLoading) {
     return (
       <Layout>
@@ -221,6 +202,20 @@ export default function CheckoutSuccess() {
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">NAČÍTÁME OBJEDNÁVKU…</h1>
               <p className="font-sans text-white/60">Chvilku počkej, připravujeme shrnutí.</p>
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  if (shouldRenderCancel) {
+    return (
+      <Layout>
+        <section className="py-10 md:py-16">
+          <div className="container mx-auto px-4">
+            <div className="max-w-2xl mx-auto">
+              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
             </div>
           </div>
         </section>
@@ -242,7 +237,7 @@ export default function CheckoutSuccess() {
     );
   }
 
-  const canRenderSuccess = hasVerifiedStripeSuccess || hasPaidOrderSummary || canRenderOfflineSuccess;
+  const canRenderSuccess = hasVerifiedStripeSuccess || hasPaidOrderState || canRenderOfflineSuccess;
 
   if (!canRenderSuccess) {
     return (
