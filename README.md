@@ -54,6 +54,17 @@ ENABLE_AUTH=false ENABLE_STRIPE=false npm run dev
 | `STRIPE_SECRET_KEY` | Stripe secret key (sk_test_...) |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (pk_test_...) |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+| `COINGATE_API_TOKEN` | CoinGate API token |
+| `COINGATE_ENV` | `sandbox` or `live` |
+| `COINGATE_CALLBACK_URL` | CoinGate callback URL |
+| `COINGATE_RETURN_URL` | CoinGate return URL base |
+| `COINGATE_CANCEL_URL` | CoinGate cancel URL |
+| `COINGATE_WEBHOOK_SECRET` | Webhook guard secret for CoinGate endpoint |
+| `BANK_ACCOUNT_NUMBER` | Bank transfer account number |
+| `BANK_CODE` | Bank code |
+| `BANK_IBAN` | Optional IBAN |
+| `BANK_ACCOUNT_NAME` | Optional bank account name |
+| `BANK_TRANSFER_DUE_DAYS` | Due days for bank-transfer orders |
 
 ### Optional (Email)
 
@@ -158,7 +169,7 @@ Returns JSON with enabled features and database connectivity status.
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, shadcn/ui
 - **Backend:** Express.js, Drizzle ORM, PostgreSQL
-- **Payments:** Stripe Checkout
+- **Payments:** Stripe (`card`,`gpay`,`applepay`), CoinGate (`btc`,`eth`,`usdc`,`sol`), manual bank transfer (`bank`), offline (`cod`,`in_person`)
 - **Email:** Resend
 
 ## Brand Guidelines

@@ -37,6 +37,7 @@ type OrderSummaryResponse = {
 };
 
 const STRIPE_LIKE_METHODS: PaymentMethod[] = ["card", "gpay", "applepay"];
+const COINGATE_METHODS: PaymentMethod[] = ["btc", "eth", "usdc", "sol"];
 
 export default function CheckoutSuccess() {
   const searchString = useSearch();
@@ -47,7 +48,7 @@ export default function CheckoutSuccess() {
   const pmParam = params.get("pm") as PaymentMethod | null;
 
   const lastLocalOrder = useMemo(() => getLastOrder(), []);
-  const canUseOfflineFallback = pmParam === "cod" || pmParam === "in_person";
+  const canUseOfflineFallback = pmParam === "cod" || pmParam === "in_person" || pmParam === "bank";
 
   const MAX_POLLS = 12;
   const DEFAULT_RETRY_MS = 2500;
@@ -93,7 +94,7 @@ export default function CheckoutSuccess() {
     : hasConflictRedirectFallback
       ? orderIdParam
       : canUseOfflineFallback
-        ? lastLocalOrder?.id || null
+        ? (orderIdParam || lastLocalOrder?.id || null)
         : null;
 
   const { data: orderSummary, isLoading: isSummaryLoading } = useQuery<OrderSummaryResponse>({
@@ -102,7 +103,7 @@ export default function CheckoutSuccess() {
       const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(resolvedOrderId || ""))}`);
       return response.json();
     },
-    enabled: !!resolvedOrderId && (hasVerifiedStripeSuccess || canUseOfflineFallback),
+    enabled: !!resolvedOrderId && (hasVerifiedStripeSuccess || canUseOfflineFallback || COINGATE_METHODS.includes(pmParam as PaymentMethod)),
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -188,6 +189,7 @@ export default function CheckoutSuccess() {
   const shouldRenderCancel =
     (sessionId && (error || !data?.success || !hasVerifiedStripeSuccess)) ||
     (!sessionId && isStripeLikePaymentMethod && !hasConflictRedirectFallback && !canUseOfflineFallback);
+
 
   if (shouldRenderCancel || !resolvedOrderId) {
     return (

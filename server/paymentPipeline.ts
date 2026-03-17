@@ -6,7 +6,7 @@
 
 import { db } from './db';
 import { orders, orderEvents, ledgerEntries, auditLog } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 const DEFAULT_CURRENCY = 'CZK';
 
@@ -62,7 +62,7 @@ export async function finalizePaidOrder({
       .limit(1);
 
     if (existingLedger.length > 0) {
-      console.log(`[pipeline] Order ${orderId} already finalized (ledger exists), skipping financial ops`);
+      console.info(`duplicate_finalization_skip order=${orderId} provider=${provider}`);
       return { success: true, skipped: true };
     }
 
@@ -74,6 +74,8 @@ export async function finalizePaidOrder({
       console.warn(`[pipeline] Order ${orderId} not found`);
       return { success: false, skipped: false, error: 'Order not found' };
     }
+
+        await db.update(orders).set({ paidAt: new Date(), paymentConfirmedAt: new Date() }).where(eq(orders.id, orderId));
 
     // B) Create ledger sale entry (idempotent via dedupeKey unique constraint)
     try {
