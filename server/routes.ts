@@ -1659,6 +1659,7 @@ export async function registerRoutes(app: Express) {
       if (pm !== "bank") {
         return sendApiError(res, 400, { code: "invalid_payment_method", reason: "invalid_payment_method" });
       }
+
       const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
       if (!paymentCheck.ok) {
         return sendApiError(res, 400, { code: paymentCheck.code, reason: paymentCheck.reason });
@@ -1670,11 +1671,12 @@ export async function registerRoutes(app: Express) {
         if (!product) return sendApiError(res, 400, { code: "invalid_product", reason: "invalid_product" });
         subtotalCzk += Number(product.price) * item.quantity;
       }
+
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       const totals = calculateTotals({ subtotalCzk, shippingId: parsed.shippingMethod as ShippingMethodId, paymentMethod: pm });
       const dueDays = Math.max(1, Number(env.BANK_TRANSFER_DUE_DAYS || 3));
-      const expiresAt = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
-      const providerReference = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
+      const generatedExpiresAt = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
+      const generatedReference = `${Date.now()}${Math.floor(Math.random() * 10000)}`;
 
       const { order } = await createOrderWithIdempotency({
         idempotencyKey: parsed.idempotencyKey,
@@ -1690,26 +1692,57 @@ export async function registerRoutes(app: Express) {
           total: Math.round(totals.totalCzk),
           paymentMethod: pm,
           paymentProvider: "bank_transfer",
-          providerReference,
+          providerReference: generatedReference,
           providerStatus: "pending",
-          bankTransferExpiresAt: expiresAt,
+          bankTransferExpiresAt: generatedExpiresAt,
           userId: null as any,
         },
       });
 
-      await storage.updateOrder(order.id, { paymentStatus: "pending", status: "pending" });
-      console.info("bank_transfer_created", { orderId: order.id, reference: providerReference });
+      const persistedReference = order.providerReference || generatedReference;
+      const persistedExpiresAt = order.bankTransferExpiresAt || generatedExpiresAt;
+      const patch: Partial<Order> = {
+        paymentProvider: "bank_transfer",
+        paymentStatus: order.paymentStatus === "paid" ? "paid" : "pending",
+        status: order.paymentStatus === "paid" ? order.status : "pending",
+      };
+
+      if (!order.providerReference) {
+        patch.providerReference = persistedReference;
+      }
+      if (!order.bankTransferExpiresAt) {
+        patch.bankTransferExpiresAt = persistedExpiresAt;
+      }
+      if (!order.providerStatus) {
+        patch.providerStatus = "pending";
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await storage.updateOrder(order.id, patch);
+      }
+
+      const persistedOrder = await storage.getOrder(order.id);
+      if (!persistedOrder?.providerReference) {
+        return sendApiError(res, 500, { code: "bank_reference_not_persisted", reason: "bank_reference_not_persisted" });
+      }
+
+      if (order.providerReference) {
+        console.info("bank_transfer_reference_reused", { orderId: order.id, reference: order.providerReference });
+      } else {
+        console.info("bank_transfer_created", { orderId: order.id, reference: persistedOrder.providerReference });
+      }
+
       return res.json({
         success: true,
-        orderId: order.id,
+        orderId: persistedOrder.id,
         instructions: {
           accountNumber: env.BANK_ACCOUNT_NUMBER || null,
           bankCode: env.BANK_CODE || null,
           iban: env.BANK_IBAN || null,
           accountName: env.BANK_ACCOUNT_NAME || null,
           amount: totals.totalCzk,
-          reference: providerReference,
-          expiresAt,
+          reference: persistedOrder.providerReference,
+          expiresAt: persistedOrder.bankTransferExpiresAt,
         },
       });
     } catch (err: any) {
@@ -1725,6 +1758,7 @@ export async function registerRoutes(app: Express) {
       if (!["btc", "eth", "usdc", "sol"].includes(pm)) {
         return sendApiError(res, 400, { code: "invalid_payment_method", reason: "invalid_payment_method" });
       }
+
       const paymentCheck = validatePaymentForShipping(parsed.shippingMethod as ShippingMethodId, pm);
       if (!paymentCheck.ok) {
         return sendApiError(res, 400, { code: paymentCheck.code, reason: paymentCheck.reason });
@@ -1736,6 +1770,7 @@ export async function registerRoutes(app: Express) {
         if (!product) return sendApiError(res, 400, { code: "invalid_product", reason: "invalid_product" });
         subtotalCzk += Number(product.price) * item.quantity;
       }
+
       const shipping = SHIPPING_METHODS[parsed.shippingMethod as ShippingMethodId];
       const totals = calculateTotals({ subtotalCzk, shippingId: parsed.shippingMethod as ShippingMethodId, paymentMethod: pm });
 
@@ -1758,15 +1793,63 @@ export async function registerRoutes(app: Express) {
         },
       });
 
-      await storage.updateOrder(order.id, { paymentStatus: "pending", status: "pending" });
-      const providerOrder = await createCoinGateOrder({ orderId: order.id, amountCzk: totals.totalCzk, receiveCurrency: pm.toUpperCase() as any });
+      if (order.status === "cancelled") {
+        return sendApiError(res, 409, { code: "order_cancelled", reason: "order_cancelled" });
+      }
+
+      const isFinalized = order.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(order.status || ""));
+      if (isFinalized && order.providerPaymentUrl) {
+        return res.json({ success: true, orderId: order.id, redirectUrl: order.providerPaymentUrl, reused: true });
+      }
+
+      if (order.paymentProvider === "coingate" && order.providerOrderId && order.providerPaymentUrl && !isFinalized) {
+        console.info("coingate_order_reused", { orderId: order.id, providerOrderId: order.providerOrderId });
+        await storage.updateOrder(order.id, {
+          paymentProvider: "coingate",
+          paymentStatus: order.paymentStatus === "paid" ? "paid" : "pending",
+          status: order.paymentStatus === "paid" ? order.status : "pending",
+        });
+
+        const persistedReuseOrder = await storage.getOrder(order.id);
+        if (!persistedReuseOrder?.providerPaymentUrl) {
+          return sendApiError(res, 500, { code: "coingate_reuse_state_missing", reason: "coingate_reuse_state_missing" });
+        }
+
+        return res.json({
+          success: true,
+          orderId: persistedReuseOrder.id,
+          redirectUrl: persistedReuseOrder.providerPaymentUrl,
+          reused: true,
+        });
+      }
+
+      const providerOrder = await createCoinGateOrder({
+        orderId: order.id,
+        amountCzk: totals.totalCzk,
+        receiveCurrency: pm.toUpperCase() as any,
+      });
+
       await storage.updateOrder(order.id, {
+        paymentProvider: "coingate",
+        paymentStatus: "pending",
+        status: "pending",
         providerOrderId: String(providerOrder.id),
         providerPaymentUrl: providerOrder.payment_url,
         providerStatus: providerOrder.status,
       });
 
-      return res.json({ success: true, orderId: order.id, redirectUrl: providerOrder.payment_url });
+      const persistedOrder = await storage.getOrder(order.id);
+      if (!persistedOrder?.providerOrderId || !persistedOrder.providerPaymentUrl) {
+        return sendApiError(res, 500, { code: "coingate_state_not_persisted", reason: "coingate_state_not_persisted" });
+      }
+
+      console.info("coingate_order_created", { orderId: persistedOrder.id, providerOrderId: persistedOrder.providerOrderId });
+      return res.json({
+        success: true,
+        orderId: persistedOrder.id,
+        redirectUrl: persistedOrder.providerPaymentUrl,
+        reused: false,
+      });
     } catch (err: any) {
       return sendApiError(res, 500, { code: "coingate_order_failed", reason: "coingate_order_failed", details: { message: err?.message || "unknown" } });
     }
@@ -1784,13 +1867,62 @@ export async function registerRoutes(app: Express) {
       const mapped = mapCoinGateStatus(providerOrder.status);
       await storage.updateOrder(order.id, { providerStatus: providerOrder.status });
 
+      const latestOrder = await storage.getOrder(order.id);
+      const alreadyFinalized = Boolean(
+        latestOrder && latestOrder.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(latestOrder.status || ""))
+      );
+
       if (mapped === "paid") {
-        await storage.updateOrder(order.id, { paymentStatus: "paid", status: "confirmed", paidAt: new Date(), paymentConfirmedAt: new Date() });
-        await finalizePaidOrder({ orderId: order.id, provider: "coingate", providerEventId: `verify:${providerOrder.id}`, meta: { source: "coingate-verify" } });
+        if (alreadyFinalized) {
+          console.info("coingate_paid_already_finalized", { orderId: order.id, providerOrderId: order.providerOrderId });
+          return res.json({ success: true, state: "paid", orderId: order.id });
+        }
+
+        await storage.updateOrder(order.id, {
+          paymentStatus: "paid",
+          status: "confirmed",
+          paidAt: new Date(),
+          paymentConfirmedAt: new Date(),
+          providerStatus: providerOrder.status,
+        });
+
+        const finalize = await finalizePaidOrder({
+          orderId: order.id,
+          provider: "coingate",
+          providerEventId: `verify:${providerOrder.id}`,
+          meta: { source: "coingate-verify", reconcileRecovery: true },
+        });
+
+        await db.insert(auditLog).values({
+          action: "coingate_paid_reconcile_recovery",
+          entity: "order",
+          entityId: order.id,
+          severity: "info",
+          meta: { source: "verify", providerOrderId: providerOrder.id, finalizeSkipped: finalize.skipped },
+        });
+        console.info("coingate_paid_reconcile_recovery", { orderId: order.id, providerOrderId: providerOrder.id, finalizeSkipped: finalize.skipped });
+
+        const finalizedOrder = await storage.getOrder(order.id);
+        const isFinalizedNow = Boolean(
+          finalizedOrder && finalizedOrder.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(finalizedOrder.status || ""))
+        );
+
+        if (!isFinalizedNow || !finalize.success) {
+          return res.json({ success: false, state: "paid_unreconciled", orderId: order.id });
+        }
+
         return res.json({ success: true, state: "paid", orderId: order.id });
       }
-      if (mapped === "pending") return res.json({ success: false, state: "pending", orderId: order.id });
-      return res.json({ success: false, state: mapped, orderId: order.id });
+
+      if (mapped === "pending") {
+        return res.json({ success: false, state: "pending", orderId: order.id });
+      }
+
+      if (mapped === "expired" || mapped === "canceled") {
+        return res.json({ success: false, state: mapped, orderId: order.id });
+      }
+
+      return res.json({ success: false, state: "failed", orderId: order.id });
     } catch (err: any) {
       return sendApiError(res, 500, { code: "coingate_verify_failed", reason: "coingate_verify_failed", details: { message: err?.message || "unknown" } });
     }
@@ -1798,23 +1930,69 @@ export async function registerRoutes(app: Express) {
 
   app.post("/api/coingate/webhook", async (req, res) => {
     try {
+      if (!env.COINGATE_WEBHOOK_SECRET) {
+        console.error("coingate_webhook_secret_missing");
+        return sendApiError(res, 500, { code: "coingate_webhook_misconfigured", reason: "coingate_webhook_misconfigured" });
+      }
+
       const secret = req.header("x-coingate-secret");
-      if (env.COINGATE_WEBHOOK_SECRET && secret !== env.COINGATE_WEBHOOK_SECRET) {
+      if (secret !== env.COINGATE_WEBHOOK_SECRET) {
+        console.warn("coingate_webhook_secret_invalid");
         return sendApiError(res, 401, { code: "invalid_webhook_secret", reason: "invalid_webhook_secret" });
       }
+
       const providerOrderId = String(req.body?.id || req.body?.order_id || "");
       if (!providerOrderId) return sendApiError(res, 400, { code: "missing_provider_order", reason: "missing_provider_order" });
 
-      const [order] = await db.select().from(orders).where(eq(orders.providerOrderId, providerOrderId)).limit(1);
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.providerOrderId, providerOrderId), eq(orders.paymentProvider, "coingate")))
+        .limit(1);
+
       if (!order) return res.json({ ok: true });
       if (order.status === "cancelled") return res.json({ ok: true, skipped: "cancelled" });
 
-      const mapped = mapCoinGateStatus(String(req.body?.status || "pending"));
-      await storage.updateOrder(order.id, { providerStatus: String(req.body?.status || "pending") });
+      const providerStatusRaw = String(req.body?.status || "pending");
+      const mapped = mapCoinGateStatus(providerStatusRaw);
+      await storage.updateOrder(order.id, { providerStatus: providerStatusRaw });
+
       if (mapped === "paid") {
-        await storage.updateOrder(order.id, { paymentStatus: "paid", status: "confirmed", paidAt: new Date(), paymentConfirmedAt: new Date() });
-        await finalizePaidOrder({ orderId: order.id, provider: "coingate", providerEventId: `webhook:${providerOrderId}:${req.body?.status || "unknown"}`, meta: { source: "coingate-webhook" } });
+        const latestOrder = await storage.getOrder(order.id);
+        const alreadyFinalized = Boolean(
+          latestOrder && latestOrder.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(latestOrder.status || ""))
+        );
+
+        if (alreadyFinalized) {
+          console.info("coingate_paid_already_finalized", { orderId: order.id, providerOrderId });
+          return res.json({ ok: true, skipped: "already_finalized" });
+        }
+
+        await storage.updateOrder(order.id, {
+          paymentStatus: "paid",
+          status: "confirmed",
+          paidAt: new Date(),
+          paymentConfirmedAt: new Date(),
+          providerStatus: providerStatusRaw,
+        });
+
+        const finalize = await finalizePaidOrder({
+          orderId: order.id,
+          provider: "coingate",
+          providerEventId: `webhook:${providerOrderId}:${providerStatusRaw}`,
+          meta: { source: "coingate-webhook", reconcileRecovery: true },
+        });
+
+        await db.insert(auditLog).values({
+          action: "coingate_paid_reconcile_recovery",
+          entity: "order",
+          entityId: order.id,
+          severity: "info",
+          meta: { source: "webhook", providerOrderId, finalizeSkipped: finalize.skipped },
+        });
+        console.info("coingate_paid_reconcile_recovery", { orderId: order.id, providerOrderId, finalizeSkipped: finalize.skipped });
       }
+
       return res.json({ ok: true });
     } catch (err: any) {
       return sendApiError(res, 500, { code: "coingate_webhook_failed", reason: "coingate_webhook_failed", details: { message: err?.message || "unknown" } });
