@@ -26,6 +26,8 @@ const getSuccessTitle = (paymentMethod?: PaymentMethod | null) => {
       return "DOBÍRKA POTVRZENA";
     case "in_person":
       return "OBJEDNÁVKA POTVRZENA";
+    case "bank":
+      return "OBJEDNÁVKA PŘIJATA";
     case "card":
     case "gpay":
     case "applepay":
@@ -45,6 +47,8 @@ const getSuccessDescription = (paymentMethod?: PaymentMethod | null) => {
     case "gpay":
     case "applepay":
       return "Platba proběhla úspěšně. Teď makáme my — balíme a posíláme.";
+    case "bank":
+      return "Objednávka je vytvořená. Čekáme na připsání bankovního převodu.";
     default:
       return "Objednávka byla úspěšně vytvořena.";
   }
@@ -68,6 +72,11 @@ const getNextSteps = (paymentMethod?: PaymentMethod | null) => {
       return [
         "Potvrzení objednávky ti dorazí na email.",
         "Do 1–2 dnů to balíme a posíláme.",
+      ];
+    case "bank":
+      return [
+        "Počkej na potvrzení přijetí bankovního převodu.",
+        "Po ručním potvrzení platby objednávku standardně finalizujeme.",
       ];
     default:
       return ["Pošleme ti další instrukce e‑mailem."];

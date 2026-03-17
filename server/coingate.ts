@@ -22,6 +22,31 @@ function assertConfigured() {
   }
 }
 
+function normalizeAbsoluteUrl(raw: string | null | undefined): string | null {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolveCoinGateCallbackUrl() {
+  const explicit = normalizeAbsoluteUrl(env.COINGATE_CALLBACK_URL);
+  if (explicit) return explicit;
+
+  const publicBase = normalizeAbsoluteUrl(process.env.PUBLIC_BASE_URL || env.PUBLIC_URL);
+  if (!publicBase) {
+    throw new Error("coingate_callback_url_missing");
+  }
+
+  return new URL("/api/coingate/webhook", publicBase).toString();
+}
+
 async function callCoinGate<T>(path: string, init: RequestInit): Promise<T> {
   assertConfigured();
   const response = await fetch(`${baseUrl()}${path}`, {
@@ -52,7 +77,7 @@ export async function createCoinGateOrder(params: {
     price_amount: params.amountCzk,
     price_currency: (params.currency || "CZK").toUpperCase(),
     receive_currency: params.receiveCurrency,
-    callback_url: env.COINGATE_CALLBACK_URL,
+    callback_url: resolveCoinGateCallbackUrl(),
     cancel_url: env.COINGATE_CANCEL_URL,
     success_url: `${env.COINGATE_RETURN_URL}?order_id=${encodeURIComponent(params.orderId)}&pm=${params.receiveCurrency.toLowerCase()}`,
   };

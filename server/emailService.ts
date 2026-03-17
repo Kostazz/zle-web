@@ -275,6 +275,56 @@ export async function sendOrderConfirmationEmail(order: Order): Promise<boolean>
   }
 }
 
+export async function sendBankTransferPendingEmail(order: Order): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const customer = getCustomerFromOrder(order);
+    if (!customer.email) return false;
+
+    const parsed = parseOrderItems(order.items);
+    const totalCzk =
+      typeof parsed.totalCzk === "number"
+        ? Math.round(parsed.totalCzk)
+        : Math.round(Number(order.total) || 0);
+
+    const dueAt = order.bankTransferExpiresAt ? new Date(order.bankTransferExpiresAt) : null;
+    const dueText = dueAt
+      ? dueAt.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : "co nejdříve";
+
+    const accountNumber = process.env.BANK_ACCOUNT_NUMBER || "-";
+    const bankCode = process.env.BANK_CODE || "-";
+    const iban = process.env.BANK_IBAN || "-";
+    const accountName = process.env.BANK_ACCOUNT_NAME || "ZLE";
+    const reference = order.providerReference || order.id;
+
+    const subject = `ZLE • Platební instrukce k objednávce #${order.id.slice(0, 8)}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:20px;color:#111;">
+        <h2>Objednávka přijata</h2>
+        <p>Díky, objednávku jsme přijali. Čekáme na bankovní převod.</p>
+        <p><b>Částka:</b> ${totalCzk} Kč</p>
+        <p><b>Účet:</b> ${accountNumber}/${bankCode}<br/><b>IBAN:</b> ${iban}<br/><b>Název účtu:</b> ${accountName}</p>
+        <p><b>Reference / VS:</b> ${reference}</p>
+        <p><b>Deadline platby:</b> ${dueText}</p>
+        <p style="margin-top:18px;color:#555;font-size:12px;">Objednávku začneme finalizovat po ručním potvrzení platby.</p>
+      </div>
+    `;
+
+    await client.emails.send({
+      from: fromEmail,
+      to: customer.email,
+      subject,
+      html,
+    });
+
+    return true;
+  } catch (err) {
+    console.error("Failed to send bank pending email:", err);
+    return false;
+  }
+}
+
 export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolean> {
   try {
     const to = getFulfillmentRecipients();
