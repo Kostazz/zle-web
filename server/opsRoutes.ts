@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "./db";
-import { auditLog, orderEvents, orders } from "@shared/schema";
+import { auditLog, ledgerEntries, orderEvents, orders } from "@shared/schema";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
@@ -71,7 +71,7 @@ function isBankOrder(order: typeof orders.$inferSelect) {
 function canMarkPaid(order: typeof orders.$inferSelect) {
   if (!isBankOrder(order)) return false;
   if (order.status === "cancelled") return false;
-  if (order.paymentStatus === "paid") return false;
+  if (order.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(order.status || ""))) return false;
   return true;
 }
 
@@ -101,6 +101,56 @@ async function markEmailEventSent(orderId: string, type: "email_customer_sent" |
     .returning({ id: orderEvents.id });
 
   return result.length > 0;
+}
+
+
+function parseOrderItemsForStock(order: typeof orders.$inferSelect) {
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(order.items || "[]");
+  } catch {
+    return { ok: false as const, code: "invalid_json", items: [] as any[] };
+  }
+
+  const candidate = Array.isArray(parsed) ? parsed : Array.isArray((parsed as any)?.items) ? (parsed as any).items : null;
+  if (!Array.isArray(candidate)) {
+    return { ok: false as const, code: "items_not_array", items: [] as any[] };
+  }
+
+  if (candidate.length === 0) {
+    return { ok: false as const, code: "items_empty", items: [] as any[] };
+  }
+
+  const valid = candidate.every((item: any) =>
+    item &&
+    typeof item.productId === "string" &&
+    item.productId.trim().length > 0 &&
+    Number.isFinite(Number(item.quantity)) &&
+    Number(item.quantity) > 0
+  );
+
+  if (!valid) {
+    return { ok: false as const, code: "items_invalid_shape", items: [] as any[] };
+  }
+
+  return { ok: true as const, code: null, items: candidate as any[] };
+}
+
+async function isOrderFinalizationCompleted(orderId: string) {
+  const [ledger] = await db
+    .select({ id: ledgerEntries.id })
+    .from(ledgerEntries)
+    .where(eq(ledgerEntries.dedupeKey, `sale-${orderId}`))
+    .limit(1);
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order) return false;
+
+  return Boolean(
+    ledger &&
+    order.paymentStatus === "paid" &&
+    ["confirmed", "fulfilled"].includes(String(order.status || ""))
+  );
 }
 
 export function registerOpsRoutes(app: Express) {
@@ -190,8 +240,11 @@ export function registerOpsRoutes(app: Express) {
           canMarkPaid: sql<boolean>`
             (
               (${orders.paymentMethod} = 'bank' OR ${orders.paymentProvider} = 'bank_transfer')
-              AND COALESCE(${orders.paymentStatus}, 'unpaid') != 'paid'
               AND COALESCE(${orders.status}, 'pending') != 'cancelled'
+              AND NOT (
+                COALESCE(${orders.paymentStatus}, 'unpaid') = 'paid'
+                AND COALESCE(${orders.status}, 'pending') IN ('confirmed', 'fulfilled')
+              )
             )
           `,
           canMarkExpired: sql<boolean>`
@@ -261,24 +314,57 @@ export function registerOpsRoutes(app: Express) {
         return res.status(400).json({ error: "invalid_payment_provider", message: "bank orders only" });
       }
 
-      if (order.paymentStatus === "paid" && ["confirmed", "fulfilled"].includes(String(order.status || ""))) {
-        return res.json({ ok: true, noOp: true, reason: "already_paid_finalized" });
-      }
-
       if (order.status === "cancelled") {
         return res.status(409).json({ error: "invalid_order_state", message: "cancelled order cannot be marked paid" });
       }
 
-      const parsed = (() => {
-        try {
-          const raw = JSON.parse(order.items || "[]");
-          return Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
-        } catch {
-          return [];
-        }
-      })();
+      const actor = getOpsActor(req);
+      const completedBefore = await isOrderFinalizationCompleted(order.id);
+      if (completedBefore) {
+        await db.insert(auditLog).values({
+          actorUserId: actor,
+          action: "bank_transfer_manual_finalize_already_completed",
+          entity: "order",
+          entityId: order.id,
+          severity: "info",
+          meta: { source: "ops:manual-bank" },
+        });
+        return res.json({ ok: true, noOp: true, reason: "already_paid_finalized" });
+      }
 
-      const stockResult = await deductStockOnceWithOrderLock(order.id, parsed as any);
+      const retryLikely =
+        order.paymentStatus === "paid" ||
+        ["confirmed", "fulfilled"].includes(String(order.status || "")) ||
+        Boolean(order.paidAt) ||
+        Boolean(order.paymentConfirmedAt);
+
+      await db.insert(auditLog).values({
+        actorUserId: actor,
+        action: retryLikely ? "bank_transfer_manual_finalize_retried" : "bank_transfer_manual_finalize_attempt",
+        entity: "order",
+        entityId: order.id,
+        severity: "info",
+        meta: { source: "ops:manual-bank", retryLikely },
+      });
+
+      const parsed = parseOrderItemsForStock(order);
+      if (!parsed.ok) {
+        await db.insert(auditLog).values({
+          actorUserId: actor,
+          action: "bank_transfer_invalid_items_for_stock_deduction",
+          entity: "order",
+          entityId: order.id,
+          severity: "important",
+          meta: { source: "ops:manual-bank", reason: parsed.code },
+        });
+        console.error("bank_transfer_invalid_items_for_stock_deduction", {
+          orderId: order.id,
+          reason: parsed.code,
+        });
+        return res.status(409).json({ error: "invalid_items_for_stock_deduction", reason: parsed.code });
+      }
+
+      const stockResult = await deductStockOnceWithOrderLock(order.id, parsed.items as any);
       if (!stockResult.success) {
         await db.insert(auditLog).values({
           action: "stock_deduction_failed",
@@ -290,7 +376,17 @@ export function registerOpsRoutes(app: Express) {
         return res.status(409).json({ error: "out_of_stock_or_reservation_failed", failures: stockResult.failures });
       }
 
-      const actor = getOpsActor(req);
+      const finalize = await finalizePaidOrder({
+        orderId: order.id,
+        provider: "bank_transfer",
+        providerEventId: `ops:mark-paid:${order.id}`,
+        meta: { source: "ops:manual-bank", actor: actor || undefined },
+      });
+
+      if (!finalize.success) {
+        return res.status(500).json({ error: "finalize_failed", message: finalize.error || "unknown" });
+      }
+
       await db
         .update(orders)
         .set({
@@ -304,11 +400,18 @@ export function registerOpsRoutes(app: Express) {
         })
         .where(eq(orders.id, order.id));
 
-      const finalize = await finalizePaidOrder({
-        orderId: order.id,
-        provider: "bank_transfer",
-        providerEventId: `ops:mark-paid:${order.id}`,
-        meta: { source: "ops:manual-bank", actor: actor || undefined },
+      const completedAfter = await isOrderFinalizationCompleted(order.id);
+      if (!completedAfter) {
+        return res.status(500).json({ error: "finalization_incomplete", message: "finalization not completed" });
+      }
+
+      await db.insert(auditLog).values({
+        actorUserId: actor,
+        action: "bank_transfer_manual_finalize_completed",
+        entity: "order",
+        entityId: order.id,
+        severity: "info",
+        meta: { finalizeSkipped: finalize.skipped },
       });
 
       await db.insert(auditLog).values({
