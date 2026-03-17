@@ -61,6 +61,7 @@ export function deriveProductFingerprints(product: SourceProductRecord): {
   };
   const imagePayload = {
     imageUrls: product.imageUrls.map((url) => normalizeText(url)),
+    downloadedImageHashes: (product.downloadedImageHashes ?? []).map((hash) => normalizeText(hash)),
     downloadedImages: product.downloadedImages.map((img) => normalizeText(img)),
   };
 

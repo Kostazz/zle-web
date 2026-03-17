@@ -103,6 +103,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     await fs.promises.mkdir(productImageDir, { recursive: true });
 
     const downloadedImages: string[] = [];
+    const downloadedImageHashes: string[] = [];
     const allowlistedImages = parsed.product.imageUrls.filter((imageUrl) => {
       try {
         normalizeAllowedUrl(imageUrl);
@@ -128,6 +129,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
         const relativePath = path.posix.join("images", sourceProductKey, fileName);
         await fs.promises.writeFile(path.join(runDir, relativePath), fetchedImage.body);
         downloadedImages.push(relativePath);
+        downloadedImageHashes.push(`sha256:${crypto.createHash("sha256").update(fetchedImage.body).digest("hex")}`);
       } catch (error) {
         crawlLog.downloadErrors.push({
           sourceUrl,
@@ -175,6 +177,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
       structured: parsed.product.structured,
       imageUrls: parsed.product.imageUrls,
       downloadedImages,
+      downloadedImageHashes,
       fingerprint: createFingerprint({
         sourceUrl,
         title: parsed.product.title,

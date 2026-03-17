@@ -80,8 +80,11 @@ export async function writeCatalogIndex(index: CatalogIndex, indexPath = DEFAULT
     entries: [...index.entries].sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey)),
   };
 
-  await fs.promises.mkdir(path.dirname(indexPath), { recursive: true });
-  await fs.promises.writeFile(indexPath, JSON.stringify(normalized, null, 2), "utf8");
+  const dir = path.dirname(indexPath);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const tempPath = path.join(dir, `.zle-source-index.${process.pid}.${Date.now()}.tmp`);
+  await fs.promises.writeFile(tempPath, JSON.stringify(normalized, null, 2), "utf8");
+  await fs.promises.rename(tempPath, indexPath);
 }
 
 export function upsertCatalogEntries(existing: CatalogIndex, updates: CatalogIndexEntry[]): CatalogIndex {

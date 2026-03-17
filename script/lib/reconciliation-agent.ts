@@ -184,6 +184,25 @@ function createUpdatedIndexEntry(
   };
 }
 
+
+function canEmitArchiveCandidates(input: ReconciliationInput, allItems: ReconciliationItem[]): boolean {
+  if (input.mode !== "bootstrap-replacement") return false;
+  if (input.filters.category || input.filters.limit !== undefined) return false;
+
+  const total = allItems.length;
+  const totalNew = allItems.filter((item) => item.delta === "NEW").length;
+  const totalChanged = allItems.filter((item) => item.delta === "CHANGED_CONTENT" || item.delta === "CHANGED_IMAGES").length;
+  const totalReview = allItems.filter((item) => item.reconciliation === "REVIEW").length;
+  const totalUnchanged = allItems.filter((item) => item.delta === "UNCHANGED").length;
+
+  if (input.limits.maxCandidatesPerRun < total) return false;
+  if (input.limits.maxNewPerRun < totalNew) return false;
+  if (input.limits.maxChangedPerRun < totalChanged) return false;
+  if (input.limits.maxReviewPerRun < totalReview) return false;
+  if (input.limits.maxUnchangedToInspectPerRun < totalUnchanged) return false;
+
+  return true;
+}
 export function reconcileSourceProducts(input: ReconciliationInput): { report: ReconciliationReport; updatedEntries: CatalogIndexEntry[] } {
   const byKey = new Map(input.index.entries.map((entry) => [entry.sourceProductKey, entry]));
   const filtered = input.sourceProducts
@@ -250,10 +269,11 @@ export function reconcileSourceProducts(input: ReconciliationInput): { report: R
   for (const item of budgeted.selected) countSummary(item, summary);
   summary.skippedUnchangedByBudget = budgeted.skippedUnchanged;
 
-  const sourceMatchedIds = new Set(budgeted.selected.map((item) => item.matchedLocalProductId).filter(Boolean));
-  const archiveCandidates = input.mode === "bootstrap-replacement"
+  const matchedAcrossFullSet = new Set(candidates.map((item) => item.matchedLocalProductId).filter((id): id is string => Boolean(id)));
+  const emitArchiveCandidates = canEmitArchiveCandidates(input, candidates);
+  const archiveCandidates = emitArchiveCandidates
     ? input.localCatalog
-        .filter((local) => !sourceMatchedIds.has(local.id))
+        .filter((local) => !matchedAcrossFullSet.has(local.id))
         .map((local) => ({ localProductId: local.id, reasonCodes: ["not_matched_in_bootstrap_wave"] }))
     : [];
   summary.archiveCandidate = archiveCandidates.length;

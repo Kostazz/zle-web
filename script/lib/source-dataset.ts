@@ -42,6 +42,7 @@ export type SourceProductRecord = {
   };
   imageUrls: string[];
   downloadedImages: string[];
+  downloadedImageHashes: string[];
   fingerprint: string;
 };
 

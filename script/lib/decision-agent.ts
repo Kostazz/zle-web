@@ -116,7 +116,6 @@ export function decideRun(runId: string, roots?: { reportDir?: string; manifestD
     reasonCodes.push("non_staged_run");
   }
 
-  if (manifest.requiresReview !== false) reasonCodes.push("manifest_requires_review");
   if (dataset.scope.brand !== "ZLE" || dataset.scope.matchMode !== "exact") reasonCodes.push("invalid_source_scope");
   if (dataset.source !== "totalboardshop") reasonCodes.push("invalid_source");
   if (!Array.isArray(products)) reasonCodes.push("invalid_products");
@@ -184,20 +183,21 @@ export function decideRun(runId: string, roots?: { reportDir?: string; manifestD
   }
 
   const reviewVerdicts: Array<IngestReport["verdict"]> = ["success-with-review", "partial-failure"];
-  const shouldReview =
-    report.unmatchedFiles.length > 0 ||
-    report.suspiciousInputs.length > 0 ||
-    report.reviewItems.length > 0 ||
-    report.lockConflicts.length > 0 ||
-    reviewVerdicts.includes(report.verdict);
+  const reviewReasonCodes: string[] = [];
+  if (manifest.requiresReview === true) reviewReasonCodes.push("manifest_requires_review");
+  if (report.unmatchedFiles.length > 0) reviewReasonCodes.push("unmatched_files_present");
+  if (report.suspiciousInputs.length > 0) reviewReasonCodes.push("suspicious_inputs_present");
+  if (report.reviewItems.length > 0) reviewReasonCodes.push("review_items_present");
+  if (report.lockConflicts.length > 0) reviewReasonCodes.push("lock_conflicts_present");
+  if (reviewVerdicts.includes(report.verdict)) reviewReasonCodes.push("review_verdict");
 
-  if (shouldReview) {
+  if (reviewReasonCodes.length > 0) {
     return {
       runId,
       createdAt: new Date().toISOString(),
       decision: "REVIEW",
       publishAllowed: false,
-      reasonCodes: ["review_required"],
+      reasonCodes: reviewReasonCodes,
       summary,
       artifacts: {
         datasetPath,
