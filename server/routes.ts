@@ -1948,19 +1948,40 @@ export async function registerRoutes(app: Express) {
 
   app.post("/api/coingate/webhook", async (req, res) => {
     try {
+      const providerOrderId = String(req.body?.id || req.body?.order_id || "");
+      const providerStatusRaw = String(req.body?.status || "pending");
+      const mapped = mapCoinGateStatus(providerStatusRaw);
+
+      console.info("coingate_webhook_receipt", {
+        providerOrderId: providerOrderId || null,
+        providerStatusRaw,
+        mapped,
+      });
+
       if (!env.COINGATE_WEBHOOK_SECRET) {
-        console.error("coingate_webhook_secret_missing");
+        console.error("coingate_webhook_reject_missing_secret", {
+          providerOrderId: providerOrderId || null,
+          reason: "coingate_webhook_misconfigured",
+        });
         return sendApiError(res, 500, { code: "coingate_webhook_misconfigured", reason: "coingate_webhook_misconfigured" });
       }
 
       const secret = req.header("x-coingate-secret");
       if (secret !== env.COINGATE_WEBHOOK_SECRET) {
-        console.warn("coingate_webhook_secret_invalid");
+        console.warn("coingate_webhook_reject_invalid_secret", {
+          providerOrderId: providerOrderId || null,
+        });
         return sendApiError(res, 401, { code: "invalid_webhook_secret", reason: "invalid_webhook_secret" });
       }
 
-      const providerOrderId = String(req.body?.id || req.body?.order_id || "");
-      if (!providerOrderId) return sendApiError(res, 400, { code: "missing_provider_order", reason: "missing_provider_order" });
+      console.info("coingate_webhook_auth_ok", { providerOrderId: providerOrderId || null });
+
+      if (!providerOrderId) {
+        console.warn("coingate_webhook_invalid_payload_missing_provider_order", {
+          payloadKeys: Object.keys(req.body || {}),
+        });
+        return sendApiError(res, 400, { code: "missing_provider_order", reason: "missing_provider_order" });
+      }
 
       const [order] = await db
         .select()
@@ -1968,12 +1989,25 @@ export async function registerRoutes(app: Express) {
         .where(and(eq(orders.providerOrderId, providerOrderId), eq(orders.paymentProvider, "coingate")))
         .limit(1);
 
-      if (!order) return res.json({ ok: true });
-      if (order.status === "cancelled") return res.json({ ok: true, skipped: "cancelled" });
+      if (!order) {
+        console.warn("coingate_webhook_lookup_miss", { providerOrderId, providerStatusRaw, mapped });
+        console.info("coingate_webhook_ack", { providerOrderId, ack: "lookup_miss_noop" });
+        return res.json({ ok: true, skipped: "lookup_miss" });
+      }
 
-      const providerStatusRaw = String(req.body?.status || "pending");
-      const mapped = mapCoinGateStatus(providerStatusRaw);
+      if (order.status === "cancelled") {
+        console.info("coingate_webhook_lookup_hit_cancelled", { orderId: order.id, providerOrderId });
+        console.info("coingate_webhook_ack", { orderId: order.id, providerOrderId, ack: "cancelled_noop" });
+        return res.json({ ok: true, skipped: "cancelled" });
+      }
+
       await storage.updateOrder(order.id, { providerStatus: providerStatusRaw });
+      console.info("coingate_webhook_status_mapped", {
+        orderId: order.id,
+        providerOrderId,
+        providerStatusRaw,
+        mapped,
+      });
 
       if (mapped === "paid") {
         const latestOrder = await storage.getOrder(order.id);
@@ -1983,6 +2017,7 @@ export async function registerRoutes(app: Express) {
 
         if (alreadyFinalized) {
           console.info("coingate_paid_already_finalized", { orderId: order.id, providerOrderId });
+          console.info("coingate_webhook_ack", { orderId: order.id, providerOrderId, ack: "already_finalized_noop" });
           return res.json({ ok: true, skipped: "already_finalized" });
         }
 
@@ -2001,6 +2036,15 @@ export async function registerRoutes(app: Express) {
           meta: { source: "coingate-webhook", reconcileRecovery: true },
         });
 
+        if (!finalize.success) {
+          console.error("coingate_webhook_finalize_failed", {
+            orderId: order.id,
+            providerOrderId,
+            error: finalize.error || "unknown",
+          });
+          return sendApiError(res, 500, { code: "coingate_finalize_failed", reason: "coingate_finalize_failed" });
+        }
+
         await db.insert(auditLog).values({
           action: "coingate_paid_reconcile_recovery",
           entity: "order",
@@ -2009,10 +2053,28 @@ export async function registerRoutes(app: Express) {
           meta: { source: "webhook", providerOrderId, finalizeSkipped: finalize.skipped },
         });
         console.info("coingate_paid_reconcile_recovery", { orderId: order.id, providerOrderId, finalizeSkipped: finalize.skipped });
+        console.info("coingate_webhook_ack", { orderId: order.id, providerOrderId, ack: "paid_finalized" });
+        return res.json({ ok: true, state: "paid" });
       }
 
-      return res.json({ ok: true });
+      if (mapped === "pending" || mapped === "expired" || mapped === "canceled") {
+        console.info("coingate_webhook_ack", {
+          orderId: order.id,
+          providerOrderId,
+          ack: `status_${mapped}_noop`,
+        });
+        return res.json({ ok: true, skipped: mapped });
+      }
+
+      console.warn("coingate_webhook_invalid_status", {
+        orderId: order.id,
+        providerOrderId,
+        providerStatusRaw,
+      });
+      console.info("coingate_webhook_ack", { orderId: order.id, providerOrderId, ack: "invalid_status_noop" });
+      return res.json({ ok: true, skipped: "invalid_status" });
     } catch (err: any) {
+      console.error("coingate_webhook_failed", { message: err?.message || "unknown" });
       return sendApiError(res, 500, { code: "coingate_webhook_failed", reason: "coingate_webhook_failed", details: { message: err?.message || "unknown" } });
     }
   });
