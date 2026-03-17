@@ -6,6 +6,8 @@ import { auditLog, ledgerEntries, orderEvents, orders } from "@shared/schema";
 import { finalizePaidOrder } from "./paymentPipeline";
 import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
+import { getCatalogIngestRun, listCatalogIngestRuns, setCatalogRunApproval } from "./services/catalogIngestService.ts";
+import { publishCatalogRun } from "./services/catalogPublishService.ts";
 
 function requireOpsToken(req: Request, res: Response): boolean {
   const expected = process.env.OPS_TOKEN;
@@ -443,6 +445,80 @@ export function registerOpsRoutes(app: Express) {
       return res.json({ ok: true, orderId: order.id, finalizeSkipped: finalize.skipped });
     } catch (err: any) {
       return res.status(500).json({ error: "ops_mark_paid_failed", message: err?.message || "unknown" });
+    }
+  });
+
+  app.get("/api/ops/ingest/runs", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+    try {
+      const result = await listCatalogIngestRuns();
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: { code: "ops_ingest_runs_failed", message: err?.message || "unknown" } });
+    }
+  });
+
+  app.get("/api/ops/ingest/runs/:runId", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+    try {
+      const runId = String(req.params.runId || "").trim();
+      if (!runId) return res.status(400).json({ ok: false, error: { code: "invalid_run_id", message: "runId is required" } });
+
+      const result = await getCatalogIngestRun(runId);
+      if (!result.ok) {
+        return res.status(result.error.status).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: { code: "ops_ingest_run_failed", message: err?.message || "unknown" } });
+    }
+  });
+
+  app.post("/api/ops/ingest/runs/:runId/approve", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+    try {
+      const runId = String(req.params.runId || "").trim();
+      if (!runId) return res.status(400).json({ ok: false, error: { code: "invalid_run_id", message: "runId is required" } });
+
+      const result = await setCatalogRunApproval(runId, "approved");
+      if (!result.ok) {
+        return res.status(result.error.status).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: { code: "ops_ingest_approve_failed", message: err?.message || "unknown" } });
+    }
+  });
+
+  app.post("/api/ops/ingest/runs/:runId/reject", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+    try {
+      const runId = String(req.params.runId || "").trim();
+      if (!runId) return res.status(400).json({ ok: false, error: { code: "invalid_run_id", message: "runId is required" } });
+
+      const result = await setCatalogRunApproval(runId, "rejected");
+      if (!result.ok) {
+        return res.status(result.error.status).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: { code: "ops_ingest_reject_failed", message: err?.message || "unknown" } });
+    }
+  });
+
+  app.post("/api/ops/ingest/runs/:runId/publish", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+    try {
+      const runId = String(req.params.runId || "").trim();
+      if (!runId) return res.status(400).json({ ok: false, error: { code: "invalid_run_id", message: "runId is required" } });
+
+      const result = await publishCatalogRun(runId);
+      if (!result.ok) {
+        return res.status(result.error.status).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: { code: "ops_ingest_publish_failed", message: err?.message || "unknown" } });
     }
   });
 

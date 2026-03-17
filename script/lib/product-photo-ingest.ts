@@ -3,6 +3,15 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { products } from "../../client/src/data/products.ts";
+import {
+  createRunId,
+  type AssetManifest,
+  type IngestSourceType,
+  type ProductDraftPayload,
+  type RunManifest,
+  writeRunManifest,
+} from "./ingest-manifest.ts";
+import { computeAssetFingerprint, loadAssetIndex, saveAssetIndex, upsertAssetFingerprint } from "./asset-fingerprint.ts";
 import type {
   IngestFileCandidate,
   IngestOptions,
@@ -382,14 +391,28 @@ async function writeProductMetadata(
   report.writtenFiles.push(safeRelativeToCwd(metaPath));
 }
 
+function toConfidence(level: MatchLevel | null): number {
+  if (!level) return 0;
+  if (level === "exact") return 1;
+  if (level === "prefix") return 0.75;
+  return 0.5;
+}
+
 export async function runProductPhotoIngest(options: IngestOptions): Promise<IngestRunResult> {
   const now = new Date().toISOString();
+  const runId = options.runId ?? createRunId("ingest");
+  const sourceType: IngestSourceType = options.sourceType ?? "local";
+  const staged = options.staged ?? false;
+  const manifestDir = path.resolve(process.cwd(), options.manifestDir ?? path.join("tmp", "agent-manifests"));
   const report: IngestReport = {
+    runId,
+    sourceType,
     startedAt: now,
     finishedAt: now,
     inputDir: options.inputDir,
-    outputDir: options.outputDir,
+    outputDir: "",
     dryRun: options.dryRun,
+    staged,
     maxImagesPerProduct: options.maxImagesPerProduct,
     totalFilesScanned: 0,
     imageFilesAccepted: 0,
@@ -407,9 +430,12 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
   };
 
   const normalizedInput = path.resolve(process.cwd(), options.inputDir);
-  const normalizedOutput = path.resolve(process.cwd(), options.outputDir);
+  const normalizedOutputBase = staged
+    ? path.resolve(process.cwd(), options.stagingDir ?? path.join("tmp", "agent-staging", runId))
+    : path.resolve(process.cwd(), options.outputDir);
   const normalizedReportPath = path.resolve(process.cwd(), options.reportPath);
   const normalizedLockDir = path.resolve(process.cwd(), options.lockDir);
+  report.outputDir = staged ? safeRelativeToCwd(normalizedOutputBase) : options.outputDir;
 
   if (!fs.existsSync(normalizedInput)) {
     throw new Error(`Input directory does not exist: ${normalizedInput}`);
@@ -438,6 +464,8 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
   const locksHeld = new Map<string, { fd: number; path: string }>();
   const matchedProductSet = new Set<string>();
   const lockBlockedProducts = new Set<string>();
+  const assetManifests: AssetManifest[] = [];
+  const assetIndex = await loadAssetIndex();
 
   try {
     for (const candidate of scan.accepted) {
@@ -447,13 +475,26 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
 
       if (!match) {
         report.unmatchedFiles.push(candidate.relativePath);
+        assetManifests.push({
+          assetId: `${runId}:${candidate.relativePath}`,
+          runId,
+          sourceType,
+          sourceRelativePath: candidate.relativePath,
+          productId: null,
+          matchedConfidence: 0,
+          requiresReview: true,
+          approvalState: "pending",
+          publishState: "staged",
+          outputs: [],
+          errors: ["unmatched_product"],
+        });
         continue;
       }
 
       const productId = match.productId;
       matchedProductSet.add(productId);
       report.matchedFiles.push(candidate.relativePath);
-      const targetDir = path.join(normalizedOutput, productId);
+      const targetDir = path.join(normalizedOutputBase, productId);
 
       if (lockBlockedProducts.has(productId)) {
         report.skippedFiles.push(candidate.relativePath);
@@ -519,8 +560,14 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
 
       const jpgOutputPath = path.join(targetDir, `${slot}.jpg`);
       const webpOutputPath = path.join(targetDir, `${slot}.webp`);
+      const draftPayload: ProductDraftPayload = { productId, category: products.find((p) => p.id === productId)?.category };
 
       try {
+        const fingerprint = await computeAssetFingerprint(candidate.absolutePath);
+        const dedupe = options.dryRun
+          ? { duplicateCandidateOf: null }
+          : upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
+
         const rendered = await renderOutputsWithSharp(candidate.absolutePath);
         const jpgSame = await compareExisting(jpgOutputPath, rendered.jpg);
         const webpSame = await compareExisting(webpOutputPath, rendered.webp);
@@ -538,10 +585,36 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
           mode: "written",
         };
 
+        const assetManifest: AssetManifest = {
+          assetId: `${runId}:${candidate.relativePath}`,
+          runId,
+          sourceType,
+          sourceRelativePath: candidate.relativePath,
+          productId,
+          matchedConfidence: toConfidence(match.level),
+          requiresReview: Boolean(dedupe.duplicateCandidateOf),
+          approvalState: "pending",
+          publishState: "staged",
+          outputs: outputPaths,
+          errors: dedupe.duplicateCandidateOf ? [`duplicate_candidate_of:${dedupe.duplicateCandidateOf}`] : [],
+          duplicateCandidateOf: dedupe.duplicateCandidateOf ?? undefined,
+          detectedMetadata: {
+            matchLevel: match.level,
+            matchAlias: match.alias,
+            width: fingerprint.width,
+            height: fingerprint.height,
+            bytes: fingerprint.bytes,
+            sha256: fingerprint.sha256,
+            ext: fingerprint.ext,
+          },
+          productDraft: draftPayload,
+        };
+
         if (jpgSame && webpSame) {
           sourceTrace.mode = "skipped-unchanged";
           report.skippedUnchangedFiles.push(...outputPaths);
           trace.sources.push(sourceTrace);
+          assetManifests.push(assetManifest);
           continue;
         }
 
@@ -549,6 +622,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
           sourceTrace.mode = "would-write";
           report.simulatedFiles.push(...outputPaths.filter((item, idx) => (idx === 0 ? !jpgSame : !webpSame)));
           trace.sources.push(sourceTrace);
+          assetManifests.push(assetManifest);
           continue;
         }
 
@@ -569,6 +643,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
         }
 
         trace.sources.push(sourceTrace);
+        assetManifests.push(assetManifest);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         report.errors.push(`Failed to process ${candidate.relativePath}: ${message}`);
@@ -596,7 +671,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
         continue;
       }
 
-      const targetDir = path.join(normalizedOutput, productId);
+      const targetDir = path.join(normalizedOutputBase, productId);
       await writeProductMetadata(targetDir, trace, options.dryRun, report);
     }
   } finally {
@@ -605,10 +680,34 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     }
   }
 
+  if (!options.dryRun) {
+    await saveAssetIndex(assetIndex);
+  }
+
   report.matchedProducts = Array.from(matchedProductSet.values()).sort((a, b) => a.localeCompare(b));
 
   report.finishedAt = new Date().toISOString();
   await writeReport(normalizedReportPath, report);
 
-  return { report };
+  let runManifest: RunManifest | undefined;
+  if (staged) {
+    runManifest = {
+      runId,
+      sourceType,
+      createdAt: report.startedAt,
+      updatedAt: report.finishedAt,
+      approvalState: "pending",
+      publishState: "staged",
+      requiresReview: true,
+      inputDir: options.inputDir,
+      outputDir: report.outputDir,
+      reportPath: safeRelativeToCwd(normalizedReportPath),
+      assets: assetManifests,
+      errors: report.errors,
+    };
+
+    await writeRunManifest(manifestDir, runManifest);
+  }
+
+  return { report, runManifest, assetManifests };
 }

@@ -1,3 +1,5 @@
+import type { AssetManifest, IngestSourceType, RunManifest } from "./ingest-manifest.ts";
+
 export type ProductDescriptor = {
   id: string;
   name: string;
@@ -56,14 +58,22 @@ export type IngestOptions = {
   productOverride?: string;
   maxImagesPerProduct: number;
   lockDir: string;
+  runId?: string;
+  sourceType?: IngestSourceType;
+  staged?: boolean;
+  stagingDir?: string;
+  manifestDir?: string;
 };
 
 export type IngestReport = {
+  runId: string;
+  sourceType: IngestSourceType;
   startedAt: string;
   finishedAt: string;
   inputDir: string;
   outputDir: string;
   dryRun: boolean;
+  staged: boolean;
   maxImagesPerProduct: number;
   totalFilesScanned: number;
   imageFilesAccepted: number;
@@ -82,4 +92,6 @@ export type IngestReport = {
 
 export type IngestRunResult = {
   report: IngestReport;
+  runManifest?: RunManifest;
+  assetManifests?: AssetManifest[];
 };
