@@ -1908,6 +1908,22 @@ export async function registerRoutes(app: Express) {
           ? session.payment_intent
           : session.payment_intent?.id;
 
+      const existingOrder = await storage.getOrder(orderIdFromAuthority);
+      const isAlreadyFinalized = Boolean(
+        existingOrder &&
+        existingOrder.paymentStatus === "paid" &&
+        (existingOrder.status === "confirmed" || existingOrder.status === "fulfilled")
+      );
+      if (isAlreadyFinalized) {
+        return res.json({
+          success: true,
+          orderId: orderIdFromAuthority,
+          paymentStatus,
+          amountTotalCzk: STRIPE_TO_CZK(session.amount_total),
+          currency: session.currency,
+        });
+      }
+
       await storage.updateOrder(orderIdFromAuthority, {
         paymentStatus: "paid",
         status: "confirmed",

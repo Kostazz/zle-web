@@ -43,6 +43,7 @@ export default function CheckoutSuccess() {
   const params = useMemo(() => new URLSearchParams(searchString), [searchString]);
 
   const sessionId = params.get("session_id");
+  const orderIdParam = params.get("order_id");
   const pmParam = params.get("pm") as PaymentMethod | null;
 
   const lastLocalOrder = useMemo(() => getLastOrder(), []);
@@ -85,12 +86,15 @@ export default function CheckoutSuccess() {
   const timedOutWaiting =
     !!sessionId && !!data && !data.success && data.reason === "not_paid" && pollsRef.current >= MAX_POLLS;
   const hasVerifiedStripeSuccess = Boolean(sessionId && data?.success && data.orderId);
+  const hasConflictRedirectFallback = !sessionId && Boolean(orderIdParam);
 
   const resolvedOrderId = hasVerifiedStripeSuccess
     ? (data as Extract<VerifyResponse, { success: true }>).orderId || null
-    : canUseOfflineFallback
-      ? lastLocalOrder?.id || null
-      : null;
+    : hasConflictRedirectFallback
+      ? orderIdParam
+      : canUseOfflineFallback
+        ? lastLocalOrder?.id || null
+        : null;
 
   const { data: orderSummary, isLoading: isSummaryLoading } = useQuery<OrderSummaryResponse>({
     queryKey: ["/api/checkout/order-summary", resolvedOrderId],
@@ -183,7 +187,7 @@ export default function CheckoutSuccess() {
 
   const shouldRenderCancel =
     (sessionId && (error || !data?.success || !hasVerifiedStripeSuccess)) ||
-    (isStripeLikePaymentMethod && !hasVerifiedStripeSuccess);
+    (!sessionId && isStripeLikePaymentMethod && !hasConflictRedirectFallback && !canUseOfflineFallback);
 
   if (shouldRenderCancel || !resolvedOrderId) {
     return (

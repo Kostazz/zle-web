@@ -167,9 +167,9 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const stateOverlay = window.history.state?.__zleOverlay;
+      const stateOverlay = window.history.state?.__zleOverlay ?? window.history.state?._zleOverlay;
       if (!stateOverlay) {
-        return;
+        console.debug("[overlay] popstate without overlay marker, closing top overlay safely");
       }
 
       isHandlingPopstateRef.current = true;

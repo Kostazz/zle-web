@@ -253,6 +253,28 @@ async function handleCheckoutCompleted(session: any, stripeEventId: string) {
   const orderId = authority.authoritativeOrderId;
   console.log(`Checkout session completed for order: ${orderId}`);
 
+  if (session.payment_status !== 'paid') {
+    console.warn('[webhook] checkout.session.completed ignored because payment is not paid', {
+      orderId,
+      sessionId: session.id,
+      stripeEventId,
+      paymentStatus: session.payment_status,
+    });
+    await db.insert(auditLog).values({
+      action: 'webhook_checkout_not_paid_ignored',
+      entity: 'order',
+      entityId: orderId,
+      severity: 'warning',
+      meta: {
+        source: 'checkout.session.completed',
+        sessionId: session.id,
+        stripeEventId,
+        paymentStatus: session.payment_status,
+      },
+    });
+    return;
+  }
+
   if (await isEventProcessed('stripe', stripeEventId)) {
     console.log(`[webhook] Event ${stripeEventId} already processed, skipping`);
     return;
