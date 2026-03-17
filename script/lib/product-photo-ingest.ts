@@ -398,6 +398,15 @@ function toConfidence(level: MatchLevel | null): number {
   return 0.5;
 }
 
+function findDuplicateCandidate(
+  index: Awaited<ReturnType<typeof loadAssetIndex>>,
+  fingerprint: Awaited<ReturnType<typeof computeAssetFingerprint>>,
+): { duplicateCandidateOf: string | null } {
+  const key = `${fingerprint.sha256}:${fingerprint.bytes}:${fingerprint.width}x${fingerprint.height}:${fingerprint.ext}`;
+  const existing = index.records.find((record) => record.key === key);
+  return { duplicateCandidateOf: existing?.sourceRelativePath ?? null };
+}
+
 export async function runProductPhotoIngest(options: IngestOptions): Promise<IngestRunResult> {
   const now = new Date().toISOString();
   const runId = options.runId ?? createRunId("ingest");
@@ -410,7 +419,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     startedAt: now,
     finishedAt: now,
     inputDir: options.inputDir,
-    outputDir: options.outputDir,
+    outputDir: "",
     dryRun: options.dryRun,
     staged,
     maxImagesPerProduct: options.maxImagesPerProduct,
@@ -435,6 +444,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     : path.resolve(process.cwd(), options.outputDir);
   const normalizedReportPath = path.resolve(process.cwd(), options.reportPath);
   const normalizedLockDir = path.resolve(process.cwd(), options.lockDir);
+  report.outputDir = safeRelativeToCwd(normalizedOutputBase);
 
   if (!fs.existsSync(normalizedInput)) {
     throw new Error(`Input directory does not exist: ${normalizedInput}`);
@@ -563,7 +573,9 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
 
       try {
         const fingerprint = await computeAssetFingerprint(candidate.absolutePath);
-        const dedupe = upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
+        const dedupe = options.dryRun
+          ? findDuplicateCandidate(assetIndex, fingerprint)
+          : upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
 
         const rendered = await renderOutputsWithSharp(candidate.absolutePath);
         const jpgSame = await compareExisting(jpgOutputPath, rendered.jpg);
@@ -677,7 +689,9 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     }
   }
 
-  await saveAssetIndex(assetIndex);
+  if (!options.dryRun) {
+    await saveAssetIndex(assetIndex);
+  }
 
   report.matchedProducts = Array.from(matchedProductSet.values()).sort((a, b) => a.localeCompare(b));
 
