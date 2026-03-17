@@ -28,6 +28,7 @@ type OrderSummaryResponse = {
   success: boolean;
   orderId?: string;
   paymentMethod?: PaymentMethod;
+  paymentStatus?: string | null;
   subtotalCzk?: number | null;
   shippingCzk?: number | null;
   codCzk?: number | null;
@@ -36,6 +37,8 @@ type OrderSummaryResponse = {
 };
 
 export default function CheckoutSuccess() {
+  const STRIPE_LIKE_METHODS: PaymentMethod[] = ["card", "gpay", "applepay"];
+
   const searchString = useSearch();
   const params = useMemo(() => new URLSearchParams(searchString), [searchString]);
 
@@ -117,6 +120,19 @@ export default function CheckoutSuccess() {
     refetchOnWindowFocus: false,
   });
 
+  const effectivePaymentMethod = orderSummary?.paymentMethod ?? pmParam;
+  const isStripeLikePaymentMethod =
+    !!effectivePaymentMethod && STRIPE_LIKE_METHODS.includes(effectivePaymentMethod);
+  const hasVerifiedStripeSuccess = !!sessionId && !!data?.success;
+  const hasPaidOrderState = ["paid", "succeeded", "succeeded_capture", "captured", "complete"].includes(
+    orderSummary?.paymentStatus?.toLowerCase?.() ?? "",
+  );
+  const shouldBlockSuccessWithoutVerification =
+    isStripeLikePaymentMethod && !sessionId && !hasPaidOrderState;
+  const canRenderOfflineSuccess = !isStripeLikePaymentMethod && !!resolvedOrderId;
+  const shouldRenderCancel =
+    (sessionId && (error || !data?.success)) || timedOutWaiting || shouldBlockSuccessWithoutVerification;
+
   if (sessionId && isLoading) {
     return (
       <Layout>
@@ -175,20 +191,6 @@ export default function CheckoutSuccess() {
     );
   }
 
-  if ((sessionId && (error || !data?.success)) || timedOutWaiting) {
-    return (
-      <Layout>
-        <section className="py-10 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-2xl mx-auto">
-              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={pmParam} />
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
   if (isSummaryLoading) {
     return (
       <Layout>
@@ -200,6 +202,20 @@ export default function CheckoutSuccess() {
               </div>
               <h1 className="font-display text-3xl text-white tracking-tight mb-4">NAČÍTÁME OBJEDNÁVKU…</h1>
               <p className="font-sans text-white/60">Chvilku počkej, připravujeme shrnutí.</p>
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  if (shouldRenderCancel) {
+    return (
+      <Layout>
+        <section className="py-10 md:py-16">
+          <div className="container mx-auto px-4">
+            <div className="max-w-2xl mx-auto">
+              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
             </div>
           </div>
         </section>
@@ -221,6 +237,22 @@ export default function CheckoutSuccess() {
     );
   }
 
+  const canRenderSuccess = hasVerifiedStripeSuccess || hasPaidOrderState || canRenderOfflineSuccess;
+
+  if (!canRenderSuccess) {
+    return (
+      <Layout>
+        <section className="py-10 md:py-16">
+          <div className="container mx-auto px-4">
+            <div className="max-w-2xl mx-auto">
+              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
+            </div>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <section className="py-10 md:py-16">
@@ -229,7 +261,7 @@ export default function CheckoutSuccess() {
             <CheckoutResult
               status="success"
               orderId={resolvedOrderId}
-              paymentMethod={orderSummary?.paymentMethod ?? pmParam}
+              paymentMethod={effectivePaymentMethod}
               totals={
                 orderSummary
                   ? {
