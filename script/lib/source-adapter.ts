@@ -17,8 +17,28 @@ export interface SourceAdapter {
 export class LocalFolderSourceAdapter implements SourceAdapter {
   constructor(private readonly rootDir: string) {}
 
+  private async resolveSafePath(relativePath: string): Promise<string> {
+    const rootRealPath = await fs.promises.realpath(this.rootDir);
+    const candidate = path.resolve(this.rootDir, relativePath);
+    const rel = path.relative(rootRealPath, candidate);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Path escapes source root: ${relativePath}`);
+    }
+
+    const parentDir = path.dirname(candidate);
+    if (fs.existsSync(parentDir)) {
+      const parentStat = await fs.promises.lstat(parentDir);
+      if (parentStat.isSymbolicLink()) {
+        throw new Error(`Symlink parent blocked: ${relativePath}`);
+      }
+    }
+
+    return candidate;
+  }
+
   async listItems(prefix = ""): Promise<SourceListItem[]> {
     const startDir = path.join(this.rootDir, prefix);
+    const rootRealPath = await fs.promises.realpath(this.rootDir);
     if (!fs.existsSync(startDir)) {
       return [];
     }
@@ -28,6 +48,15 @@ export class LocalFolderSourceAdapter implements SourceAdapter {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
         const absolutePath = path.join(dir, entry.name);
+        const stat = await fs.promises.lstat(absolutePath);
+        if (stat.isSymbolicLink()) {
+          continue;
+        }
+        const normalizedAbsolutePath = path.resolve(absolutePath);
+        const relToRoot = path.relative(rootRealPath, normalizedAbsolutePath);
+        if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+          continue;
+        }
         const relativePath = path.relative(this.rootDir, absolutePath).split(path.sep).join("/");
         out.push({ relativePath, absolutePath, isDirectory: entry.isDirectory() });
         if (entry.isDirectory()) {
@@ -41,18 +70,33 @@ export class LocalFolderSourceAdapter implements SourceAdapter {
   }
 
   async readFile(relativePath: string): Promise<Buffer> {
-    return fs.promises.readFile(path.join(this.rootDir, relativePath));
+    const target = await this.resolveSafePath(relativePath);
+    const stat = await fs.promises.lstat(target);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Symlink source blocked: ${relativePath}`);
+    }
+    return fs.promises.readFile(target);
   }
 
   async moveItem(fromRelativePath: string, toRelativePath: string): Promise<void> {
-    const from = path.join(this.rootDir, fromRelativePath);
-    const to = path.join(this.rootDir, toRelativePath);
+    const from = await this.resolveSafePath(fromRelativePath);
+    const to = await this.resolveSafePath(toRelativePath);
+    const fromStat = await fs.promises.lstat(from);
+    if (fromStat.isSymbolicLink()) {
+      throw new Error(`Symlink source blocked: ${fromRelativePath}`);
+    }
     await fs.promises.mkdir(path.dirname(to), { recursive: true });
     await fs.promises.rename(from, to);
   }
 
   async writeManifest(relativePath: string, body: unknown): Promise<void> {
-    const targetPath = path.join(this.rootDir, relativePath);
+    const targetPath = await this.resolveSafePath(relativePath);
+    if (fs.existsSync(targetPath)) {
+      const stat = await fs.promises.lstat(targetPath);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`Symlink manifest target blocked: ${relativePath}`);
+      }
+    }
     await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.promises.writeFile(targetPath, JSON.stringify(body, null, 2), "utf8");
   }

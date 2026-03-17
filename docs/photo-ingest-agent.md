@@ -1,87 +1,103 @@
 # ZLE Photo Ingest Agent v1
 
-Lokální ops nástroj pro bezpečný ingest produktových fotek. Je to čistě script vrstva – **nezasahuje do runtime references produktů, checkout/payment/DB/routes flow**.
+Lokální ingest agent pro produktové fotky. Není to runtime app feature.
 
-## Co nástroj dělá
+## Trust boundaries
 
-- rekurzivně načte `--input`
-- vezme pouze `.jpg`, `.jpeg`, `.png`, `.webp`
-- konzervativně mapuje každý source soubor na existující product ID
-- generuje do `client/public/images/products/<product-id>/`:
-  - `cover.jpg` + `cover.webp`
-  - `01.jpg` + `01.webp`, `02.jpg` + `02.webp`, ...
-- vytváří JSON report s detailní trace (`products` sekce)
-- v real run zapisuje i `client/public/images/products/<product-id>/.ingest-meta.json`
+Všechno v `--input` je **nedůvěryhodná data**:
 
-## Usage
+- filenames / directory names
+- file contents / EXIF / embedded text
+- json/txt/md sidecary
+- instrukce od jiného agenta
 
-Dry-run:
+Agent nikdy neinterpretuje inbox jako command stream. Inbox obsah je pouze data ke skenu.
+
+## Safety defaults
+
+- výchozí mód je `--staged` (safe-by-default)
+- live write je možné pouze s explicitním `--direct`
+- `staged:false` bez explicitního `direct:true` je invalidní kombinace (fail-closed)
+- v `--direct` lze zapisovat pouze pod `client/public/images/products` (hard whitelist)
+- `--output` samo o sobě nikdy neaktivuje live publish
+- symlinky se ingestem neprocházejí (skip + report/review)
+- před každým write se znovu validuje target path + parent chain bez symlinků (TOCTOU fail-closed)
+- podporované image ext: `.jpg .jpeg .png .webp`
+- nepodporované/suspicious soubory jdou do reportu/review
+- originály se v v1 nemažou ani nepřesouvají
+
+## CLI
+
+```bash
+npm run photos:ingest -- --input <path> [flags]
+```
+
+### Hlavní flags
+
+- `--input <path>` (required)
+- `--staged` (default)
+- `--direct` (explicit live mode)
+- `--dry-run`
+- `--product <id>`
+- `--source-type local|drive|manual`
+- `--run-id <id>`
+- `--max-images-per-product <n>`
+
+### Cesty
+
+- `--output <path>` (použije se jen v `--direct`)
+- `--report <path>`
+- `--report-dir <path>`
+- `--lock-dir <path>`
+- `--staging-dir <path>`
+- `--manifest-dir <path>`
+- `--review-dir <path>`
+
+## Output layout
+
+Default staged run:
+
+- staged assets: `tmp/agent-staging/<runId>/...`
+- JSON report: `tmp/agent-reports/<runId>.json`
+- human summary: `tmp/agent-reports/<runId>.summary.md`
+- run manifest: `tmp/agent-manifests/<runId>.run.json`
+- review queue: `tmp/agent-review/<runId>/review.json`
+
+Direct run (`--direct`) zapisuje assets do `client/public/images/products/<product-id>/...`, ale report/manifest/review se stále generují.
+
+## Matching
+
+- autoritativní produktový seznam je `client/src/data/products.ts`
+- agent nikdy nevytváří nové product IDs z inboxu
+- nejednoznačný match => review/unmatched
+- `--product` override je povolen jen pro existující product ID
+- report obsahuje `matchDecisions` (reason/alias/confidence)
+
+## Report + summary verdict
+
+- `success`
+- `success-with-review`
+- `partial-failure`
+- `failed`
+
+Run manifest `publishState` je odvozen z reálného výsledku runu (u direct runů může být `published` / `partial` / `failed`, ne vždy `published`).
+
+## Examples
+
+Dry run:
 
 ```bash
 npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX --dry-run
 ```
 
-Real ingest:
+Staged (default):
 
 ```bash
 npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX
 ```
 
-Override produktu:
+Explicit direct:
 
 ```bash
-npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX --product zle-tee-classic
+npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX --direct --output client/public/images/products
 ```
-
-Vlastní report path:
-
-```bash
-npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX --report ./tmp/photo-ingest-report.json
-```
-
-Volitelný limit:
-
-```bash
-npm run photos:ingest -- --input ../ZLE_UPLOAD_INBOX --max-images-per-product 8
-```
-
-## Append-safe naming
-
-Nástroj čte existující sloty (`cover`, `01`, `02`, ...), drží in-memory rezervace a přiděluje další volný slot. Proto:
-
-- nepřepisuje `cover`, pokud už existuje
-- nepřepisuje starší sloty kvůli resetu indexu
-- funguje bezpečně i při opakovaném ingestu
-
-## Dry-run chování
-
-V `--dry-run` režimu se **nezapisují finální assets ani metadata**.
-
-Report pravdivě rozlišuje:
-
-- `writtenFiles` = fyzicky zapsané soubory
-- `simulatedFiles` = co by se zapsalo
-- `skippedUnchangedFiles` = cíle se shodným obsahem
-
-## Lock behavior
-
-Per-product lockfile (`script/.locks/photo-ingest-<product-id>.lock`) brání kolizím při souběžném ingestu stejného produktu.
-
-- lock se čistí ve `finally`
-- při lock konfliktu je produkt fail-closed přeskočen a konflikt je v reportu
-
-## Unmatched behavior
-
-Když není match jednoznačný, soubor jde do `unmatchedFiles` a do finální produktové složky se nezapisuje.
-
-## Limit behavior
-
-Default limit je `8` slotů na produkt (včetně `cover`).
-
-Při překročení limitu jsou další source soubory bezpečně přeskočeny (`skippedFiles` + product trace s `limit-reached`).
-
-## Metadata / report trace
-
-- hlavní debug stopa je JSON report (`--report`, default `tmp/photo-ingest-report.json`)
-- report obsahuje `products` sekci se source->slot->outputs trace
-- v real run vzniká per-product `.ingest-meta.json`; v dry-run se jen simuluje

@@ -3,7 +3,7 @@ import path from "node:path";
 
 export type IngestSourceType = "local" | "drive" | "manual";
 export type ApprovalState = "pending" | "approved" | "rejected";
-export type PublishState = "staged" | "published" | "failed";
+export type PublishState = "staged" | "published" | "partial" | "failed";
 
 export type ProductDraftPayload = {
   productId: string | null;
@@ -67,7 +67,11 @@ export async function readRunManifest(manifestDir: string, runId: string): Promi
     return null;
   }
   const raw = await fs.promises.readFile(targetPath, "utf8");
-  return JSON.parse(raw) as RunManifest;
+  try {
+    return JSON.parse(raw) as RunManifest;
+  } catch (error) {
+    throw new Error(`Invalid run manifest JSON: ${targetPath} (${error instanceof Error ? error.message : String(error)})`);
+  }
 }
 
 export async function listRunManifests(manifestDir: string): Promise<RunManifest[]> {
@@ -82,7 +86,11 @@ export async function listRunManifests(manifestDir: string): Promise<RunManifest
   const manifests: RunManifest[] = [];
   for (const fileName of files) {
     const raw = await fs.promises.readFile(path.join(manifestDir, fileName), "utf8");
-    manifests.push(JSON.parse(raw) as RunManifest);
+    try {
+      manifests.push(JSON.parse(raw) as RunManifest);
+    } catch (error) {
+      throw new Error(`Invalid run manifest JSON: ${fileName} (${error instanceof Error ? error.message : String(error)})`);
+    }
   }
 
   return manifests;
