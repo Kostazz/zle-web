@@ -398,15 +398,6 @@ function toConfidence(level: MatchLevel | null): number {
   return 0.5;
 }
 
-function findDuplicateCandidate(
-  index: Awaited<ReturnType<typeof loadAssetIndex>>,
-  fingerprint: Awaited<ReturnType<typeof computeAssetFingerprint>>,
-): { duplicateCandidateOf: string | null } {
-  const key = `${fingerprint.sha256}:${fingerprint.bytes}:${fingerprint.width}x${fingerprint.height}:${fingerprint.ext}`;
-  const existing = index.records.find((record) => record.key === key);
-  return { duplicateCandidateOf: existing?.sourceRelativePath ?? null };
-}
-
 export async function runProductPhotoIngest(options: IngestOptions): Promise<IngestRunResult> {
   const now = new Date().toISOString();
   const runId = options.runId ?? createRunId("ingest");
@@ -574,7 +565,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
       try {
         const fingerprint = await computeAssetFingerprint(candidate.absolutePath);
         const dedupe = options.dryRun
-          ? findDuplicateCandidate(assetIndex, fingerprint)
+          ? { duplicateCandidateOf: null }
           : upsertAssetFingerprint(assetIndex, fingerprint, candidate.relativePath, runId);
 
         const rendered = await renderOutputsWithSharp(candidate.absolutePath);
