@@ -435,7 +435,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
     : path.resolve(process.cwd(), options.outputDir);
   const normalizedReportPath = path.resolve(process.cwd(), options.reportPath);
   const normalizedLockDir = path.resolve(process.cwd(), options.lockDir);
-  report.outputDir = safeRelativeToCwd(normalizedOutputBase);
+  report.outputDir = staged ? safeRelativeToCwd(normalizedOutputBase) : options.outputDir;
 
   if (!fs.existsSync(normalizedInput)) {
     throw new Error(`Input directory does not exist: ${normalizedInput}`);
@@ -700,7 +700,7 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
       publishState: "staged",
       requiresReview: true,
       inputDir: options.inputDir,
-      outputDir: safeRelativeToCwd(normalizedOutputBase),
+      outputDir: report.outputDir,
       reportPath: safeRelativeToCwd(normalizedReportPath),
       assets: assetManifests,
       errors: report.errors,
