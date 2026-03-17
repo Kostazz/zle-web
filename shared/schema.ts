@@ -119,6 +119,10 @@ export const orders = pgTable("orders", {
   refundReason: text("refund_reason"),
 }, (table) => [
   index("IDX_orders_fingerprint").on(table.fingerprint),
+  index("IDX_orders_stripe_checkout_session").on(table.stripeCheckoutSessionId),
+  uniqueIndex("UQ_orders_stripe_checkout_session_non_null")
+    .on(table.stripeCheckoutSessionId)
+    .where(sql`${table.stripeCheckoutSessionId} IS NOT NULL`),
 ]);
 
 export const insertOrderSchema = createInsertSchema(orders).omit({

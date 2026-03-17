@@ -36,9 +36,9 @@ type OrderSummaryResponse = {
   shippingLabel?: string | null;
 };
 
-export default function CheckoutSuccess() {
-  const STRIPE_LIKE_METHODS: PaymentMethod[] = ["card", "gpay", "applepay"];
+const STRIPE_LIKE_METHODS: PaymentMethod[] = ["card", "gpay", "applepay"];
 
+export default function CheckoutSuccess() {
   const searchString = useSearch();
   const params = useMemo(() => new URLSearchParams(searchString), [searchString]);
 
@@ -47,12 +47,10 @@ export default function CheckoutSuccess() {
   const pmParam = params.get("pm") as PaymentMethod | null;
 
   const lastLocalOrder = useMemo(() => getLastOrder(), []);
-  const fallbackOrderId = orderIdParam || lastLocalOrder?.id || null;
+  const canUseOfflineFallback = pmParam === "cod" || pmParam === "in_person";
 
-  // Polling settings (fail-safe for Stripe redirect timing + webhook delay)
-  const MAX_POLLS = 12; // ~30s if interval 2500ms
+  const MAX_POLLS = 12;
   const DEFAULT_RETRY_MS = 2500;
-
   const pollsRef = useRef(0);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<VerifyResponse>({
@@ -66,48 +64,37 @@ export default function CheckoutSuccess() {
     refetchInterval: (query) => {
       const d = query.state.data as VerifyResponse | undefined;
       if (!d) return false;
-
-      // Done
       if (d.success) return false;
-
-      // Only poll on "not_paid" (common timing issue)
       if (d.reason === "not_paid") {
         if (pollsRef.current >= MAX_POLLS) return false;
         const suggested = typeof d.retryAfterMs === "number" ? d.retryAfterMs : DEFAULT_RETRY_MS;
         return suggested;
       }
-
       return false;
     },
     refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
-    // Count polls while we're in the "not_paid" waiting state.
     if (data && !data.success && data.reason === "not_paid") {
       pollsRef.current += 1;
     }
   }, [data]);
 
   const isWaitingForStripe =
-    !!sessionId &&
-    !!data &&
-    !data.success &&
-    data.reason === "not_paid" &&
-    pollsRef.current < MAX_POLLS;
-
+    !!sessionId && !!data && !data.success && data.reason === "not_paid" && pollsRef.current < MAX_POLLS;
   const timedOutWaiting =
-    !!sessionId &&
-    !!data &&
-    !data.success &&
-    data.reason === "not_paid" &&
-    pollsRef.current >= MAX_POLLS;
+    !!sessionId && !!data && !data.success && data.reason === "not_paid" && pollsRef.current >= MAX_POLLS;
+  const hasVerifiedStripeSuccess = Boolean(sessionId && data?.success && data.orderId);
+  const hasConflictRedirectFallback = !sessionId && Boolean(orderIdParam);
 
-  const resolvedOrderId = sessionId
-    ? data && data.success
-      ? data.orderId || orderIdParam || null
-      : orderIdParam || null
-    : fallbackOrderId;
+  const resolvedOrderId = hasVerifiedStripeSuccess
+    ? (data as Extract<VerifyResponse, { success: true }>).orderId || null
+    : hasConflictRedirectFallback
+      ? orderIdParam
+      : canUseOfflineFallback
+        ? lastLocalOrder?.id || null
+        : null;
 
   const { data: orderSummary, isLoading: isSummaryLoading } = useQuery<OrderSummaryResponse>({
     queryKey: ["/api/checkout/order-summary", resolvedOrderId],
@@ -115,23 +102,13 @@ export default function CheckoutSuccess() {
       const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(resolvedOrderId || ""))}`);
       return response.json();
     },
-    enabled: !!resolvedOrderId,
+    enabled: !!resolvedOrderId && (hasVerifiedStripeSuccess || canUseOfflineFallback),
     retry: false,
     refetchOnWindowFocus: false,
   });
 
   const effectivePaymentMethod = orderSummary?.paymentMethod ?? pmParam;
-  const isStripeLikePaymentMethod =
-    !!effectivePaymentMethod && STRIPE_LIKE_METHODS.includes(effectivePaymentMethod);
-  const hasVerifiedStripeSuccess = !!sessionId && !!data?.success;
-  const hasPaidOrderState = ["paid", "succeeded", "succeeded_capture", "captured", "complete"].includes(
-    orderSummary?.paymentStatus?.toLowerCase?.() ?? "",
-  );
-  const shouldBlockSuccessWithoutVerification =
-    isStripeLikePaymentMethod && !sessionId && !hasPaidOrderState;
-  const canRenderOfflineSuccess = !isStripeLikePaymentMethod && !!resolvedOrderId;
-  const shouldRenderCancel =
-    (sessionId && (error || !data?.success)) || timedOutWaiting || shouldBlockSuccessWithoutVerification;
+  const isStripeLikePaymentMethod = !!effectivePaymentMethod && STRIPE_LIKE_METHODS.includes(effectivePaymentMethod);
 
   if (sessionId && isLoading) {
     return (
@@ -151,7 +128,7 @@ export default function CheckoutSuccess() {
     );
   }
 
-  if (isWaitingForStripe) {
+  if (isWaitingForStripe || timedOutWaiting) {
     return (
       <Layout>
         <section className="py-16 md:py-24">
@@ -160,15 +137,10 @@ export default function CheckoutSuccess() {
               <div className="w-20 h-20 mb-6 rounded-full bg-white/10 flex items-center justify-center mx-auto">
                 <Loader2 className="h-10 w-10 text-white animate-spin" />
               </div>
-              <h1 className="font-display text-3xl text-white tracking-tight mb-4">JEŠTĚ TO DOBÍHÁ…</h1>
+              <h1 className="font-display text-3xl text-white tracking-tight mb-4">PLATBA SE JEŠTĚ ZPRACOVÁVÁ</h1>
               <p className="font-sans text-white/60 mb-6">
-                Platba proběhla. Potvrzení je na cestě.
-                <br />
-                Nikdo nikam neutíká. Hlídáme to.
-                <br />
-                Většinou do ~30 s.
+                Potvrzení od Stripe ještě nedorazilo. Zkus ruční kontrolu nebo se vrať za chvíli.
               </p>
-
               <div className="border border-white/15 bg-black/30 p-4 mb-6 text-left">
                 <div className="font-heading text-xs tracking-wider text-white/60 mb-2">SESSION STAMP</div>
                 <div className="font-mono text-xs text-white/80 break-all">{sessionId}</div>
@@ -176,14 +148,18 @@ export default function CheckoutSuccess() {
                   pokus {Math.min(pollsRef.current, MAX_POLLS)} / {MAX_POLLS} {isFetching ? "· ověřuju…" : ""}
                 </div>
               </div>
-
-              <Button
-                onClick={() => refetch()}
-                className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
-                data-testid="btn-success-manual-refetch"
-              >
-                ZKONTROLOVAT ZNOVU
-              </Button>
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={() => refetch()}
+                  className="font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90"
+                  data-testid="btn-success-manual-refetch"
+                >
+                  ZKONTROLOVAT ZNOVU
+                </Button>
+                <Button asChild variant="outline" className="font-heading text-sm tracking-wider border-white/25 text-white hover:bg-white/10">
+                  <a href="/shop">VRÁTIT SE POZDĚJI</a>
+                </Button>
+              </div>
             </div>
           </div>
         </section>
@@ -209,43 +185,17 @@ export default function CheckoutSuccess() {
     );
   }
 
-  if (shouldRenderCancel) {
+  const shouldRenderCancel =
+    (sessionId && (error || !data?.success || !hasVerifiedStripeSuccess)) ||
+    (!sessionId && isStripeLikePaymentMethod && !hasConflictRedirectFallback && !canUseOfflineFallback);
+
+  if (shouldRenderCancel || !resolvedOrderId) {
     return (
       <Layout>
         <section className="py-10 md:py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-2xl mx-auto">
-              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
-  if (!resolvedOrderId) {
-    return (
-      <Layout>
-        <section className="py-10 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-2xl mx-auto">
-              <CheckoutResult status="cancel" orderId={null} paymentMethod={pmParam} />
-            </div>
-          </div>
-        </section>
-      </Layout>
-    );
-  }
-
-  const canRenderSuccess = hasVerifiedStripeSuccess || hasPaidOrderState || canRenderOfflineSuccess;
-
-  if (!canRenderSuccess) {
-    return (
-      <Layout>
-        <section className="py-10 md:py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-2xl mx-auto">
-              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod} />
+              <CheckoutResult status="cancel" orderId={resolvedOrderId} paymentMethod={effectivePaymentMethod ?? pmParam} />
             </div>
           </div>
         </section>
