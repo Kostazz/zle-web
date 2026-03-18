@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createSourceProductKey } from "./tbs-parser.ts";
 import { safeFetchBinary, type FetchLimits } from "./fetch-utils.ts";
-import { publishFromApprovedManifest } from "./pipeline-runner.final.ts";
+import { publishFromApprovedManifest } from "./pipeline-runner.ts";
 import type { RunManifest } from "./ingest-manifest.ts";
 
 // Root of the live output tree used by the publish pipeline.
