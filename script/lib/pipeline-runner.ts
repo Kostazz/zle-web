@@ -65,6 +65,95 @@ const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images
 // files matching this pattern and having a .jpg or .webp extension are
 // considered managed; all other files are preserved during publish.
 const MANAGED_PUBLISH_FILE_RE = /^(?:cover|\d{2})\.(?:jpg|webp)$/;
+const PUBLISH_TEMP_DIR_PREFIX = ".publish-temp-";
+const PUBLISH_LOCK_FILE_PREFIX = ".publish-lock-";
+
+function encodePublishPathSegment(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function getProductLockPath(productId: string): string {
+  return path.join(LIVE_OUTPUT_ROOT, `${PUBLISH_LOCK_FILE_PREFIX}${encodePublishPathSegment(productId)}.lock`);
+}
+
+function createPublishTempDirName(productId: string, publishRunId: string): string {
+  return `${PUBLISH_TEMP_DIR_PREFIX}${encodePublishPathSegment(productId)}--${publishRunId}--${Date.now()}`;
+}
+
+function getProductIdFromTempDirName(dirName: string): string | null {
+  if (!dirName.startsWith(PUBLISH_TEMP_DIR_PREFIX)) return null;
+  const encodedProductId = dirName.slice(PUBLISH_TEMP_DIR_PREFIX.length).split("--", 1)[0];
+  if (!encodedProductId) return null;
+  try {
+    return decodeURIComponent(encodedProductId);
+  } catch {
+    return null;
+  }
+}
+
+async function acquireProductPublishLock(
+  productId: string,
+  publishRunId: string,
+): Promise<{ lockPath: string; release: () => Promise<void> }> {
+  const lockPath = getProductLockPath(productId);
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(lockPath, "wx");
+    await handle.writeFile(JSON.stringify({ productId, publishRunId, createdAt: new Date().toISOString() }));
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+      throw new Error(`Publish lock already held for product ${productId}`);
+    }
+    throw error;
+  }
+
+  return {
+    lockPath,
+    release: async () => {
+      await handle?.close().catch(() => undefined);
+      handle = null;
+      await fs.promises.rm(lockPath, { force: true });
+    },
+  };
+}
+
+async function cleanupStalePublishTempDirs(): Promise<void> {
+  await fs.promises.mkdir(LIVE_OUTPUT_ROOT, { recursive: true });
+  const cleanupErrors: string[] = [];
+  for (const entry of await fs.promises.readdir(LIVE_OUTPUT_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const productId = getProductIdFromTempDirName(entry.name);
+    if (!productId) continue;
+    const lockPath = getProductLockPath(productId);
+    if (fs.existsSync(lockPath)) continue;
+    const tempDirPath = path.join(LIVE_OUTPUT_ROOT, entry.name);
+    try {
+      await fs.promises.rm(tempDirPath, { recursive: true, force: true });
+    } catch (error) {
+      cleanupErrors.push(`${path.relative(process.cwd(), tempDirPath).split(path.sep).join("/")}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (cleanupErrors.length > 0) {
+    throw new Error(`Failed to clean stale publish temp directories: ${cleanupErrors.join('; ')}`);
+  }
+}
+
+type PublishTestHooks = {
+  afterProductLockAcquired?: (productId: string) => Promise<void> | void;
+};
+
+let publishTestHooks: PublishTestHooks = {};
+
+export function __setPublishTestHooks(hooks: PublishTestHooks): void {
+  publishTestHooks = hooks;
+}
+
+export const __publishHardeningTestUtils = {
+  LIVE_OUTPUT_ROOT,
+  PUBLISH_TEMP_DIR_PREFIX,
+  createPublishTempDirName,
+};
 
 /**
  * Normalize a staged output path into a flat filename under the live
@@ -297,6 +386,7 @@ export async function publishFromApprovedManifest(
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
   const publishedAssets: PublishAssetResult[] = [];
+  await cleanupStalePublishTempDirs();
   // Group assets by product ID so that all outputs for a product are handled
   // together.
   const assetsByProduct = new Map<string, RunManifest["assets"]>();
@@ -351,11 +441,13 @@ export async function publishFromApprovedManifest(
 
     // If validation succeeded, attempt to perform the publish.
     if (!productError) {
-      const tempDir = path.join(
-        LIVE_OUTPUT_ROOT,
-        `.publish-${publishRunId}-${productId}-${Date.now()}`,
-      );
+      const tempDir = path.join(LIVE_OUTPUT_ROOT, createPublishTempDirName(productId, publishRunId));
+      let releaseLock: (() => Promise<void>) | null = null;
       try {
+        const productLock = await acquireProductPublishLock(productId, publishRunId);
+        releaseLock = productLock.release;
+        await publishTestHooks.afterProductLockAcquired?.(productId);
+        await cleanupStalePublishTempDirs();
         await fs.promises.rm(tempDir, { recursive: true, force: true });
         await fs.promises.mkdir(tempDir, { recursive: true });
         // Copy current live files into the temp directory.
@@ -378,6 +470,23 @@ export async function publishFromApprovedManifest(
         await publishProductSwap(productDir, tempDir, publishRunId);
       } catch (error) {
         productError = error instanceof Error ? error.message : String(error);
+      } finally {
+        try {
+          await fs.promises.rm(tempDir, { recursive: true, force: true });
+        } catch (error) {
+          if (!productError) {
+            productError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        if (releaseLock) {
+          try {
+            await releaseLock();
+          } catch (error) {
+            if (!productError) {
+              productError = error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
       }
     }
 

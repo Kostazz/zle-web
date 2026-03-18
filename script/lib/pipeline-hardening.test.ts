@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createSourceProductKey } from "./tbs-parser.ts";
 import { safeFetchBinary, type FetchLimits } from "./fetch-utils.ts";
-import { publishFromApprovedManifest } from "./pipeline-runner.ts";
+import { __publishHardeningTestUtils, __setPublishTestHooks, publishFromApprovedManifest } from "./pipeline-runner.ts";
 import type { RunManifest } from "./ingest-manifest.ts";
 
 // Root of the live output tree used by the publish pipeline.
@@ -743,6 +743,172 @@ test("publish reports anomalous live target state after failed swap", async () =
       recursive: true,
       force: true,
     });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("concurrent publish for the same product fails closed with a clear lock error", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-same-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunIdA = `${runId}-publish-a`;
+  const publishRunIdB = `${runId}-publish-b`;
+  const productId = `zle-lock-same-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+  let releaseFirstPublish: (() => void) | null = null;
+  const firstPublishHoldingLock = new Promise<void>((resolve) => {
+    releaseFirstPublish = resolve;
+  });
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    const approvedPath = path.join(stagedDir, "cover.jpg");
+    await fs.promises.writeFile(approvedPath, "approved", "utf8");
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [{
+        assetId: `${runId}:asset-1`, runId, sourceType: "manual", sourceRelativePath: "asset-1.jpg", productId,
+        matchedConfidence: 1, requiresReview: false, approvalState: "approved", publishState: "staged",
+        outputs: [path.relative(process.cwd(), approvedPath).split(path.sep).join("/")], errors: [],
+      }],
+      errors: [],
+    };
+
+    __setPublishTestHooks({
+      afterProductLockAcquired: async (lockedProductId) => {
+        if (lockedProductId === productId) {
+          await firstPublishHoldingLock;
+        }
+      },
+    });
+    const firstPublishPromise = publishFromApprovedManifest(runId, publishRunIdA, manifest);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    __setPublishTestHooks({});
+    const secondPublish = await publishFromApprovedManifest(runId, publishRunIdB, manifest);
+    releaseFirstPublish?.();
+    const firstPublish = await firstPublishPromise;
+
+    const secondReport = JSON.parse(await fs.promises.readFile(secondPublish.reportPath, "utf8")) as { success: boolean; errors: string[] };
+    const firstReport = JSON.parse(await fs.promises.readFile(firstPublish.reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(firstReport.success, true);
+    assert.equal(secondReport.success, false);
+    assert.match(secondReport.errors[0] ?? "", /Publish lock already held for product/);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "approved");
+  } finally {
+    __setPublishTestHooks({});
+    releaseFirstPublish?.();
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("different product publishes can proceed independently", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-different-"));
+  const runId = `r-${Date.now()}`;
+  const productA = `zle-lock-a-${Date.now()}`;
+  const productB = `zle-lock-b-${Date.now()}`;
+  const stageRoot = path.join(tempRoot, "stage");
+  try {
+    for (const [productId, contents] of [[productA, "alpha"], [productB, "beta"]] as const) {
+      const stagedDir = path.join(stageRoot, productId);
+      await fs.promises.mkdir(stagedDir, { recursive: true });
+      await fs.promises.writeFile(path.join(stagedDir, "cover.jpg"), contents, "utf8");
+    }
+    const createManifest = (productId: string, value: string): RunManifest => ({
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: stageRoot,
+      reportPath: "x",
+      assets: [{
+        assetId: `${productId}:asset-1`, runId, sourceType: "manual", sourceRelativePath: `${productId}.jpg`, productId,
+        matchedConfidence: 1, requiresReview: false, approvalState: "approved", publishState: "staged",
+        outputs: [path.relative(process.cwd(), path.join(stageRoot, productId, "cover.jpg")).split(path.sep).join("/")], errors: [],
+      }],
+      errors: [],
+    });
+    const [resultA, resultB] = await Promise.all([
+      publishFromApprovedManifest(runId, `${runId}-publish-a`, createManifest(productA, "alpha")),
+      publishFromApprovedManifest(runId, `${runId}-publish-b`, createManifest(productB, "beta")),
+    ]);
+    for (const result of [resultA, resultB]) {
+      const report = JSON.parse(await fs.promises.readFile(result.reportPath, "utf8")) as { success: boolean; errors: string[] };
+      assert.equal(report.success, true);
+      assert.deepEqual(report.errors, []);
+    }
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productA, "cover.jpg"), "utf8"), "alpha");
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productB, "cover.jpg"), "utf8"), "beta");
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productA), { recursive: true, force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productB), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("stale publish temp directories are cleaned safely before publish", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-stale-temp-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-stale-temp-${Date.now()}`;
+  const stageRoot = path.join(tempRoot, "stage");
+  const stagedDir = path.join(stageRoot, productId);
+  const staleTempDir = path.join(
+    __publishHardeningTestUtils.LIVE_OUTPUT_ROOT,
+    __publishHardeningTestUtils.createPublishTempDirName(productId, "orphaned-run"),
+  );
+  const liveDir = path.join(LIVE_ROOT, productId);
+  const backupDir = `${liveDir}.backup-keep`;
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.writeFile(path.join(stagedDir, "cover.jpg"), "fresh", "utf8");
+    await fs.promises.mkdir(staleTempDir, { recursive: true });
+    await fs.promises.writeFile(path.join(staleTempDir, "cover.jpg"), "stale-temp", "utf8");
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    await fs.promises.writeFile(path.join(liveDir, "custom.txt"), "live", "utf8");
+    await fs.promises.mkdir(backupDir, { recursive: true });
+    await fs.promises.writeFile(path.join(backupDir, "cover.jpg"), "backup", "utf8");
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: stageRoot,
+      reportPath: "x",
+      assets: [{
+        assetId: `${runId}:asset-1`, runId, sourceType: "manual", sourceRelativePath: "asset-1.jpg", productId,
+        matchedConfidence: 1, requiresReview: false, approvalState: "approved", publishState: "staged",
+        outputs: [path.relative(process.cwd(), path.join(stagedDir, "cover.jpg")).split(path.sep).join("/")], errors: [],
+      }],
+      errors: [],
+    };
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean };
+    assert.equal(report.success, true);
+    assert.equal(fs.existsSync(staleTempDir), false);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "fresh");
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "custom.txt"), "utf8"), "live");
+    assert.equal(await fs.promises.readFile(path.join(backupDir, "cover.jpg"), "utf8"), "backup");
+  } finally {
+    await fs.promises.rm(staleTempDir, { recursive: true, force: true });
+    await fs.promises.rm(liveDir, { recursive: true, force: true });
+    await fs.promises.rm(backupDir, { recursive: true, force: true });
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });
