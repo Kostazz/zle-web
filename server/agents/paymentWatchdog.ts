@@ -2,6 +2,7 @@ import { asc } from "drizzle-orm";
 
 import { db } from "../db";
 import { orders } from "../../shared/schema";
+import { persistAgentReport } from "./core/signal";
 
 type WatchdogIssueType =
   | "ghost_order"
@@ -147,7 +148,7 @@ export async function runPaymentWatchdog(): Promise<WatchdogReport> {
     return left.ageMinutes - right.ageMinutes;
   });
 
-  return {
+  const report: WatchdogReport = {
     agent: "payment_watchdog",
     timestamp: now.toISOString(),
     status: getReportStatus(issues.length),
@@ -159,6 +160,14 @@ export async function runPaymentWatchdog(): Promise<WatchdogReport> {
       issueCountsByType,
     },
   };
+
+  try {
+    await persistAgentReport(report);
+  } catch (error) {
+    console.error("[payment_watchdog] Failed to persist watchdog report:", error);
+  }
+
+  return report;
 }
 
 function isMainModule() {
