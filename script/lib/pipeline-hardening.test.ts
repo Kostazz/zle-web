@@ -117,6 +117,77 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
   }
 });
 
+
+
+test("publish replaces stale managed outputs but preserves unrelated live files", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-preserve-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-preserve-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.mkdir(path.join(liveDir, "notes"), { recursive: true });
+
+    const nextCoverPath = path.join(stagedDir, "cover.jpg");
+    const nextSlotPath = path.join(stagedDir, "01.webp");
+    await fs.promises.writeFile(nextCoverPath, "new-cover", "utf8");
+    await fs.promises.writeFile(nextSlotPath, "new-slot", "utf8");
+
+    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "old-cover", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "02.jpg"), "stale-managed", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "custom.txt"), "keep-me", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "notes", "readme.txt"), "nested-keep", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [
+            path.relative(process.cwd(), nextCoverPath).split(path.sep).join("/"),
+            path.relative(process.cwd(), nextSlotPath).split(path.sep).join("/"),
+          ],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; publishedOutputs: number };
+    assert.equal(report.success, true);
+    assert.equal(report.publishedOutputs, 2);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "new-cover");
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "01.webp"), "utf8"), "new-slot");
+    assert.equal(fs.existsSync(path.join(liveDir, "02.jpg")), false);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "custom.txt"), "utf8"), "keep-me");
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "notes", "readme.txt"), "utf8"), "nested-keep");
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("publish fails closed when staged outputs collapse to the same flat live target", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-conflict-"));
   const runId = `r-${Date.now()}`;

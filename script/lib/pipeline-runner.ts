@@ -40,6 +40,7 @@ export type PipelineArgs = {
 };
 
 const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
+const MANAGED_PUBLISH_FILE_RE = /^(?:cover|\d{2})\.(?:jpg|webp)$/;
 
 function normalizePublishFileName(sourceOutput: string, sourcePath: string, productId: string, outputRoot: string): string {
   const outputRootPath = resolveFromCwd(outputRoot);
@@ -58,6 +59,26 @@ function normalizePublishFileName(sourceOutput: string, sourcePath: string, prod
   }
 
   return normalizedRelative;
+}
+
+function isManagedPublishFileName(fileName: string): boolean {
+  return MANAGED_PUBLISH_FILE_RE.test(fileName);
+}
+
+async function stageExistingLiveFiles(productDir: string, tempDir: string): Promise<void> {
+  if (!fs.existsSync(productDir)) return;
+  await fs.promises.cp(productDir, tempDir, { recursive: true, force: true });
+}
+
+async function removeStaleManagedFiles(tempDir: string, nextTargetNames: Set<string>): Promise<void> {
+  if (!fs.existsSync(tempDir)) return;
+
+  for (const entry of await fs.promises.readdir(tempDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (!isManagedPublishFileName(entry.name)) continue;
+    if (nextTargetNames.has(entry.name)) continue;
+    await fs.promises.rm(path.join(tempDir, entry.name), { force: true });
+  }
 }
 
 async function publishProductSwap(productDir: string, tempDir: string, publishRunId: string): Promise<void> {
@@ -221,7 +242,10 @@ export async function publishFromApprovedManifest(runId: string, publishRunId: s
     const tempDir = path.join(LIVE_OUTPUT_ROOT, `.publish-${publishRunId}-${asset.productId}-${Date.now()}`);
 
     try {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
       await fs.promises.mkdir(tempDir, { recursive: true });
+      await stageExistingLiveFiles(productDir, tempDir);
+      await removeStaleManagedFiles(tempDir, new Set(targetNames.keys()));
 
       for (const { sourcePath, targetName } of stagedCopies) {
         const targetPath = path.join(tempDir, targetName);
