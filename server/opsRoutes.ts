@@ -9,6 +9,7 @@ import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emai
 import { getCatalogIngestRun, listCatalogIngestRuns, setCatalogRunApproval } from "./services/catalogIngestService.ts";
 import { publishCatalogRun } from "./services/catalogPublishService.ts";
 import { runPaymentWatchdog } from "./agents/paymentWatchdog";
+import { listAgentReports } from "./agents/core/signal";
 
 function requireOpsToken(req: Request, res: Response): boolean {
   const expected = process.env.OPS_TOKEN;
@@ -157,6 +158,28 @@ async function isOrderFinalizationCompleted(orderId: string) {
 }
 
 export function registerOpsRoutes(app: Express) {
+  app.get("/api/ops/agent-alerts", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+
+    try {
+      const limit = Math.min(parseLimit(req.query.limit), 50);
+      const rows = await listAgentReports(limit);
+      return res.json({
+        items: rows.map((row) => ({
+          id: row.id,
+          agent: row.agent,
+          status: row.status,
+          summary: row.summary,
+          issuesJson: row.issuesJson,
+          metricsJson: row.metricsJson,
+          createdAt: row.createdAt,
+        })),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "agent_alerts_failed", message: err?.message || "unknown" });
+    }
+  });
+
   app.get("/api/ops/agent/payment", async (req, res) => {
     if (!requireOpsToken(req, res)) return;
 

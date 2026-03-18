@@ -292,6 +292,22 @@ export const auditLog = pgTable("audit_log", {
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type InsertAuditLogEntry = typeof auditLog.$inferInsert;
 
+export const agentReports = pgTable("agent_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agent: text("agent").notNull(),
+  status: text("status").notNull(),
+  summary: text("summary").notNull(),
+  issuesJson: text("issues_json").notNull(),
+  metricsJson: text("metrics_json").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_agent_reports_created_at").on(table.createdAt),
+  index("IDX_agent_reports_agent_created_at").on(table.agent, table.createdAt),
+]);
+
+export type AgentReport = typeof agentReports.$inferSelect;
+export type InsertAgentReport = typeof agentReports.$inferInsert;
+
 export const gdprRetention = pgTable("gdpr_retention", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   dataType: text("data_type").notNull(),
