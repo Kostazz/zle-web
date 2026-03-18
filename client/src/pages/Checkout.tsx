@@ -483,13 +483,24 @@ export default function Checkout() {
 
       if (error.status === 409 && error.payload?.code === "ORDER_STATE_CONFLICT") {
         const orderId = error.payload?.orderId;
+        const conflictState = error.payload?.conflictState;
+
+        if (conflictState === "already_paid") {
+          toast({
+            title: "Už zaplaceno",
+            description: "Tohle už je zaplacený. Mrkni na potvrzení.",
+          });
+          window.location.href = orderId
+            ? `/checkout/success?order_id=${encodeURIComponent(String(orderId))}`
+            : "/checkout/success";
+          return;
+        }
+
         toast({
-          title: "Už zaplaceno",
-          description: "Tohle už je zaplacený. Mrkni na potvrzení.",
+          title: "Checkout se ještě zpracovává",
+          description: "Platba nebo checkout už právě běží. Počkej prosím chvíli a zkus to znovu později.",
+          variant: "destructive",
         });
-        window.location.href = orderId
-          ? `/checkout/success?order_id=${encodeURIComponent(String(orderId))}`
-          : "/checkout/success";
         return;
       }
       toast({
