@@ -119,6 +119,92 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
 
 
 
+
+
+test("publish groups multiple approved assets for one product into one swap", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-grouped-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-grouped-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.mkdir(liveDir, { recursive: true });
+
+    const coverPath = path.join(stagedDir, "cover.jpg");
+    const slotPath = path.join(stagedDir, "01.webp");
+    await fs.promises.writeFile(coverPath, "new-cover", "utf8");
+    await fs.promises.writeFile(slotPath, "new-slot", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "02.jpg"), "stale-managed", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "custom.txt"), "keep-me", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-cover`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-cover.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), coverPath).split(path.sep).join("/")],
+          errors: [],
+        },
+        {
+          assetId: `${runId}:asset-slot`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-slot.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), slotPath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath, manifestPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; publishedOutputs: number };
+    const publishManifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf8")) as { assets: Array<{ assetId: string; publishedOutputs: string[] }> };
+
+    assert.equal(report.success, true);
+    assert.equal(report.publishedOutputs, 2);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "new-cover");
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "01.webp"), "utf8"), "new-slot");
+    assert.equal(fs.existsSync(path.join(liveDir, "02.jpg")), false);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "custom.txt"), "utf8"), "keep-me");
+    assert.deepEqual(
+      publishManifest.assets.map((asset) => [asset.assetId, asset.publishedOutputs.length]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+      [
+        [`${runId}:asset-cover`, 1],
+        [`${runId}:asset-slot`, 1],
+      ],
+    );
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("publish replaces stale managed outputs but preserves unrelated live files", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-preserve-"));
   const runId = `r-${Date.now()}`;
@@ -182,6 +268,155 @@ test("publish replaces stale managed outputs but preserves unrelated live files"
     assert.equal(fs.existsSync(path.join(liveDir, "02.jpg")), false);
     assert.equal(await fs.promises.readFile(path.join(liveDir, "custom.txt"), "utf8"), "keep-me");
     assert.equal(await fs.promises.readFile(path.join(liveDir, "notes", "readme.txt"), "utf8"), "nested-keep");
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+
+
+test("publish rejects per-product target conflicts across multiple assets", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-cross-asset-conflict-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-cross-conflict-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+  const duplicatePath = path.join(stagedDir, "cover.jpg");
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.writeFile(duplicatePath, "cover", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-a`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-a.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), duplicatePath).split(path.sep).join("/")],
+          errors: [],
+        },
+        {
+          assetId: `${runId}:asset-b`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-b.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), duplicatePath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath, manifestPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[]; publishedOutputs: number };
+    const publishManifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf8")) as { assets: Array<{ publishedOutputs: string[] }> };
+
+    assert.equal(report.success, false);
+    assert.equal(report.publishedOutputs, 0);
+    assert.match(report.errors[0] ?? "", /Conflicting staged outputs/);
+    assert.deepEqual(publishManifest.assets.map((asset) => asset.publishedOutputs.length), [0, 0]);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+
+test("missing staged output blocks the whole product publish", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-missing-output-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-missing-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.mkdir(liveDir, { recursive: true });
+
+    const coverPath = path.join(stagedDir, "cover.jpg");
+    const missingPath = path.join(stagedDir, "01.webp");
+    await fs.promises.writeFile(coverPath, "new-cover", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "old-cover", "utf8");
+    await fs.promises.writeFile(path.join(liveDir, "custom.txt"), "keep-me", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-cover`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-cover.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), coverPath).split(path.sep).join("/")],
+          errors: [],
+        },
+        {
+          assetId: `${runId}:asset-missing`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-missing.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), missingPath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath, manifestPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[]; publishedOutputs: number };
+    const publishManifest = JSON.parse(await fs.promises.readFile(manifestPath, "utf8")) as { assets: Array<{ publishedOutputs: string[] }> };
+
+    assert.equal(report.success, false);
+    assert.equal(report.publishedOutputs, 0);
+    assert.match(report.errors[0] ?? "", /Missing staged output/);
+    assert.deepEqual(publishManifest.assets.map((asset) => asset.publishedOutputs.length), [0, 0]);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "old-cover");
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "custom.txt"), "utf8"), "keep-me");
+    assert.equal(fs.existsSync(path.join(liveDir, "01.webp")), false);
   } finally {
     await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
     await fs.promises.rm(tempRoot, { recursive: true, force: true });

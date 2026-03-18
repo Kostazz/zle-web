@@ -197,73 +197,99 @@ export async function publishFromApprovedManifest(runId: string, publishRunId: s
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
   const publishedAssets: PublishAssetResult[] = [];
+  const assetsByProduct = new Map<string, RunManifest["assets"]>();
 
   for (const asset of stagedManifest.assets) {
     if (!asset.productId) {
       errors.push(`Missing productId for ${asset.assetId}`);
-      continue;
-    }
-
-    const productDir = path.join(LIVE_OUTPUT_ROOT, asset.productId);
-    const targetNames = new Map<string, string>();
-    const copiedOutputs: string[] = [];
-    const stagedCopies: Array<{ sourcePath: string; targetName: string }> = [];
-
-    try {
-      for (const sourceOutput of asset.outputs) {
-        const sourcePath = resolveFromCwd(sourceOutput);
-        if (!fs.existsSync(sourcePath)) {
-          errors.push(`Missing staged output: ${sourceOutput}`);
-          continue;
-        }
-
-        const targetName = normalizePublishFileName(sourceOutput, sourcePath, asset.productId, stagedManifest.outputDir);
-        const existingSource = targetNames.get(targetName);
-        if (existingSource) {
-          throw new Error(
-            `Conflicting staged outputs for ${asset.productId}: ${existingSource} and ${sourceOutput} both map to ${targetName}`,
-          );
-        }
-
-        targetNames.set(targetName, sourceOutput);
-        stagedCopies.push({ sourcePath, targetName });
-      }
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
       publishedAssets.push({
         assetId: asset.assetId,
-        productId: asset.productId,
+        productId: "",
         stagedOutputs: [...asset.outputs],
-        publishedOutputs: copiedOutputs,
+        publishedOutputs: [],
       });
       continue;
     }
 
-    const tempDir = path.join(LIVE_OUTPUT_ROOT, `.publish-${publishRunId}-${asset.productId}-${Date.now()}`);
+    const grouped = assetsByProduct.get(asset.productId) ?? [];
+    grouped.push(asset);
+    assetsByProduct.set(asset.productId, grouped);
+  }
 
-    try {
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-      await fs.promises.mkdir(tempDir, { recursive: true });
-      await stageExistingLiveFiles(productDir, tempDir);
-      await removeStaleManagedFiles(tempDir, new Set(targetNames.keys()));
+  for (const [productId, productAssets] of Array.from(assetsByProduct.entries())) {
+    const productDir = path.join(LIVE_OUTPUT_ROOT, productId);
+    const targetNames = new Map<string, string>();
+    const assetPublishedOutputs = new Map<string, string[]>();
+    const stagedCopies: Array<{ sourcePath: string; targetName: string; assetId: string }> = [];
+    let productError: string | null = null;
 
-      for (const { sourcePath, targetName } of stagedCopies) {
-        const targetPath = path.join(tempDir, targetName);
-        await fs.promises.copyFile(sourcePath, targetPath);
-        copiedOutputs.push(path.relative(process.cwd(), path.join(productDir, targetName)).split(path.sep).join("/"));
+    for (const asset of productAssets) {
+      assetPublishedOutputs.set(asset.assetId, []);
+
+      try {
+        for (const sourceOutput of asset.outputs) {
+          const sourcePath = resolveFromCwd(sourceOutput);
+          if (!fs.existsSync(sourcePath)) {
+            throw new Error(`Missing staged output: ${sourceOutput}`);
+          }
+
+          const targetName = normalizePublishFileName(sourceOutput, sourcePath, productId, stagedManifest.outputDir);
+          const existingSource = targetNames.get(targetName);
+          if (existingSource) {
+            throw new Error(`Conflicting staged outputs for ${productId}: ${existingSource} and ${sourceOutput} both map to ${targetName}`);
+          }
+
+          targetNames.set(targetName, sourceOutput);
+          stagedCopies.push({ sourcePath, targetName, assetId: asset.assetId });
+        }
+      } catch (error) {
+        productError = error instanceof Error ? error.message : String(error);
+        break;
       }
-
-      await publishProductSwap(productDir, tempDir, publishRunId);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
     }
 
-    publishedAssets.push({
-      assetId: asset.assetId,
-      productId: asset.productId,
-      stagedOutputs: [...asset.outputs],
-      publishedOutputs: copiedOutputs,
-    });
+    if (!productError) {
+      const tempDir = path.join(LIVE_OUTPUT_ROOT, `.publish-${publishRunId}-${productId}-${Date.now()}`);
+
+      try {
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+        await fs.promises.mkdir(tempDir, { recursive: true });
+        await stageExistingLiveFiles(productDir, tempDir);
+        await removeStaleManagedFiles(tempDir, new Set(targetNames.keys()));
+
+        for (const { sourcePath, targetName, assetId } of stagedCopies) {
+          const targetPath = path.join(tempDir, targetName);
+          await fs.promises.copyFile(sourcePath, targetPath);
+          assetPublishedOutputs.get(assetId)?.push(path.relative(process.cwd(), path.join(productDir, targetName)).split(path.sep).join("/"));
+        }
+
+        await publishProductSwap(productDir, tempDir, publishRunId);
+      } catch (error) {
+        productError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    if (productError) {
+      errors.push(productError);
+      for (const asset of productAssets) {
+        publishedAssets.push({
+          assetId: asset.assetId,
+          productId,
+          stagedOutputs: [...asset.outputs],
+          publishedOutputs: [],
+        });
+      }
+      continue;
+    }
+
+    for (const asset of productAssets) {
+      publishedAssets.push({
+        assetId: asset.assetId,
+        productId,
+        stagedOutputs: [...asset.outputs],
+        publishedOutputs: assetPublishedOutputs.get(asset.assetId) ?? [],
+      });
+    }
   }
 
   const expectedOutputs = stagedManifest.assets.reduce((acc, asset) => acc + asset.outputs.length, 0);
