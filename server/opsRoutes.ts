@@ -8,6 +8,7 @@ import { deductStockOnceWithOrderLock } from "./webhookHandlers";
 import { sendFulfillmentNewOrderEmail, sendOrderConfirmationEmail } from "./emailService";
 import { getCatalogIngestRun, listCatalogIngestRuns, setCatalogRunApproval } from "./services/catalogIngestService.ts";
 import { publishCatalogRun } from "./services/catalogPublishService.ts";
+import { runPaymentWatchdog } from "./agents/paymentWatchdog";
 
 function requireOpsToken(req: Request, res: Response): boolean {
   const expected = process.env.OPS_TOKEN;
@@ -156,6 +157,17 @@ async function isOrderFinalizationCompleted(orderId: string) {
 }
 
 export function registerOpsRoutes(app: Express) {
+  app.get("/api/ops/agent/payment", async (req, res) => {
+    if (!requireOpsToken(req, res)) return;
+
+    try {
+      const report = await runPaymentWatchdog();
+      return res.json(report);
+    } catch (err: any) {
+      return res.status(500).json({ error: "payment_watchdog_failed", message: err?.message || "unknown" });
+    }
+  });
+
   app.get("/api/ops/summary", async (req, res) => {
     if (!requireOpsToken(req, res)) return;
 
