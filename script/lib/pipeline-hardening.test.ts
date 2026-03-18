@@ -11,6 +11,70 @@ import type { RunManifest } from "./ingest-manifest.ts";
 // Root of the live output tree used by the publish pipeline.
 const LIVE_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
 
+async function createPublishManifest(
+  tempRoot: string,
+  runId: string,
+  productId: string,
+  fileEntries: Array<[string, string]>,
+): Promise<RunManifest> {
+  const stageRoot = path.join(tempRoot, "stage");
+  const stagedDir = path.join(stageRoot, productId);
+  await fs.promises.mkdir(stagedDir, { recursive: true });
+  const outputs: string[] = [];
+  for (const [fileName, contents] of fileEntries) {
+    const filePath = path.join(stagedDir, fileName);
+    await fs.promises.writeFile(filePath, contents, "utf8");
+    outputs.push(path.relative(process.cwd(), filePath).split(path.sep).join("/"));
+  }
+  return {
+    runId,
+    sourceType: "manual",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    approvalState: "approved",
+    publishState: "staged",
+    requiresReview: false,
+    inputDir: "x",
+    outputDir: stageRoot,
+    reportPath: "x",
+    assets: [
+      {
+        assetId: `${runId}:asset-1`,
+        runId,
+        sourceType: "manual",
+        sourceRelativePath: "asset-1.jpg",
+        productId,
+        matchedConfidence: 1,
+        requiresReview: false,
+        approvalState: "approved",
+        publishState: "staged",
+        outputs,
+        errors: [],
+      },
+    ],
+    errors: [],
+  };
+}
+
+async function writePublishLockFile(productId: string, metadata: Record<string, unknown> | string): Promise<string> {
+  const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
+  await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
+  await fs.promises.writeFile(lockPath, typeof metadata === "string" ? metadata : JSON.stringify(metadata), "utf8");
+  return lockPath;
+}
+
+function createLockMetadata(productId: string, publishRunId: string, createdAt: string): Record<string, unknown> {
+  return {
+    productId,
+    publishRunId,
+    sourceRunId: publishRunId.replace(/-publish(?:-.+)?$/, "") || publishRunId,
+    createdAt,
+    hostname: os.hostname(),
+    pid: process.pid,
+  };
+}
+
+
 test("source product key stays stable when URL/content fields change but slug is same", () => {
   const keyA = createSourceProductKey("mikina-zle-classic");
   const keyB = createSourceProductKey("mikina-zle-classic");
@@ -800,7 +864,7 @@ test("concurrent publish for the same product fails closed with a clear lock err
     const firstReport = JSON.parse(await fs.promises.readFile(firstPublish.reportPath, "utf8")) as { success: boolean; errors: string[] };
     assert.equal(firstReport.success, true);
     assert.equal(secondReport.success, false);
-    assert.match(secondReport.errors[0] ?? "", /Publish lock already held for product/);
+    assert.match(secondReport.errors[0] ?? "", /Publish lock actively held for product/);
     assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "approved");
   } finally {
     __setPublishTestHooks({});
@@ -909,6 +973,155 @@ test("stale publish temp directories are cleaned safely before publish", async (
     await fs.promises.rm(staleTempDir, { recursive: true, force: true });
     await fs.promises.rm(liveDir, { recursive: true, force: true });
     await fs.promises.rm(backupDir, { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+
+test("fresh valid lock fails closed with active-lock diagnostics", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-fresh-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-lock-fresh-${Date.now()}`;
+  const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
+  try {
+    const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "fresh"]]);
+    await writePublishLockFile(productId, createLockMetadata(productId, "other-run-publish", new Date().toISOString()));
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /Publish lock actively held for product/);
+    assert.match(report.errors[0] ?? "", /publishRunId=other-run-publish/);
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    await fs.promises.rm(lockPath, { force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("stale valid lock is recovered and publish proceeds", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-stale-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-lock-stale-${Date.now()}`;
+  const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+  try {
+    const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "recovered"]]);
+    const staleCreatedAt = new Date(Date.now() - __publishHardeningTestUtils.PUBLISH_LOCK_STALE_THRESHOLD_MS - 60_000).toISOString();
+    await writePublishLockFile(productId, createLockMetadata(productId, "stale-run-publish", staleCreatedAt));
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+
+    assert.equal(report.success, true);
+    assert.deepEqual(report.errors, []);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "recovered");
+    assert.equal(fs.existsSync(lockPath), false);
+  } finally {
+    await fs.promises.rm(lockPath, { force: true });
+    await fs.promises.rm(liveDir, { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("malformed lock file fails closed", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-malformed-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-lock-malformed-${Date.now()}`;
+  const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
+  try {
+    const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "blocked"]]);
+    await writePublishLockFile(productId, "not-json");
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /Publish lock metadata is malformed or ambiguous/);
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    await fs.promises.rm(lockPath, { force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("stale lock recovery retries acquisition only once and fails closed if reacquire still fails", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-reacquire-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-lock-reacquire-${Date.now()}`;
+  const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
+  const originalRm = fs.promises.rm;
+  let intercepted = false;
+  try {
+    const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "blocked"]]);
+    const staleCreatedAt = new Date(Date.now() - __publishHardeningTestUtils.PUBLISH_LOCK_STALE_THRESHOLD_MS - 60_000).toISOString();
+    const replacementCreatedAt = new Date().toISOString();
+    await writePublishLockFile(productId, createLockMetadata(productId, "stale-run-publish", staleCreatedAt));
+
+    fs.promises.rm = (async (targetPath: fs.PathLike, options?: fs.RmOptions) => {
+      const result = await originalRm.call(fs.promises, targetPath, options);
+      if (!intercepted && path.resolve(String(targetPath)) === lockPath && !options?.recursive) {
+        intercepted = true;
+        await fs.promises.writeFile(lockPath, JSON.stringify(createLockMetadata(productId, "replacement-run-publish", replacementCreatedAt)), "utf8");
+      }
+      return result;
+    }) as typeof fs.promises.rm;
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+
+    assert.equal(report.success, false);
+    assert.equal(intercepted, true);
+    assert.match(report.errors[0] ?? "", /Stale publish lock was removed but lock reacquisition failed/);
+    assert.match(report.errors[0] ?? "", /replacement-run-publish/);
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    fs.promises.rm = originalRm;
+    await fs.promises.rm(lockPath, { force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("stale lock recovery remains per-product and does not block different product publishes", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-per-product-"));
+  const runId = `r-${Date.now()}`;
+  const productA = `zle-lock-per-product-a-${Date.now()}`;
+  const productB = `zle-lock-per-product-b-${Date.now()}`;
+  const lockPathA = __publishHardeningTestUtils.getProductLockPath(productA);
+  try {
+    const staleCreatedAt = new Date(Date.now() - __publishHardeningTestUtils.PUBLISH_LOCK_STALE_THRESHOLD_MS - 60_000).toISOString();
+    await writePublishLockFile(productA, createLockMetadata(productA, "old-a-publish", staleCreatedAt));
+    const manifestA = await createPublishManifest(tempRoot, runId, productA, [["cover.jpg", "alpha"]]);
+    const manifestB = await createPublishManifest(tempRoot, runId, productB, [["cover.jpg", "beta"]]);
+
+    const [resultA, resultB] = await Promise.all([
+      publishFromApprovedManifest(runId, `${runId}-publish-a`, manifestA),
+      publishFromApprovedManifest(runId, `${runId}-publish-b`, manifestB),
+    ]);
+
+    for (const result of [resultA, resultB]) {
+      const report = JSON.parse(await fs.promises.readFile(result.reportPath, "utf8")) as { success: boolean; errors: string[] };
+      assert.equal(report.success, true);
+      assert.deepEqual(report.errors, []);
+    }
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productA, "cover.jpg"), "utf8"), "alpha");
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productB, "cover.jpg"), "utf8"), "beta");
+    assert.equal(fs.existsSync(lockPathA), false);
+  } finally {
+    await fs.promises.rm(lockPathA, { force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productA), { recursive: true, force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, productB), { recursive: true, force: true });
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });

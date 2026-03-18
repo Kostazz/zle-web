@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { computeAuditChainHash, sha256File, type AuditChainRecord } from "./audit-chain.ts";
 import { createSourceRunId, runTotalboardshopSourceAgent } from "./source-totalboardshop.ts";
 import { decideRun, type DecisionOutput } from "./decision-agent.ts";
@@ -67,6 +68,23 @@ const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images
 const MANAGED_PUBLISH_FILE_RE = /^(?:cover|\d{2})\.(?:jpg|webp)$/;
 const PUBLISH_TEMP_DIR_PREFIX = ".publish-temp-";
 const PUBLISH_LOCK_FILE_PREFIX = ".publish-lock-";
+const PUBLISH_LOCK_STALE_THRESHOLD_MS = 45 * 60 * 1000;
+
+type PublishLockMetadata = {
+  productId: string;
+  publishRunId: string;
+  sourceRunId: string;
+  createdAt: string;
+  hostname?: string;
+  pid?: number;
+};
+
+type PublishLockStatus =
+  | { status: "acquired"; handle: fs.promises.FileHandle; metadata: PublishLockMetadata }
+  | { status: "active"; metadata: PublishLockMetadata; ageMs: number }
+  | { status: "malformed"; reason: string }
+  | { status: "stale"; metadata: PublishLockMetadata; ageMs: number };
+
 
 function encodePublishPathSegment(value: string): string {
   return encodeURIComponent(value);
@@ -91,31 +109,164 @@ function getProductIdFromTempDirName(dirName: string): string | null {
   }
 }
 
+function createPublishLockMetadata(productId: string, publishRunId: string): PublishLockMetadata {
+  return {
+    productId,
+    publishRunId,
+    sourceRunId: publishRunId.replace(/-publish(?:-.+)?$/, "") || publishRunId,
+    createdAt: new Date().toISOString(),
+    hostname: os.hostname(),
+    pid: typeof process.pid === "number" ? process.pid : undefined,
+  };
+}
+
+function describePublishLock(metadata: PublishLockMetadata, ageMs: number): string {
+  const details = [
+    `productId=${metadata.productId}`,
+    `publishRunId=${metadata.publishRunId}`,
+    `sourceRunId=${metadata.sourceRunId}`,
+    `createdAt=${metadata.createdAt}`,
+    `ageMs=${ageMs}`,
+  ];
+  if (metadata.hostname) details.push(`hostname=${metadata.hostname}`);
+  if (typeof metadata.pid === "number") details.push(`pid=${metadata.pid}`);
+  return details.join(", ");
+}
+
+function parsePublishLockMetadata(raw: string, expectedProductId: string): PublishLockStatus {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      status: "malformed",
+      reason: `metadata is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return { status: "malformed", reason: "metadata is not a JSON object" };
+  }
+  const metadata = parsed as Partial<PublishLockMetadata>;
+  if (metadata.productId !== expectedProductId) {
+    return {
+      status: "malformed",
+      reason: `metadata productId mismatch (expected ${expectedProductId}, found ${String(metadata.productId)})`,
+    };
+  }
+  if (typeof metadata.publishRunId !== "string" || metadata.publishRunId.length < 1) {
+    return { status: "malformed", reason: "metadata publishRunId is missing" };
+  }
+  if (typeof metadata.sourceRunId !== "string" || metadata.sourceRunId.length < 1) {
+    return { status: "malformed", reason: "metadata sourceRunId is missing" };
+  }
+  if (typeof metadata.createdAt !== "string" || metadata.createdAt.length < 1) {
+    return { status: "malformed", reason: "metadata createdAt is missing" };
+  }
+  const createdAtMs = Date.parse(metadata.createdAt);
+  if (!Number.isFinite(createdAtMs)) {
+    return { status: "malformed", reason: `metadata createdAt is invalid (${metadata.createdAt})` };
+  }
+  const ageMs = Date.now() - createdAtMs;
+  if (!Number.isFinite(ageMs) || ageMs < 0) {
+    return { status: "malformed", reason: `metadata createdAt is ambiguous (${metadata.createdAt})` };
+  }
+  const normalizedMetadata: PublishLockMetadata = {
+    productId: metadata.productId,
+    publishRunId: metadata.publishRunId,
+    sourceRunId: metadata.sourceRunId,
+    createdAt: metadata.createdAt,
+    hostname: typeof metadata.hostname === "string" && metadata.hostname.length > 0 ? metadata.hostname : undefined,
+    pid: typeof metadata.pid === "number" ? metadata.pid : undefined,
+  };
+  if (ageMs > PUBLISH_LOCK_STALE_THRESHOLD_MS) {
+    return { status: "stale", metadata: normalizedMetadata, ageMs };
+  }
+  return { status: "active", metadata: normalizedMetadata, ageMs };
+}
+
+async function tryCreateProductPublishLock(lockPath: string, metadata: PublishLockMetadata): Promise<PublishLockStatus> {
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(lockPath, "wx");
+    await handle.writeFile(JSON.stringify(metadata));
+    await handle.sync();
+    return { status: "acquired", handle, metadata };
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") {
+      throw error;
+    }
+  }
+
+  let rawLock = "";
+  try {
+    rawLock = await fs.promises.readFile(lockPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return tryCreateProductPublishLock(lockPath, metadata);
+    }
+    throw error;
+  }
+  return parsePublishLockMetadata(rawLock, metadata.productId);
+}
+
 async function acquireProductPublishLock(
   productId: string,
   publishRunId: string,
 ): Promise<{ lockPath: string; release: () => Promise<void> }> {
   const lockPath = getProductLockPath(productId);
-  let handle: fs.promises.FileHandle | null = null;
-  try {
-    handle = await fs.promises.open(lockPath, "wx");
-    await handle.writeFile(JSON.stringify({ productId, publishRunId, createdAt: new Date().toISOString() }));
-  } catch (error) {
-    await handle?.close().catch(() => undefined);
-    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
-      throw new Error(`Publish lock already held for product ${productId}`);
-    }
-    throw error;
+  const metadata = createPublishLockMetadata(productId, publishRunId);
+  const firstAttempt = await tryCreateProductPublishLock(lockPath, metadata);
+
+  if (firstAttempt.status === "acquired") {
+    let handle: fs.promises.FileHandle | null = firstAttempt.handle;
+    return {
+      lockPath,
+      release: async () => {
+        await handle?.close().catch(() => undefined);
+        handle = null;
+        await fs.promises.rm(lockPath, { force: true });
+      },
+    };
   }
 
-  return {
-    lockPath,
-    release: async () => {
-      await handle?.close().catch(() => undefined);
-      handle = null;
-      await fs.promises.rm(lockPath, { force: true });
-    },
-  };
+  if (firstAttempt.status === "active") {
+    throw new Error(`Publish lock actively held for product ${productId}; ${describePublishLock(firstAttempt.metadata, firstAttempt.ageMs)}`);
+  }
+
+  if (firstAttempt.status === "malformed") {
+    throw new Error(`Publish lock metadata is malformed or ambiguous for product ${productId}; ${firstAttempt.reason}; refusing stale recovery`);
+  }
+
+  const staleDescription = describePublishLock(firstAttempt.metadata, firstAttempt.ageMs);
+  try {
+    await fs.promises.rm(lockPath, { force: false });
+  } catch (error) {
+    throw new Error(`Stale publish lock could not be recovered for product ${productId}; failed to remove stale lock (${staleDescription}): ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const secondAttempt = await tryCreateProductPublishLock(lockPath, metadata);
+  if (secondAttempt.status === "acquired") {
+    let handle: fs.promises.FileHandle | null = secondAttempt.handle;
+    return {
+      lockPath,
+      release: async () => {
+        await handle?.close().catch(() => undefined);
+        handle = null;
+        await fs.promises.rm(lockPath, { force: true });
+      },
+    };
+  }
+
+  if (secondAttempt.status === "active") {
+    throw new Error(`Stale publish lock was removed but lock reacquisition failed for product ${productId}; another active lock is now present (${describePublishLock(secondAttempt.metadata, secondAttempt.ageMs)})`);
+  }
+
+  if (secondAttempt.status === "malformed") {
+    throw new Error(`Stale publish lock was removed but lock reacquisition failed for product ${productId}; replacement lock metadata is malformed or ambiguous (${secondAttempt.reason})`);
+  }
+
+  throw new Error(`Stale publish lock was removed but lock reacquisition failed for product ${productId}; another stale lock immediately reappeared (${describePublishLock(secondAttempt.metadata, secondAttempt.ageMs)})`);
 }
 
 async function cleanupStalePublishTempDirs(): Promise<void> {
@@ -152,7 +303,9 @@ export function __setPublishTestHooks(hooks: PublishTestHooks): void {
 export const __publishHardeningTestUtils = {
   LIVE_OUTPUT_ROOT,
   PUBLISH_TEMP_DIR_PREFIX,
+  PUBLISH_LOCK_STALE_THRESHOLD_MS,
   createPublishTempDirName,
+  getProductLockPath,
 };
 
 /**
