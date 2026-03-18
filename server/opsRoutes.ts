@@ -157,6 +157,27 @@ async function isOrderFinalizationCompleted(orderId: string) {
   );
 }
 
+function parseAgentAlertRow(row: Awaited<ReturnType<typeof listAgentReports>>[number]) {
+  try {
+    return {
+      id: row.id,
+      agent: row.agent,
+      status: row.status,
+      summary: row.summary,
+      issues: JSON.parse(row.issuesJson || "[]"),
+      metrics: JSON.parse(row.metricsJson || "{}"),
+      createdAt: row.createdAt,
+    };
+  } catch (error) {
+    console.error("[ops] Failed to parse agent alert row", {
+      alertId: row.id,
+      agent: row.agent,
+      error,
+    });
+    return null;
+  }
+}
+
 export function registerOpsRoutes(app: Express) {
   app.get("/api/ops/agent-alerts", async (req, res) => {
     if (!requireOpsToken(req, res)) return;
@@ -165,15 +186,9 @@ export function registerOpsRoutes(app: Express) {
       const limit = Math.min(parseLimit(req.query.limit), 50);
       const rows = await listAgentReports(limit);
       return res.json({
-        items: rows.map((row) => ({
-          id: row.id,
-          agent: row.agent,
-          status: row.status,
-          summary: row.summary,
-          issuesJson: row.issuesJson,
-          metricsJson: row.metricsJson,
-          createdAt: row.createdAt,
-        })),
+        items: rows
+          .map(parseAgentAlertRow)
+          .filter((row): row is NonNullable<ReturnType<typeof parseAgentAlertRow>> => row !== null),
       });
     } catch (err: any) {
       return res.status(500).json({ error: "agent_alerts_failed", message: err?.message || "unknown" });
