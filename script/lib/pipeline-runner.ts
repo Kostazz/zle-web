@@ -40,6 +40,13 @@ export type PipelineArgs = {
 };
 
 const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
+const PUBLISH_MANAGED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
+
+function isPublishManagedArtifact(fileName: string): boolean {
+  const parsed = path.parse(fileName);
+  if (!PUBLISH_MANAGED_IMAGE_EXTENSIONS.has(parsed.ext.toLowerCase())) return false;
+  return parsed.name.toLowerCase() === "cover" || /^\d+$/.test(parsed.name);
+}
 
 async function runCommand(command: string, args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -119,33 +126,136 @@ export async function publishFromApprovedManifest(runId: string, publishRunId: s
   const errors: string[] = [];
   const publishedAssets: PublishAssetResult[] = [];
 
+  const assetsByProduct = new Map<string, RunManifest["assets"]>();
   for (const asset of stagedManifest.assets) {
     if (!asset.productId) {
       errors.push(`Missing productId for ${asset.assetId}`);
+      publishedAssets.push({
+        assetId: asset.assetId,
+        productId: "",
+        stagedOutputs: [...asset.outputs],
+        publishedOutputs: [],
+      });
+      continue;
+    }
+    const grouped = assetsByProduct.get(asset.productId) ?? [];
+    grouped.push(asset);
+    assetsByProduct.set(asset.productId, grouped);
+  }
+
+  const publishedByAssetId = new Map<string, string[]>();
+
+  for (const [productId, assets] of Array.from(assetsByProduct.entries())) {
+    const productDir = path.join(LIVE_OUTPUT_ROOT, productId);
+    const liveParentDir = path.dirname(productDir);
+    const allowedFileNames = new Set<string>();
+    const sourceByTargetName = new Map<string, string>();
+    let productHasError = false;
+
+    for (const asset of assets) {
+      for (const sourceOutput of asset.outputs) {
+        const sourcePath = resolveFromCwd(sourceOutput);
+        if (!fs.existsSync(sourcePath)) {
+          errors.push(`Missing staged output: ${sourceOutput}`);
+          productHasError = true;
+          continue;
+        }
+        const fileName = path.basename(sourcePath);
+        const existingSource = sourceByTargetName.get(fileName);
+        if (existingSource && existingSource !== sourcePath) {
+          errors.push(`Conflicting staged outputs for ${productId}/${fileName}; refusing publish`);
+          productHasError = true;
+          continue;
+        }
+        sourceByTargetName.set(fileName, sourcePath);
+        allowedFileNames.add(fileName);
+      }
+    }
+
+    if (productHasError) {
       continue;
     }
 
-    const productDir = path.join(LIVE_OUTPUT_ROOT, asset.productId);
-    await fs.promises.mkdir(productDir, { recursive: true });
+    await fs.promises.mkdir(liveParentDir, { recursive: true });
+    const tempProductDir = await fs.promises.mkdtemp(path.join(liveParentDir, `.${productId}.publish-tmp-`));
+    const backupProductDir = path.join(liveParentDir, `.${productId}.publish-backup-${publishRunId}-${Date.now()}`);
+    let renamedCurrentToBackup = false;
+    let renamedTempToLive = false;
 
-    const copiedOutputs: string[] = [];
-    for (const sourceOutput of asset.outputs) {
-      const sourcePath = resolveFromCwd(sourceOutput);
-      if (!fs.existsSync(sourcePath)) {
-        errors.push(`Missing staged output: ${sourceOutput}`);
-        continue;
+    try {
+      if (fs.existsSync(productDir)) {
+        const existingEntries = await fs.promises.readdir(productDir, { withFileTypes: true });
+        for (const entry of existingEntries) {
+          const sourceEntryPath = path.join(productDir, entry.name);
+          const targetEntryPath = path.join(tempProductDir, entry.name);
+          if (entry.isFile() && isPublishManagedArtifact(entry.name) && !allowedFileNames.has(entry.name)) {
+            continue;
+          }
+          await fs.promises.cp(sourceEntryPath, targetEntryPath, { recursive: true, force: true, errorOnExist: false });
+        }
       }
-      const fileName = path.basename(sourcePath);
-      const targetPath = path.join(productDir, fileName);
-      await fs.promises.copyFile(sourcePath, targetPath);
-      copiedOutputs.push(path.relative(process.cwd(), targetPath).split(path.sep).join("/"));
-    }
 
+      for (const [fileName, sourcePath] of Array.from(sourceByTargetName.entries())) {
+        await fs.promises.copyFile(sourcePath, path.join(tempProductDir, fileName));
+      }
+
+      for (const fileName of Array.from(allowedFileNames.values())) {
+        if (!fs.existsSync(path.join(tempProductDir, fileName))) {
+          throw new Error(`Missing published output in temp state: ${productId}/${fileName}`);
+        }
+      }
+
+      if (fs.existsSync(productDir)) {
+        await fs.promises.rename(productDir, backupProductDir);
+        renamedCurrentToBackup = true;
+      }
+
+      await fs.promises.rename(tempProductDir, productDir);
+      renamedTempToLive = true;
+
+      if (renamedCurrentToBackup) {
+        await fs.promises.rm(backupProductDir, { recursive: true, force: true });
+      }
+
+      for (const asset of assets) {
+        const copiedOutputs = asset.outputs.map((sourceOutput: string) => {
+          const sourcePath = resolveFromCwd(sourceOutput);
+          const fileName = path.basename(sourcePath);
+          const targetPath = path.join(productDir, fileName);
+          return path.relative(process.cwd(), targetPath).split(path.sep).join("/");
+        });
+        publishedByAssetId.set(asset.assetId, copiedOutputs);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`Publish failed for ${productId}: ${message}`);
+
+      if (renamedCurrentToBackup && !renamedTempToLive && fs.existsSync(backupProductDir) && !fs.existsSync(productDir)) {
+        try {
+          await fs.promises.rename(backupProductDir, productDir);
+          renamedCurrentToBackup = false;
+        } catch (rollbackError) {
+          errors.push(
+            `Rollback failed for ${productId}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+          );
+        }
+      }
+    } finally {
+      if (!renamedTempToLive && fs.existsSync(tempProductDir)) {
+        await fs.promises.rm(tempProductDir, { recursive: true, force: true });
+      }
+      if (renamedCurrentToBackup && fs.existsSync(backupProductDir)) {
+        await fs.promises.rm(backupProductDir, { recursive: true, force: true });
+      }
+    }
+  }
+
+  for (const asset of stagedManifest.assets) {
     publishedAssets.push({
       assetId: asset.assetId,
-      productId: asset.productId,
+      productId: asset.productId ?? "",
       stagedOutputs: [...asset.outputs],
-      publishedOutputs: copiedOutputs,
+      publishedOutputs: publishedByAssetId.get(asset.assetId) ?? [],
     });
   }
 

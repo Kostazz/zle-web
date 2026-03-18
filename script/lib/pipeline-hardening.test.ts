@@ -116,3 +116,138 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("publish removes stale managed outputs but preserves unrelated files in touched product", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-stale-cleanup-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-clean-${Date.now()}`;
+  const untouchedProductId = `zle-untouched-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.mkdir(path.join(LIVE_ROOT, productId), { recursive: true });
+    await fs.promises.mkdir(path.join(LIVE_ROOT, untouchedProductId), { recursive: true });
+
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "cover.jpg"), "old-cover", "utf8");
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "01.jpg"), "old-01", "utf8");
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "02.jpg"), "stale-02", "utf8");
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "README.txt"), "keep-me", "utf8");
+    await fs.promises.writeFile(path.join(LIVE_ROOT, untouchedProductId, "cover.jpg"), "untouched", "utf8");
+
+    const approvedCover = path.join(stagedDir, "cover.jpg");
+    const approved01 = path.join(stagedDir, "01.jpg");
+    await fs.promises.writeFile(approvedCover, "new-cover", "utf8");
+    await fs.promises.writeFile(approved01, "new-01", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: "x",
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [
+            path.relative(process.cwd(), approvedCover).split(path.sep).join("/"),
+            path.relative(process.cwd(), approved01).split(path.sep).join("/"),
+          ],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean };
+    assert.equal(report.success, true);
+
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId, "cover.jpg")), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId, "01.jpg")), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId, "02.jpg")), false);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId, "README.txt")), true);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, untouchedProductId, "cover.jpg")), true);
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, untouchedProductId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("publish failure does not expose partial mixed live state", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-atomic-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-atomic-${Date.now()}`;
+  const stagedDir = path.join(tempRoot, "stage", productId);
+
+  try {
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.mkdir(path.join(LIVE_ROOT, productId), { recursive: true });
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "cover.jpg"), "live-cover", "utf8");
+    await fs.promises.writeFile(path.join(LIVE_ROOT, productId, "01.jpg"), "live-01", "utf8");
+
+    const stagedCover = path.join(stagedDir, "cover.jpg");
+    const staged01 = path.join(stagedDir, "01.jpg");
+    await fs.promises.writeFile(stagedCover, "next-cover", "utf8");
+    // intentionally missing staged01 to force failure before swap
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: "x",
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [
+            path.relative(process.cwd(), stagedCover).split(path.sep).join("/"),
+            path.relative(process.cwd(), staged01).split(path.sep).join("/"),
+          ],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(report.success, false);
+    assert.ok(report.errors.some((entry) => entry.includes("Missing staged output")));
+
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productId, "cover.jpg"), "utf8"), "live-cover");
+    assert.equal(await fs.promises.readFile(path.join(LIVE_ROOT, productId, "01.jpg"), "utf8"), "live-01");
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
