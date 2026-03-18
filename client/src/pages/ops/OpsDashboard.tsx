@@ -41,6 +41,25 @@ type OpsOrdersResponse = {
   items: OpsOrderRow[];
 };
 
+type OpsAgentAlertIssue = {
+  type?: string;
+  orderId?: string;
+};
+
+type OpsAgentAlert = {
+  id: string;
+  agent: string;
+  status: string;
+  summary: string;
+  issues: OpsAgentAlertIssue[];
+  metrics: Record<string, unknown>;
+  createdAt: string;
+};
+
+type OpsAgentAlertsResponse = {
+  items: OpsAgentAlert[];
+};
+
 type OpsOrderDetail = {
   ok: boolean;
   order: OpsOrderRow & {
@@ -71,6 +90,8 @@ export default function OpsDashboard() {
   const [summary, setSummary] = useState<OpsSummary | null>(null);
   const [orders, setOrders] = useState<OpsOrderRow[]>([]);
   const [detail, setDetail] = useState<OpsOrderDetail | null>(null);
+  const [alerts, setAlerts] = useState<OpsAgentAlert[]>([]);
+  const [alertsError, setAlertsError] = useState("");
   const [limit, setLimit] = useState(50);
   const [offset, setOffset] = useState(0);
   const [sort, setSort] = useState("createdAt_desc");
@@ -125,6 +146,18 @@ export default function OpsDashboard() {
     setDetail(data);
   };
 
+  const fetchAlerts = async () => {
+    if (!token) return;
+    setAlertsError("");
+    const response = await fetch("/api/ops/agent-alerts?limit=20", { headers });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.message || body?.error || "Failed to load agent alerts");
+    }
+    const data = (await response.json()) as OpsAgentAlertsResponse;
+    setAlerts(Array.isArray(data.items) ? data.items : []);
+  };
+
   useEffect(() => {
     let active = true;
     if (!token) return;
@@ -138,6 +171,15 @@ export default function OpsDashboard() {
       active = false;
     };
   }, [token, limit, offset, sort, status, paymentStatus, paymentMethod, q]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchAlerts().catch((error) => {
+      console.error(error);
+      setAlertsError(error instanceof Error ? error.message : "Failed to load agent alerts");
+      setAlerts([]);
+    });
+  }, [token]);
 
   const handleSelectOrder = (id: string) => {
     fetchDetail(id).catch(() => null);
@@ -200,6 +242,56 @@ export default function OpsDashboard() {
                   <div className="text-2xl font-semibold text-white mt-2">{card.value}</div>
                 </div>
               ))}
+            </div>
+
+
+            <div className="border border-white/15 bg-black/40 p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-white/40">Agent Alerts</div>
+                  <div className="text-sm text-white/50">Latest OPS agent alerts from recent watchdog runs.</div>
+                </div>
+              </div>
+
+              {alertsError && <div className="text-sm text-red-300/80">{alertsError}</div>}
+
+              <div className="space-y-3">
+                {alerts.map((alert) => (
+                  <div key={alert.id} className="border border-white/10 bg-black/30 p-4 space-y-3">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
+                          <span className="rounded border border-white/15 px-2 py-0.5 uppercase text-[11px] tracking-widest text-white/60">
+                            {alert.status}
+                          </span>
+                          <span className="font-medium text-white">{alert.agent}</span>
+                        </div>
+                        <div className="text-sm text-white">{alert.summary}</div>
+                      </div>
+                      <div className="text-xs text-white/40">{new Date(alert.createdAt).toLocaleString()}</div>
+                    </div>
+
+                    <div className="text-xs uppercase tracking-widest text-white/40">
+                      Issues: {alert.issues.length}
+                    </div>
+
+                    {alert.issues.length > 0 && (
+                      <div className="space-y-2">
+                        {alert.issues.slice(0, 3).map((issue, index) => (
+                          <div key={`${alert.id}-issue-${index}`} className="text-sm text-white/70">
+                            <span className="font-medium text-white">{issue.type ?? "unknown_issue"}</span>
+                            {issue.orderId ? <span className="text-white/40"> · {issue.orderId}</span> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {alerts.length === 0 && !alertsError && (
+                  <div className="border border-white/10 bg-black/30 p-4 text-sm text-white/40">No agent alerts</div>
+                )}
+              </div>
             </div>
 
             <div className="border border-white/15 bg-black/40 p-5 space-y-4">
