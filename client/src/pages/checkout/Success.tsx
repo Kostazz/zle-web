@@ -27,6 +27,7 @@ type VerifyResponse =
 type OrderSummaryResponse = {
   success: boolean;
   orderId?: string;
+  status?: string | null;
   paymentMethod?: PaymentMethod;
   paymentStatus?: string | null;
   subtotalCzk?: number | null;
@@ -106,11 +107,18 @@ export default function CheckoutSuccess() {
         ? (orderIdParam || lastLocalOrder?.id || null)
         : null;
 
-  const { data: orderSummary, isLoading: isSummaryLoading } = useQuery<OrderSummaryResponse>({
+  const { data: orderSummary, isLoading: isSummaryLoading, error: orderSummaryError } = useQuery<OrderSummaryResponse>({
     queryKey: ["/api/checkout/order-summary", resolvedOrderId],
     queryFn: async () => {
       const response = await fetch(`/api/checkout/order-summary/${encodeURIComponent(String(resolvedOrderId || ""))}`);
-      return response.json();
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw Object.assign(new Error(payload?.reason || payload?.code || "order_summary_failed"), {
+          status: response.status,
+          payload,
+        });
+      }
+      return payload as OrderSummaryResponse;
     },
     enabled: !!resolvedOrderId && (hasVerifiedStripeSuccess || canUseOfflineFallback || COINGATE_METHODS.includes(pmParam as PaymentMethod)),
     retry: false,
@@ -119,6 +127,20 @@ export default function CheckoutSuccess() {
 
   const effectivePaymentMethod = orderSummary?.paymentMethod ?? pmParam;
   const isStripeLikePaymentMethod = !!effectivePaymentMethod && STRIPE_LIKE_METHODS.includes(effectivePaymentMethod);
+
+  const isCoinGateReturn = !!pmParam && COINGATE_METHODS.includes(pmParam);
+  const hasCoinGateFinalSummary = Boolean(
+    orderSummary?.success
+      && (
+        ["paid", "confirmed"].includes(String(orderSummary.paymentStatus || "").toLowerCase())
+        || ["confirmed", "fulfilled"].includes(String(orderSummary.status || "").toLowerCase())
+      )
+  );
+  const hasCoinGateAuthoritativeSuccess = false;
+  const shouldBlockCoinGateSuccess =
+    isCoinGateReturn
+    && (!orderSummary || !hasCoinGateFinalSummary)
+    && !hasCoinGateAuthoritativeSuccess;
 
   if (sessionId && isLoading) {
     return (
@@ -197,7 +219,9 @@ export default function CheckoutSuccess() {
 
   const shouldRenderCancel =
     (sessionId && (error || !data?.success || !hasVerifiedStripeSuccess)) ||
-    (!sessionId && isStripeLikePaymentMethod && !hasConflictRedirectFallback && !canUseOfflineFallback);
+    (!sessionId && isStripeLikePaymentMethod && !hasConflictRedirectFallback && !canUseOfflineFallback) ||
+    shouldBlockCoinGateSuccess ||
+    (isCoinGateReturn && Boolean(orderSummaryError));
 
 
   if (shouldRenderCancel || !resolvedOrderId) {
