@@ -41,6 +41,64 @@ export type PipelineArgs = {
 
 const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
 
+function normalizePublishFileName(sourceOutput: string, sourcePath: string, productId: string, outputRoot: string): string {
+  const outputRootPath = resolveFromCwd(outputRoot);
+  const productOutputRoot = path.resolve(outputRootPath, productId);
+  const relativeToProductRoot = path.relative(productOutputRoot, sourcePath);
+  const normalizedRelative = relativeToProductRoot.split(path.sep).join("/");
+
+  if (relativeToProductRoot.startsWith("..") || path.isAbsolute(relativeToProductRoot)) {
+    throw new Error(
+      `Staged output violates flat publish contract for ${productId}: ${sourceOutput} is outside ${path.relative(process.cwd(), productOutputRoot).split(path.sep).join("/")}`,
+    );
+  }
+
+  if (normalizedRelative === "." || normalizedRelative.includes("/")) {
+    throw new Error(`Staged output violates flat publish contract for ${productId}: ${sourceOutput} must map to a flat filename-only target`);
+  }
+
+  return normalizedRelative;
+}
+
+async function publishProductSwap(productDir: string, tempDir: string, publishRunId: string): Promise<void> {
+  const backupDir = `${productDir}.backup-${publishRunId}`;
+  let currentMovedToBackup = false;
+
+  try {
+    if (fs.existsSync(productDir)) {
+      await fs.promises.rm(backupDir, { recursive: true, force: true });
+      await fs.promises.rename(productDir, backupDir);
+      currentMovedToBackup = true;
+    }
+
+    await fs.promises.rename(tempDir, productDir);
+
+    if (currentMovedToBackup && fs.existsSync(backupDir)) {
+      await fs.promises.rm(backupDir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    if (fs.existsSync(tempDir)) {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+    }
+
+    if (currentMovedToBackup) {
+      const liveExists = fs.existsSync(productDir);
+      const backupExists = fs.existsSync(backupDir);
+
+      if (!liveExists && backupExists) {
+        await fs.promises.rename(backupDir, productDir);
+      } else if (liveExists) {
+        throw new Error(
+          `Publish target entered an anomalous state for ${path.relative(process.cwd(), productDir).split(path.sep).join("/")} after failed swap; backup preserved at ${path.relative(process.cwd(), backupDir).split(path.sep).join("/")}`,
+          { cause: error },
+        );
+      }
+    }
+
+    throw error;
+  }
+}
+
 async function runCommand(command: string, args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { stdio: "inherit", shell: false });
@@ -126,19 +184,54 @@ export async function publishFromApprovedManifest(runId: string, publishRunId: s
     }
 
     const productDir = path.join(LIVE_OUTPUT_ROOT, asset.productId);
-    await fs.promises.mkdir(productDir, { recursive: true });
-
+    const targetNames = new Map<string, string>();
     const copiedOutputs: string[] = [];
-    for (const sourceOutput of asset.outputs) {
-      const sourcePath = resolveFromCwd(sourceOutput);
-      if (!fs.existsSync(sourcePath)) {
-        errors.push(`Missing staged output: ${sourceOutput}`);
-        continue;
+    const stagedCopies: Array<{ sourcePath: string; targetName: string }> = [];
+
+    try {
+      for (const sourceOutput of asset.outputs) {
+        const sourcePath = resolveFromCwd(sourceOutput);
+        if (!fs.existsSync(sourcePath)) {
+          errors.push(`Missing staged output: ${sourceOutput}`);
+          continue;
+        }
+
+        const targetName = normalizePublishFileName(sourceOutput, sourcePath, asset.productId, stagedManifest.outputDir);
+        const existingSource = targetNames.get(targetName);
+        if (existingSource) {
+          throw new Error(
+            `Conflicting staged outputs for ${asset.productId}: ${existingSource} and ${sourceOutput} both map to ${targetName}`,
+          );
+        }
+
+        targetNames.set(targetName, sourceOutput);
+        stagedCopies.push({ sourcePath, targetName });
       }
-      const fileName = path.basename(sourcePath);
-      const targetPath = path.join(productDir, fileName);
-      await fs.promises.copyFile(sourcePath, targetPath);
-      copiedOutputs.push(path.relative(process.cwd(), targetPath).split(path.sep).join("/"));
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+      publishedAssets.push({
+        assetId: asset.assetId,
+        productId: asset.productId,
+        stagedOutputs: [...asset.outputs],
+        publishedOutputs: copiedOutputs,
+      });
+      continue;
+    }
+
+    const tempDir = path.join(LIVE_OUTPUT_ROOT, `.publish-${publishRunId}-${asset.productId}-${Date.now()}`);
+
+    try {
+      await fs.promises.mkdir(tempDir, { recursive: true });
+
+      for (const { sourcePath, targetName } of stagedCopies) {
+        const targetPath = path.join(tempDir, targetName);
+        await fs.promises.copyFile(sourcePath, targetPath);
+        copiedOutputs.push(path.relative(process.cwd(), path.join(productDir, targetName)).split(path.sep).join("/"));
+      }
+
+      await publishProductSwap(productDir, tempDir, publishRunId);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
     }
 
     publishedAssets.push({

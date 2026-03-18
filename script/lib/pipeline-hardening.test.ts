@@ -78,7 +78,7 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
       publishState: "staged",
       requiresReview: false,
       inputDir: "x",
-      outputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
       reportPath: "x",
       assets: [
         {
@@ -113,6 +113,249 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
     assert.equal(publishManifest.assets[0]?.publishedOutputs.length, 1);
   } finally {
     await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("publish fails closed when staged outputs collapse to the same flat live target", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-conflict-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-conflict-${Date.now()}`;
+  const stagedProductDir = path.join(tempRoot, "stage", productId);
+
+  try {
+    await fs.promises.mkdir(stagedProductDir, { recursive: true });
+    const firstPath = path.join(stagedProductDir, "cover.jpg");
+    await fs.promises.writeFile(firstPath, "first", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [
+            path.relative(process.cwd(), firstPath).split(path.sep).join("/"),
+            path.relative(process.cwd(), firstPath).split(path.sep).join("/"),
+          ],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /Conflicting staged outputs/);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("publish fails closed when staged output violates flat publish contract", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-nested-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-nested-${Date.now()}`;
+  const invalidPath = path.join(tempRoot, "stage", productId, "gallery", "01.jpg");
+
+  try {
+    await fs.promises.mkdir(path.dirname(invalidPath), { recursive: true });
+    await fs.promises.writeFile(invalidPath, "nested", "utf8");
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), invalidPath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /violates flat publish contract/);
+    assert.equal(fs.existsSync(path.join(LIVE_ROOT, productId)), false);
+  } finally {
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("publish rollback restores previous live state when swap fails safely", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-rollback-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-rollback-${Date.now()}`;
+  const stagedProductDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+  const liveFile = path.join(liveDir, "cover.jpg");
+  const originalRename = fs.promises.rename;
+  let renameCount = 0;
+
+  try {
+    await fs.promises.mkdir(stagedProductDir, { recursive: true });
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    const approvedPath = path.join(stagedProductDir, "cover.jpg");
+    await fs.promises.writeFile(approvedPath, "approved", "utf8");
+    await fs.promises.writeFile(liveFile, "original", "utf8");
+
+    fs.promises.rename = (async (from: fs.PathLike, to: fs.PathLike) => {
+      renameCount += 1;
+      if (renameCount === 2) {
+        throw new Error("simulated swap failure");
+      }
+      return originalRename(from, to);
+    }) as typeof fs.promises.rename;
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), approvedPath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /simulated swap failure/);
+    assert.equal(await fs.promises.readFile(liveFile, "utf8"), "original");
+  } finally {
+    fs.promises.rename = originalRename;
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("publish reports anomalous live target state after failed swap", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-anomaly-"));
+  const runId = `r-${Date.now()}`;
+  const publishRunId = `${runId}-publish`;
+  const productId = `zle-anomaly-${Date.now()}`;
+  const stagedProductDir = path.join(tempRoot, "stage", productId);
+  const liveDir = path.join(LIVE_ROOT, productId);
+  const liveFile = path.join(liveDir, "cover.jpg");
+  const originalRename = fs.promises.rename;
+  let renameCount = 0;
+
+  try {
+    await fs.promises.mkdir(stagedProductDir, { recursive: true });
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    const approvedPath = path.join(stagedProductDir, "cover.jpg");
+    await fs.promises.writeFile(approvedPath, "approved", "utf8");
+    await fs.promises.writeFile(liveFile, "original", "utf8");
+
+    fs.promises.rename = (async (from: fs.PathLike, to: fs.PathLike) => {
+      renameCount += 1;
+      if (renameCount === 2) {
+        await fs.promises.mkdir(to.toString(), { recursive: true });
+        await fs.promises.writeFile(path.join(to.toString(), "cover.jpg"), "unexpected", "utf8");
+        throw new Error("simulated swap anomaly");
+      }
+      return originalRename(from, to);
+    }) as typeof fs.promises.rename;
+
+    const manifest: RunManifest = {
+      runId,
+      sourceType: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      approvalState: "approved",
+      publishState: "staged",
+      requiresReview: false,
+      inputDir: "x",
+      outputDir: path.join(tempRoot, "stage"),
+      reportPath: "x",
+      assets: [
+        {
+          assetId: `${runId}:asset-1`,
+          runId,
+          sourceType: "manual",
+          sourceRelativePath: "asset-1.jpg",
+          productId,
+          matchedConfidence: 1,
+          requiresReview: false,
+          approvalState: "approved",
+          publishState: "staged",
+          outputs: [path.relative(process.cwd(), approvedPath).split(path.sep).join("/")],
+          errors: [],
+        },
+      ],
+      errors: [],
+    };
+
+    const { reportPath } = await publishFromApprovedManifest(runId, publishRunId, manifest);
+    const report = JSON.parse(await fs.promises.readFile(reportPath, "utf8")) as { success: boolean; errors: string[] };
+    assert.equal(report.success, false);
+    assert.match(report.errors[0] ?? "", /anomalous state/);
+    assert.equal(await fs.promises.readFile(path.join(liveDir, "cover.jpg"), "utf8"), "unexpected");
+  } finally {
+    fs.promises.rename = originalRename;
+    await fs.promises.rm(path.join(LIVE_ROOT, productId), { recursive: true, force: true });
+    await fs.promises.rm(path.join(LIVE_ROOT, `${productId}.backup-${publishRunId}`), { recursive: true, force: true });
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });
