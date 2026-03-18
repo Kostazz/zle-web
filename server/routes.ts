@@ -1,7 +1,6 @@
 // server/routes.ts
 
 import type { Express, Request, Response } from "express";
-import express from "express";
 import { createHash, randomBytes } from "crypto";
 import Stripe from "stripe";
 import { z } from "zod";
@@ -316,7 +315,7 @@ function buildStripeIdempotencyKey(orderId: string, fingerprint: string, attempt
 function mapStripeError(err: unknown):
   | { status: 500; code: "STRIPE_CONFIG_ERROR"; message: string; stripeRequestId?: string }
   | { status: 400; code: "STRIPE_INVALID_PARAMS"; message: string; stripeRequestId?: string }
-  | { status: 409; code: "ORDER_STATE_CONFLICT"; message: string; stripeRequestId?: string }
+  | { status: 409; code: "ORDER_STATE_CONFLICT"; message: string; stripeRequestId?: string; conflictState?: "already_paid" | "processing" }
   | null {
   const stripeErr = err as Stripe.StripeRawError & { type?: string; requestId?: string; code?: string };
   const stripeRequestId = stripeErr?.requestId;
@@ -345,6 +344,7 @@ function mapStripeError(err: unknown):
       code: "ORDER_STATE_CONFLICT",
       message: "Objednávka je už ve stavu, který neumožňuje novou platbu.",
       stripeRequestId,
+      conflictState: "processing",
     };
   }
 
@@ -472,14 +472,9 @@ const CreateInPersonOrderSchema = z
 // -----------------------------
 
 export async function registerRoutes(app: Express) {
-  // NOTE: server/index.ts already registers express.json() with a rawBody verifier.
-  // Keeping this here is harmless but redundant.
-  app.use(express.json());
-
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
   registerOpsRoutes(app);
   // Accounting exports (D3) — minimal paper / monthly invoices
-  // Protect with EXPORT_TOKEN (header: x-export-token or query: ?token=...)
+  // Protect with EXPORT_TOKEN header: x-export-token
   function requireExportToken(req: Request, res: Response): boolean {
     const expected = process.env.EXPORT_TOKEN;
     if (!expected) {
@@ -489,8 +484,9 @@ export async function registerRoutes(app: Express) {
       });
       return false;
     }
-    const provided = (req.headers["x-export-token"] as string | undefined) || (req.query.token as string | undefined);
-    if (!provided || provided !== expected) {
+    const provided = req.headers["x-export-token"] as string | string[] | undefined;
+    const normalizedProvided = Array.isArray(provided) ? provided[0] : provided;
+    if (!normalizedProvided || normalizedProvided !== expected) {
       sendApiError(res, 401, {
         code: "unauthorized",
         reason: "unauthorized",
@@ -854,6 +850,7 @@ export async function registerRoutes(app: Express) {
         checkoutLog({ requestId, route, result: "fail", code: "ORDER_STATE_CONFLICT" });
         return res.status(409).json({
           code: "ORDER_STATE_CONFLICT",
+          conflictState: "processing",
           message: "Objednávka je právě zpracovávaná. Zkus to prosím znovu.",
         });
       }
@@ -910,6 +907,7 @@ export async function registerRoutes(app: Express) {
         });
         return res.status(409).json({
           code: "ORDER_STATE_CONFLICT",
+          conflictState: "already_paid",
           message: "Objednávka už byla zaplacená nebo zpracovaná.",
           orderId: order.id,
           redirectUrl: `${baseUrl}/success?order_id=${encodeURIComponent(order.id)}`,
@@ -1186,7 +1184,11 @@ export async function registerRoutes(app: Express) {
           });
           return res.status(409).json({
             code: "ORDER_STATE_CONFLICT",
-            message: "Objednávka už byla zaplacená nebo je právě zpracovávaná.",
+            conflictState: e?.message === "ORDER_ALREADY_PAID" ? "already_paid" : "processing",
+            message:
+              e?.message === "ORDER_ALREADY_PAID"
+                ? "Objednávka už byla zaplacená nebo zpracovaná."
+                : "Checkout už běží nebo se ještě zpracovává. Počkej prosím chvíli a zkus to znovu.",
             orderId: order.id,
           });
         }

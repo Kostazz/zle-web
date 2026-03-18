@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { createSourceProductKey } from "./tbs-parser.ts";
 import { safeFetchBinary, type FetchLimits } from "./fetch-utils.ts";
 import { __publishHardeningTestUtils, __setPublishTestHooks, publishFromApprovedManifest } from "./pipeline-runner.ts";
@@ -10,6 +11,10 @@ import type { RunManifest } from "./ingest-manifest.ts";
 
 // Root of the live output tree used by the publish pipeline.
 const LIVE_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
+
+function uniqueSuffix(label: string): string {
+  return `${label}-${process.pid}-${Date.now()}-${randomUUID()}`;
+}
 
 async function createPublishManifest(
   tempRoot: string,
@@ -119,9 +124,9 @@ test("safeFetchBinary rejects oversized payload while streaming and cancels read
 
 test("publish is manifest-driven and ignores unapproved staged files", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-manifest-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-test-${Date.now()}`;
+  const productId = uniqueSuffix("zle-test");
   const stagedDir = path.join(tempRoot, "stage", productId);
   try {
     await fs.promises.mkdir(stagedDir, { recursive: true });
@@ -181,9 +186,9 @@ test("publish is manifest-driven and ignores unapproved staged files", async () 
 
 test("publish groups multiple approved assets for one product into one swap", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-grouped-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-grouped-${Date.now()}`;
+  const productId = uniqueSuffix("zle-grouped");
   const stagedDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   try {
@@ -271,9 +276,9 @@ test("publish groups multiple approved assets for one product into one swap", as
 
 test("publish replaces stale managed outputs but preserves unrelated live files", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-preserve-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-preserve-${Date.now()}`;
+  const productId = uniqueSuffix("zle-preserve");
   const stagedDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   try {
@@ -341,10 +346,10 @@ test("publish replaces stale managed outputs but preserves unrelated live files"
 // the manifest-driven publish logic.
 test("publish removes stale managed outputs for touched product and preserves files for untouched product", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-stale-cleanup-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-clean-${Date.now()}`;
-  const untouchedProductId = `zle-untouched-${Date.now()}`;
+  const productId = uniqueSuffix("zle-clean");
+  const untouchedProductId = uniqueSuffix("zle-untouched");
   const stagedDir = path.join(tempRoot, "stage", productId);
   try {
     await fs.promises.mkdir(stagedDir, { recursive: true });
@@ -412,9 +417,9 @@ test("publish removes stale managed outputs for touched product and preserves fi
 
 test("publish rejects per-product target conflicts across multiple assets", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-cross-asset-conflict-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-cross-conflict-${Date.now()}`;
+  const productId = uniqueSuffix("zle-cross-conflict");
   const stagedDir = path.join(tempRoot, "stage", productId);
   const duplicatePath = path.join(stagedDir, "cover.jpg");
   try {
@@ -486,9 +491,9 @@ test("publish rejects per-product target conflicts across multiple assets", asyn
 
 test("missing staged output blocks the whole product publish", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-missing-output-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-missing-${Date.now()}`;
+  const productId = uniqueSuffix("zle-missing");
   const stagedDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   try {
@@ -564,9 +569,9 @@ test("missing staged output blocks the whole product publish", async () => {
 
 test("publish fails closed when staged outputs collapse to the same flat live target", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-conflict-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-conflict-${Date.now()}`;
+  const productId = uniqueSuffix("zle-conflict");
   const stagedProductDir = path.join(tempRoot, "stage", productId);
   try {
     await fs.promises.mkdir(stagedProductDir, { recursive: true });
@@ -619,9 +624,9 @@ test("publish fails closed when staged outputs collapse to the same flat live ta
 
 test("publish fails closed when staged output violates flat publish contract", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-nested-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-nested-${Date.now()}`;
+  const productId = uniqueSuffix("zle-nested");
   const invalidPath = path.join(tempRoot, "stage", productId, "gallery", "01.jpg");
   try {
     await fs.promises.mkdir(path.dirname(invalidPath), { recursive: true });
@@ -670,9 +675,9 @@ test("publish fails closed when staged output violates flat publish contract", a
 
 test("publish rollback restores previous live state when swap fails safely", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-rollback-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-rollback-${Date.now()}`;
+  const productId = uniqueSuffix("zle-rollback");
   const stagedProductDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   const liveFile = path.join(liveDir, "cover.jpg");
@@ -738,9 +743,9 @@ test("publish rollback restores previous live state when swap fails safely", asy
 
 test("publish reports anomalous live target state after failed swap", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-anomaly-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-anomaly-${Date.now()}`;
+  const productId = uniqueSuffix("zle-anomaly");
   const stagedProductDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   const liveFile = path.join(liveDir, "cover.jpg");
@@ -813,10 +818,10 @@ test("publish reports anomalous live target state after failed swap", async () =
 
 test("concurrent publish for the same product fails closed with a clear lock error", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-same-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunIdA = `${runId}-publish-a`;
   const publishRunIdB = `${runId}-publish-b`;
-  const productId = `zle-lock-same-${Date.now()}`;
+  const productId = uniqueSuffix("zle-lock-same");
   const stagedDir = path.join(tempRoot, "stage", productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   let releaseFirstPublish: (() => void) | null = null;
@@ -876,9 +881,9 @@ test("concurrent publish for the same product fails closed with a clear lock err
 
 test("different product publishes can proceed independently", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-different-"));
-  const runId = `r-${Date.now()}`;
-  const productA = `zle-lock-a-${Date.now()}`;
-  const productB = `zle-lock-b-${Date.now()}`;
+  const runId = uniqueSuffix("r");
+  const productA = uniqueSuffix("zle-lock-a");
+  const productB = uniqueSuffix("zle-lock-b");
   const stageRoot = path.join(tempRoot, "stage");
   try {
     for (const [productId, contents] of [[productA, "alpha"], [productB, "beta"]] as const) {
@@ -924,9 +929,9 @@ test("different product publishes can proceed independently", async () => {
 
 test("stale publish temp directories are cleaned safely before publish", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-stale-temp-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-stale-temp-${Date.now()}`;
+  const productId = uniqueSuffix("zle-stale-temp");
   const stageRoot = path.join(tempRoot, "stage");
   const stagedDir = path.join(stageRoot, productId);
   const staleTempDir = path.join(
@@ -980,9 +985,9 @@ test("stale publish temp directories are cleaned safely before publish", async (
 
 test("fresh valid lock fails closed with active-lock diagnostics", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-fresh-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-lock-fresh-${Date.now()}`;
+  const productId = uniqueSuffix("zle-lock-fresh");
   const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
   try {
     const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "fresh"]]);
@@ -1005,9 +1010,9 @@ test("fresh valid lock fails closed with active-lock diagnostics", async () => {
 
 test("stale valid lock is recovered and publish proceeds", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-stale-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-lock-stale-${Date.now()}`;
+  const productId = uniqueSuffix("zle-lock-stale");
   const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
   const liveDir = path.join(LIVE_ROOT, productId);
   try {
@@ -1031,9 +1036,9 @@ test("stale valid lock is recovered and publish proceeds", async () => {
 
 test("malformed lock file fails closed", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-malformed-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-lock-malformed-${Date.now()}`;
+  const productId = uniqueSuffix("zle-lock-malformed");
   const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
   try {
     const manifest = await createPublishManifest(tempRoot, runId, productId, [["cover.jpg", "blocked"]]);
@@ -1055,9 +1060,9 @@ test("malformed lock file fails closed", async () => {
 
 test("stale lock recovery retries acquisition only once and fails closed if reacquire still fails", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-reacquire-"));
-  const runId = `r-${Date.now()}`;
+  const runId = uniqueSuffix("r");
   const publishRunId = `${runId}-publish`;
-  const productId = `zle-lock-reacquire-${Date.now()}`;
+  const productId = uniqueSuffix("zle-lock-reacquire");
   const lockPath = __publishHardeningTestUtils.getProductLockPath(productId);
   const originalRm = fs.promises.rm;
   let intercepted = false;
@@ -1095,9 +1100,9 @@ test("stale lock recovery retries acquisition only once and fails closed if reac
 
 test("stale lock recovery remains per-product and does not block different product publishes", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "publish-lock-per-product-"));
-  const runId = `r-${Date.now()}`;
-  const productA = `zle-lock-per-product-a-${Date.now()}`;
-  const productB = `zle-lock-per-product-b-${Date.now()}`;
+  const runId = uniqueSuffix("r");
+  const productA = uniqueSuffix("zle-lock-per-product-a");
+  const productB = uniqueSuffix("zle-lock-per-product-b");
   const lockPathA = __publishHardeningTestUtils.getProductLockPath(productA);
   try {
     const staleCreatedAt = new Date(Date.now() - __publishHardeningTestUtils.PUBLISH_LOCK_STALE_THRESHOLD_MS - 60_000).toISOString();
