@@ -6,6 +6,13 @@ import { extFromContentType, jitterDelay, normalizeAllowedUrl, safeFetchBinary, 
 import { ensureSourceRunDirs, type CrawlLog, type SourceDatasetManifest, type SourceProductRecord, writeJsonFile } from "./source-dataset.ts";
 import { createFingerprint, createSourceProductKey, extractBrandListingProductLinks, parseTbsProductPage } from "./tbs-parser.ts";
 
+function summarizeSkippedProducts(skippedProducts: CrawlLog["skippedProducts"]): Record<string, number> {
+  return skippedProducts.reduce<Record<string, number>>((summary, item) => {
+    summary[item.reasonCode] = (summary[item.reasonCode] ?? 0) + 1;
+    return summary;
+  }, {});
+}
+
 export type SourceRunOptions = {
   runId: string;
   outputRoot: string;
@@ -42,6 +49,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     visitedPages: [],
     skippedUrls: [],
     skippedProducts: [],
+    skippedProductSummary: {},
     downloadErrors: [],
     limits: {
       maxPages: options.maxPages,
@@ -200,6 +208,8 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
 
     products.push(productRecord);
   }
+
+  crawlLog.skippedProductSummary = summarizeSkippedProducts(crawlLog.skippedProducts);
 
   const dataset: SourceDatasetManifest = {
     runId: options.runId,
