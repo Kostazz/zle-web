@@ -180,6 +180,7 @@ Rules:
 - the executor stages a full candidate directory first and performs an atomic swap per live target
 - only managed stale outputs for the same owned target set are removed
 - `--validate-only` performs the full authority/path/publish-plan validation without writing live assets
+- fail-closed CLI errors still emit a publish report and summary under `tmp/publish-reports` for auditability
 
 This is the first and only layer in this flow allowed to write live assets.
 

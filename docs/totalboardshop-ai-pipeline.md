@@ -79,6 +79,7 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
   - Executes strict manual publish from a validated publish gate manifest plus staged artifacts only.
   - Fails closed on malformed artifacts, missing staged outputs, collisions, unsafe paths, or writes outside the managed live root / `tmp/publish-reports`.
   - Supports `--validate-only` planning without live writes.
+  - On fail-closed validation errors, the CLI still emits fail-closed report artifacts in `tmp/publish-reports/`.
 - Existing ingest agent (`npm run photos:ingest`) remains available for the older generic ingest path without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
@@ -177,6 +178,7 @@ The explicit manual publish executor is the next and only live-writing layer. It
 - writes live assets only inside `client/public/images/products`,
 - writes execution reports only to `tmp/publish-reports`,
 - supports `npm run photos:publish-reviewed -- --run-id <runId> --validate-only` for full planning validation without live writes.
+- on fail-closed validation errors, the CLI still writes a failure report + summary under `tmp/publish-reports`.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.
