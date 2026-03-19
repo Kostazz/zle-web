@@ -26,7 +26,8 @@
     "photos:curate": "tsx script/curate-totalboardshop.ts",
     "photos:review": "tsx script/review-totalboardshop.ts",
     "photos:stage-reviewed": "tsx script/stage-totalboardshop-reviewed.ts",
-    "photos:publish-gate": "tsx script/publish-gate-totalboardshop.ts"
+    "photos:publish-gate": "tsx script/publish-gate-totalboardshop.ts",
+    "photos:publish-reviewed": "tsx script/publish-totalboardshop-reviewed.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

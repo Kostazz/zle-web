@@ -29,7 +29,11 @@ The first implementation is **review-first only**. The follow-up executor adds a
    - `script/publish-gate-totalboardshop.ts` runs only after authoritative review and successful staging.
    - It validates release decisions for staged items and writes only to `tmp/publish-gates/`.
    - It never calls publish code or writes live assets.
-6. **Publish layer**
+6. **Explicit manual publish executor layer**
+   - `script/publish-totalboardshop-reviewed.ts` runs only from a validated publish gate manifest plus the staging execution report.
+   - It is the first and only layer in this flow allowed to write live assets.
+   - It writes live assets only to the managed live root and reports only to `tmp/publish-reports/`.
+7. **Legacy publish layer**
    - Existing publish path remains separate and unchanged.
    - Never called by the curation layer.
 
@@ -65,6 +69,10 @@ Approved-only staging artifacts are represented by:
 Publish gate artifacts are represented by:
 - `tmp/publish-gates/<runId>.publish-gate.json`
 - `tmp/publish-gates/<runId>.summary.md`
+
+Manual publish artifacts are represented by:
+- `tmp/publish-reports/<runId>.publish.json`
+- `tmp/publish-reports/<runId>.summary.md`
 
 
 ## Human Review Decision Manifest (KROK 6.4)
@@ -151,6 +159,30 @@ Rules:
 
 This keeps review approval and release approval as distinct checkpoints: human review authorizes staging, and the publish gate authorizes only a future publish candidate set.
 
+## Explicit Manual Publish Executor (KROK 6.7)
+The manual publish executor is a separate downstream execution layer after the publish gate. It performs no curation, review, or release-authority reasoning of its own; it only executes already-authorized decisions.
+
+Inputs:
+- `tmp/publish-gates/<gateRunId>.publish-gate.json`
+- `tmp/agent-manifests/<runId>.staging.json`
+- `tmp/agent-staging/<runId>/...`
+
+Outputs:
+- `tmp/publish-reports/<runId>.publish.json`
+- `tmp/publish-reports/<runId>.summary.md`
+- managed live files under `client/public/images/products/<liveTargetKey>/...`
+
+Rules:
+- only `ready_for_publish` + `eligible` gate items with staging status `staged` are publishable
+- malformed JSON, unknown fields, lineage mismatches, and target collisions fail closed
+- missing staged outputs or planned/produced mismatches fail closed
+- path traversal, symlink paths, and writes outside the managed live root fail closed
+- the executor stages a full candidate directory first and performs an atomic swap per live target
+- only managed stale outputs for the same owned target set are removed
+- `--validate-only` performs the full authority/path/publish-plan validation without writing live assets
+
+This is the first and only layer in this flow allowed to write live assets.
+
 ## CLI
 ```bash
 npm run photos:curate -- --run-id <runId>
@@ -161,6 +193,8 @@ npm run photos:stage-reviewed -- --run-id <runId>
 npm run photos:publish-gate -- --run-id <runId> --write-template
 npm run photos:publish-gate -- --run-id <runId> --validate-only
 npm run photos:publish-gate -- --run-id <runId>
+npm run photos:publish-reviewed -- --run-id <runId> --validate-only
+npm run photos:publish-reviewed -- --run-id <runId>
 npm run photos:curate -- --run-id <runId> --mode incremental-sync
 npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 ```
@@ -173,10 +207,11 @@ npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 - Review/curation layers execute no staging action.
 - Approved-only staging writes only to `tmp/agent-staging` and `tmp/agent-manifests`.
 - Publish gate writes only to `tmp/publish-gates`.
+- Manual publish writes reports only to `tmp/publish-reports` and live assets only to `client/public/images/products`.
 - Review decisions fail closed on invalid or ambiguous manifests.
 - Publish gate decisions fail closed on invalid, blocked, or colliding release batches.
-- No live asset writes occur.
-- No writes occur outside the designated tmp roots for each layer.
+- Manual publish fails closed on malformed artifacts, missing staged outputs, unsafe paths, or live target collisions.
+- No writes occur outside the designated tmp roots for each layer plus the managed live root for manual publish.
 
 ## Non-Goals
 This foundation does **not** implement:
