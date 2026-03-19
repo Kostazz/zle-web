@@ -5,7 +5,7 @@ This layer inserts a strict, deterministic, fail-closed review boundary between:
 - the TotalBoardShop source snapshot, and
 - the existing staged ingest / publish pipeline.
 
-The first implementation is **review-first only**. It does not publish, stage, mutate the live asset tree, or write to the database.
+The first implementation is **review-first only**. The follow-up executor adds an approved-only staging step, but it still does not publish, mutate the live asset tree, or write to the database.
 
 ## Layer Separation
 1. **Source layer**
@@ -22,8 +22,9 @@ The first implementation is **review-first only**. It does not publish, stage, m
    - Writes only to `tmp/review-decisions/`.
    - Never stages or publishes.
 4. **Staging layer**
-   - Existing staged ingest flow remains separate and unchanged.
-   - Not called by the curation CLI.
+   - `script/stage-totalboardshop-reviewed.ts` runs after authoritative review.
+   - It stages only approved items and writes only to `tmp/agent-staging/` and `tmp/agent-manifests/`.
+   - It is not called by the curation CLI.
 5. **Publish layer**
    - Existing publish path remains separate and unchanged.
    - Never called by the curation layer.
@@ -51,6 +52,11 @@ For a run ID `<runId>` the curation layer writes:
 Human review decision artifacts are represented by:
 - `tmp/review-decisions/<runId>.review.json`
 - `tmp/review-decisions/<runId>.summary.md`
+
+Approved-only staging artifacts are represented by:
+- `tmp/agent-manifests/<runId>.staging.json`
+- `tmp/agent-manifests/<runId>.staging-summary.md`
+- `tmp/agent-staging/<runId>/...`
 
 
 ## Human Review Decision Manifest (KROK 6.4)
@@ -88,11 +94,37 @@ Validation is fail-closed:
 
 This layer still does **not** execute staging or publish work.
 
+## Approved-Only Staging Executor (KROK 6.5)
+The new staging executor is a distinct downstream layer after review authority:
+
+- Inputs:
+  - `tmp/source-datasets/<runId>/...`
+  - `tmp/curation/<runId>.curation.json`
+  - `tmp/review-decisions/<reviewRunId>.review.json`
+- Output roots:
+  - `tmp/agent-staging`
+  - `tmp/agent-manifests`
+
+Rules:
+- only `approved` review items are selected
+- `rejected` and `hold` items are ignored
+- `map_to_existing` requires a valid local product ID
+- `new_candidate` must not include a local product ID
+- missing or malformed source image paths fail closed per item
+- staging target collisions fail closed
+- any path outside the allowed tmp roots fails closed
+- no publish code is invoked
+- no writes are allowed to `client/public/images/products`
+
+This keeps review authority and execution authority separated: the human manifest decides eligibility, and the staging executor performs only the bounded staging work.
+
 ## CLI
 ```bash
 npm run photos:curate -- --run-id <runId>
 npm run photos:review -- --run-id <runId> --write-template
 npm run photos:review -- --run-id <runId> --validate-only
+npm run photos:stage-reviewed -- --run-id <runId> --validate-only
+npm run photos:stage-reviewed -- --run-id <runId>
 npm run photos:curate -- --run-id <runId> --mode incremental-sync
 npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 ```
@@ -102,9 +134,11 @@ npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 - Invalid JSON causes an explicit error.
 - Run ID mismatches across artifacts cause an explicit error.
 - No publish action is executed.
-- No staging action is executed.
+- Review/curation layers execute no staging action.
+- Approved-only staging writes only to `tmp/agent-staging` and `tmp/agent-manifests`.
 - Review decisions fail closed on invalid or ambiguous manifests.
-- No writes occur outside `tmp/curation` and `tmp/review-decisions`.
+- No live asset writes occur.
+- No writes occur outside the designated tmp roots for each layer.
 
 ## Non-Goals
 This foundation does **not** implement:

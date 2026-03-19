@@ -6,6 +6,7 @@ This pipeline remains a safe, fail-closed, layered flow for **ZLE-only** product
 Current covered layers are:
 - source snapshot collection,
 - deterministic curation/review planning,
+- approved-only staging execution,
 - staged ingest execution via existing ingest CLI,
 - deterministic decisioning,
 - optional guarded publish,
@@ -25,8 +26,10 @@ Current covered layers are:
    - Acts as the authoritative human checkpoint before any future staging/publish work.
    - Does not stage, publish, touch live assets, or write to DB.
 4. **Staging layer**
-   - Existing `npm run photos:ingest` flow.
-   - Remains isolated from source crawling and curation policy.
+   - `script/stage-totalboardshop-reviewed.ts` + `script/lib/staging-review-executor.ts`
+   - Loads source + curation + authoritative review artifacts and stages only review-approved items into `tmp/agent-staging/`.
+   - Writes execution manifests only into `tmp/agent-manifests/`.
+   - Does not publish, write live assets, or perform live swaps.
 5. **Publish layer**
    - Existing guarded publish path.
    - Remains separate from curation and decisioning.
@@ -54,7 +57,10 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - `script/review-totalboardshop.ts` + `script/lib/review-decision-agent.ts`
   - Validates the authoritative human review decision manifest with fail-closed runtime checks.
   - Produces normalized `approved` / `rejected` / `hold` outputs without calling staging or publish code.
-- Existing ingest agent (`npm run photos:ingest`) is reused without behavioral change.
+- `script/stage-totalboardshop-reviewed.ts` + `script/lib/staging-review-executor.ts`
+  - Executes a strict staging-only layer after review authority.
+  - Stages only `approved` items, rejects malformed/missing source image inputs, and writes manifests under `tmp/agent-manifests/`.
+- Existing ingest agent (`npm run photos:ingest`) remains available for the older generic ingest path without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
 - `script/totalboardshop-pipeline.ts` + `script/lib/pipeline-runner.ts`
@@ -77,6 +83,9 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - Curation summary: `tmp/curation/<runId>.summary.md`
 - Review decision manifest: `tmp/review-decisions/<runId>.review.json`
 - Review decision summary: `tmp/review-decisions/<runId>.summary.md`
+- Approved staging report: `tmp/agent-manifests/<runId>.staging.json`
+- Approved staging summary: `tmp/agent-manifests/<runId>.staging-summary.md`
+- Approved staged outputs: `tmp/agent-staging/<runId>/...`
 - Ingest report: `tmp/agent-reports/<runId>.json`
 - Ingest manifest: `tmp/agent-manifests/<runId>.run.json`
 - Decision: `tmp/agent-decisions/<runId>.decision.json`
@@ -88,6 +97,8 @@ npm run source:totalboardshop -- --run-id tbs-20260101-120000-abcdef
 npm run photos:curate -- --run-id <runId>
 npm run photos:review -- --run-id <runId> --write-template
 npm run photos:review -- --run-id <runId> --validate-only
+npm run photos:stage-reviewed -- --run-id <runId> --validate-only
+npm run photos:stage-reviewed -- --run-id <runId>
 npm run photos:ingest -- --input tmp/source-datasets/<runId>/images --staged --source-type manual --run-id <runId>
 npm run photos:decision -- --run-id <runId>
 npm run pipeline:totalboardshop -- --staged-only
@@ -113,7 +124,15 @@ Audit is plain JSON (not blockchain). Each run stores artifact hashes and links 
 `currentRunHash` is deterministic from run ID + artifact hashes + `previousRunHash`.
 
 ## Review-First Scope Reminder
-The curation layer plus the human review decision layer are review-first only. The review decision manifest is the authoritative human checkpoint and must explicitly mark each included item as `approved`, `rejected`, or `hold`. `approved` items must resolve to exactly one target mode: `map_to_existing` with a valid local product ID, or `new_candidate`. This layer does **not** stage, publish, create products in the runtime app, write to DB, touch payment/watchdog/OPS paths, or write live product images.
+The curation layer plus the human review decision layer are review-first only. The review decision manifest is the authoritative human checkpoint and must explicitly mark each included item as `approved`, `rejected`, or `hold`. `approved` items must resolve to exactly one target mode: `map_to_existing` with a valid local product ID, or `new_candidate`.
+
+The approved-only staging layer is a separate executor after that review checkpoint. It:
+- processes only `approved` items,
+- stages only into `tmp/agent-staging`,
+- writes reports only into `tmp/agent-manifests`,
+- never publishes,
+- never writes to `client/public/images/products`,
+- never performs live swaps or DB writes.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.
