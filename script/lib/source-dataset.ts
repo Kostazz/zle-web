@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export type SourceDatasetMode = "crawl-snapshot" | "manual-trusted-snapshot";
+
 export type SourceDatasetManifest = {
   runId: string;
   source: "totalboardshop";
   sourceRoot: "https://totalboardshop.cz/";
   createdAt: string;
-  mode: "crawl-snapshot";
+  mode: SourceDatasetMode;
   scope: {
     brand: "ZLE";
     matchMode: "exact";
@@ -17,6 +19,11 @@ export type SourceDatasetManifest = {
   crawlLogPath: "crawl-log.json";
   auditPath: "audit.json";
   imagesPath: "images";
+  sourceInput?: {
+    type: "live-crawl" | "manual-trusted";
+    operatorProvided: boolean;
+    inputPath?: string;
+  };
 };
 
 export type SourceProductRecord = {
@@ -58,6 +65,13 @@ export type CrawlLog = {
     maxProducts: number;
     maxImagesPerProduct: number;
     maxImageBytes: number;
+  };
+  mode?: SourceDatasetMode;
+  trust?: {
+    sourceType: "live-crawl" | "manual-trusted";
+    operatorProvided: boolean;
+    notes: string[];
+    inputPath?: string;
   };
 };
 
