@@ -14,6 +14,25 @@ type CliArgs = {
   validateOnly: boolean;
 };
 
+type ReviewFailureArtifact = {
+  runId: string;
+  mode: "write-template" | "validate-only" | "write-normalized";
+  status: "failed";
+  failureCode: string;
+  failureReason: string;
+  timestamp: string;
+  upstreamRunIds: {
+    sourceRunId?: string;
+    reviewRunId?: string;
+  };
+  inputArtifacts: {
+    inputPath?: string;
+    outputDir: string;
+    curationReportPath?: string;
+    reviewQueuePath?: string;
+  };
+};
+
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     runId: "",
@@ -64,15 +83,53 @@ function validateOutputDir(outputDir: string): string {
   return resolved;
 }
 
-async function writeValidationFailureSummary(args: CliArgs, message: string): Promise<string> {
+function inferMode(args: CliArgs): ReviewFailureArtifact["mode"] {
+  if (args.writeTemplate) return "write-template";
+  if (args.validateOnly) return "validate-only";
+  return "write-normalized";
+}
+
+function classifyFailure(message: string): string {
+  if (/Missing required artifact/i.test(message)) return "missing_required_artifact";
+  if (/Invalid .* JSON/i.test(message)) return "invalid_json";
+  if (/mismatch/i.test(message)) return "lineage_mismatch";
+  if (/outside tmp\/review-decisions/i.test(message)) return "output_path_rejected";
+  if (/Unknown argument|Missing --run-id|cannot be combined/i.test(message)) return "cli_usage_error";
+  return "review_validation_failed";
+}
+
+async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ manifestPath: string; summaryPath: string }> {
   const outputDir = validateOutputDir(args.outputDir);
   await fs.promises.mkdir(outputDir, { recursive: true });
+  const timestamp = new Date().toISOString();
+  const manifestPath = path.join(outputDir, `${args.runId}.review.json`);
   const summaryPath = path.join(outputDir, `${args.runId}.summary.md`);
+  const artifact: ReviewFailureArtifact = {
+    runId: args.runId,
+    mode: inferMode(args),
+    status: "failed",
+    failureCode: classifyFailure(message),
+    failureReason: message,
+    timestamp,
+    upstreamRunIds: {
+      sourceRunId: args.runId,
+      reviewRunId: args.runId,
+    },
+    inputArtifacts: {
+      inputPath: args.inputPath,
+      outputDir: args.outputDir,
+      curationReportPath: path.join("tmp", "curation", `${args.runId}.curation.json`),
+      reviewQueuePath: path.join("tmp", "curation", `${args.runId}.review-queue.json`),
+    },
+  };
   const lines = [
     "# TotalBoardShop Review Decision Summary",
     "",
     `- Run ID: ${args.runId}`,
-    `- Created At: ${new Date().toISOString()}`,
+    `- Created At: ${timestamp}`,
+    `- Mode: ${artifact.mode}`,
+    `- Status: failed`,
+    `- Failure Code: ${artifact.failureCode}`,
     "",
     "## Validation Errors",
     `- ${message}`,
@@ -83,8 +140,9 @@ async function writeValidationFailureSummary(args: CliArgs, message: string): Pr
     "- No publish action was executed.",
     "- No writes were made outside tmp/review-decisions.",
   ];
+  await fs.promises.writeFile(manifestPath, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   await fs.promises.writeFile(summaryPath, `${lines.join("\n")}\n`, "utf8");
-  return summaryPath;
+  return { manifestPath, summaryPath };
 }
 
 async function main(): Promise<void> {
@@ -113,9 +171,10 @@ async function main(): Promise<void> {
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const summaryPath = await writeValidationFailureSummary(args, message);
+      const failure = await writeFailureArtifacts(args, message);
       console.error(message);
-      console.error(`summary ${summaryPath}`);
+      console.error(`manifest ${failure.manifestPath}`);
+      console.error(`summary ${failure.summaryPath}`);
       process.exit(1);
     }
   }
@@ -131,7 +190,23 @@ async function main(): Promise<void> {
   console.log(`summary ${result.summaryPath}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+main().catch(async (error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  let args: CliArgs | null = null;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch {
+    console.error(message);
+    process.exit(1);
+  }
+  try {
+    const failure = await writeFailureArtifacts(args, message);
+    console.error(message);
+    console.error(`manifest ${failure.manifestPath}`);
+    console.error(`summary ${failure.summaryPath}`);
+  } catch (artifactError) {
+    console.error(message);
+    console.error(artifactError instanceof Error ? artifactError.message : String(artifactError));
+  }
   process.exit(1);
 });
