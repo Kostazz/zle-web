@@ -15,14 +15,19 @@ Current covered layers are:
 1. **Source layer**
    - `script/source-totalboardshop-agent.ts` + `script/lib/source-totalboardshop.ts`
    - Collects ZLE-only source snapshots into `tmp/source-datasets/<runId>/`.
-2. **Curation / review layer**
+2. **Curation layer**
    - `script/curate-totalboardshop.ts` + `script/lib/curation-agent.ts`
    - Reads source artifacts, reuses reconciliation logic, and emits review-first planning artifacts in `tmp/curation/`.
    - Does not stage, publish, touch live assets, or write to DB.
-3. **Staging layer**
+3. **Review decision layer**
+   - `script/review-totalboardshop.ts` + `script/lib/review-decision-agent.ts`
+   - Loads curation artifacts, validates a strict human-authored review manifest, and writes normalized review-decision artifacts in `tmp/review-decisions/`.
+   - Acts as the authoritative human checkpoint before any future staging/publish work.
+   - Does not stage, publish, touch live assets, or write to DB.
+4. **Staging layer**
    - Existing `npm run photos:ingest` flow.
    - Remains isolated from source crawling and curation policy.
-4. **Publish layer**
+5. **Publish layer**
    - Existing guarded publish path.
    - Remains separate from curation and decisioning.
 
@@ -46,6 +51,9 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - `script/curate-totalboardshop.ts` + `script/lib/curation-agent.ts`
   - Runs the review-first curation layer between source artifacts and downstream processing.
   - Reuses reconciliation logic without calling staging or publish code.
+- `script/review-totalboardshop.ts` + `script/lib/review-decision-agent.ts`
+  - Validates the authoritative human review decision manifest with fail-closed runtime checks.
+  - Produces normalized `approved` / `rejected` / `hold` outputs without calling staging or publish code.
 - Existing ingest agent (`npm run photos:ingest`) is reused without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
@@ -67,6 +75,8 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - Curation report: `tmp/curation/<runId>.curation.json`
 - Curation review queue: `tmp/curation/<runId>.review-queue.json`
 - Curation summary: `tmp/curation/<runId>.summary.md`
+- Review decision manifest: `tmp/review-decisions/<runId>.review.json`
+- Review decision summary: `tmp/review-decisions/<runId>.summary.md`
 - Ingest report: `tmp/agent-reports/<runId>.json`
 - Ingest manifest: `tmp/agent-manifests/<runId>.run.json`
 - Decision: `tmp/agent-decisions/<runId>.decision.json`
@@ -76,6 +86,8 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 ```bash
 npm run source:totalboardshop -- --run-id tbs-20260101-120000-abcdef
 npm run photos:curate -- --run-id <runId>
+npm run photos:review -- --run-id <runId> --write-template
+npm run photos:review -- --run-id <runId> --validate-only
 npm run photos:ingest -- --input tmp/source-datasets/<runId>/images --staged --source-type manual --run-id <runId>
 npm run photos:decision -- --run-id <runId>
 npm run pipeline:totalboardshop -- --staged-only
@@ -101,7 +113,7 @@ Audit is plain JSON (not blockchain). Each run stores artifact hashes and links 
 `currentRunHash` is deterministic from run ID + artifact hashes + `previousRunHash`.
 
 ## Review-First Scope Reminder
-The curation layer is review-first only. It does **not** publish, stage, create products in the runtime app, write to DB, touch payment/watchdog/OPS paths, or write live product images.
+The curation layer plus the human review decision layer are review-first only. The review decision manifest is the authoritative human checkpoint and must explicitly mark each included item as `approved`, `rejected`, or `hold`. `approved` items must resolve to exactly one target mode: `map_to_existing` with a valid local product ID, or `new_candidate`. This layer does **not** stage, publish, create products in the runtime app, write to DB, touch payment/watchdog/OPS paths, or write live product images.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.
