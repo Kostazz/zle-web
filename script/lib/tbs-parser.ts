@@ -30,6 +30,16 @@ export type ParseFailure = {
   reason: string;
 };
 
+const WEDOS_PROTECTION_MARKERS = [
+  "proof of work - wedos protection",
+  "keeping you safe",
+  "wedos protection",
+  "challenge-widget",
+  "captcha-widget",
+  "pow challenge",
+  "verification",
+];
+
 const SIZE_TOKEN_RE = /\b(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL)\b/gi;
 
 function stripTags(html: string): string {
@@ -150,9 +160,30 @@ export function createSourceProductKey(sourceSlug: string): string {
   return `${stableSlug}--${hash}`;
 }
 
+export function isProtectionPageHtml(html: string): boolean {
+  const lowered = html.toLowerCase();
+  const strongSignals = [
+    lowered.includes("proof of work - wedos protection"),
+    lowered.includes("<h1") && lowered.includes("keeping you safe"),
+    lowered.includes("wedos protection"),
+  ].filter(Boolean).length;
+
+  const markerHits = WEDOS_PROTECTION_MARKERS.filter((marker) => lowered.includes(marker)).length;
+  return strongSignals >= 2 || (strongSignals >= 1 && markerHits >= 3);
+}
+
 export function parseTbsProductPage(sourceUrl: string, html: string): { product?: ParsedProductPage; failure?: ParseFailure } {
   const pageUrl = new URL(sourceUrl);
   const sourceSlug = pageUrl.pathname.split("/").filter(Boolean).at(-1) ?? "";
+
+  if (isProtectionPageHtml(html)) {
+    return {
+      failure: {
+        code: "blocked_by_protection",
+        reason: "Protection or challenge page detected instead of product HTML",
+      },
+    };
+  }
 
   const title =
     firstCapture(html, [/<h1[^>]*class=["'][^"']*product_title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i, /<h1[^>]*>([\s\S]*?)<\/h1>/i]) || "";

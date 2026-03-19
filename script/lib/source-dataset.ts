@@ -51,6 +51,7 @@ export type CrawlLog = {
   visitedPages: string[];
   skippedUrls: Array<{ url: string; reasonCode: string; detail?: string }>;
   skippedProducts: Array<{ sourceUrl: string; reasonCode: string; detail?: string }>;
+  skippedProductSummary: Record<string, number>;
   downloadErrors: Array<{ sourceUrl: string; imageUrl?: string; reasonCode: string; detail: string }>;
   limits: {
     maxPages: number;
