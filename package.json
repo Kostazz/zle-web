@@ -22,7 +22,8 @@
     "photos:decision": "tsx script/decision-agent.ts",
     "pipeline:totalboardshop": "tsx script/totalboardshop-pipeline.ts",
     "photos:reconcile": "tsx script/reconcile-totalboardshop.ts",
-    "agent:payment": "tsx server/agents/paymentWatchdog.ts"
+    "agent:payment": "tsx server/agents/paymentWatchdog.ts",
+    "photos:curate": "tsx script/curate-totalboardshop.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
