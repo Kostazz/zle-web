@@ -5,7 +5,7 @@ This layer inserts a strict, deterministic, fail-closed review boundary between:
 - the TotalBoardShop source snapshot, and
 - the existing staged ingest / publish pipeline.
 
-The first implementation is **review-first only**. The follow-up executor adds an approved-only staging step, but it still does not publish, mutate the live asset tree, or write to the database.
+The first implementation is **review-first only**. The follow-up executor adds an approved-only staging step, and the next release-authority layer adds a publish gate, but neither layer publishes, mutates the live asset tree, or writes to the database.
 
 ## Layer Separation
 1. **Source layer**
@@ -25,7 +25,11 @@ The first implementation is **review-first only**. The follow-up executor adds a
    - `script/stage-totalboardshop-reviewed.ts` runs after authoritative review.
    - It stages only approved items and writes only to `tmp/agent-staging/` and `tmp/agent-manifests/`.
    - It is not called by the curation CLI.
-5. **Publish layer**
+5. **Publish gate / release authority layer**
+   - `script/publish-gate-totalboardshop.ts` runs only after authoritative review and successful staging.
+   - It validates release decisions for staged items and writes only to `tmp/publish-gates/`.
+   - It never calls publish code or writes live assets.
+6. **Publish layer**
    - Existing publish path remains separate and unchanged.
    - Never called by the curation layer.
 
@@ -57,6 +61,10 @@ Approved-only staging artifacts are represented by:
 - `tmp/agent-manifests/<runId>.staging.json`
 - `tmp/agent-manifests/<runId>.staging-summary.md`
 - `tmp/agent-staging/<runId>/...`
+
+Publish gate artifacts are represented by:
+- `tmp/publish-gates/<runId>.publish-gate.json`
+- `tmp/publish-gates/<runId>.summary.md`
 
 
 ## Human Review Decision Manifest (KROK 6.4)
@@ -118,6 +126,31 @@ Rules:
 
 This keeps review authority and execution authority separated: the human manifest decides eligibility, and the staging executor performs only the bounded staging work.
 
+
+## Publish Gate / Release Authority Layer (KROK 6.6)
+The publish gate is a separate authority checkpoint after both review approval and approved-only staging. Its job is to decide which already staged items are allowed to enter a future publish batch. It does **not** publish.
+
+Inputs:
+- `tmp/review-decisions/<runId>.review.json`
+- `tmp/agent-manifests/<runId>.staging.json`
+- `tmp/curation/<runId>.curation.json` for lineage validation
+
+Outputs:
+- `tmp/publish-gates/<runId>.publish-gate.json`
+- `tmp/publish-gates/<runId>.summary.md`
+
+Rules:
+- only review-`approved` items with staging status `staged` are eligible for gate consideration
+- each staged item must appear exactly once in the publish gate manifest
+- release decisions are limited to `ready_for_publish`, `hold`, or `reject_release`
+- `ready_for_publish` is allowed only when staged outputs are complete and fully match the planned outputs
+- missing or mismatched staged outputs block release approval
+- batch target/output collisions fail closed
+- malformed JSON, unknown fields, or shape violations fail closed
+- all writes are restricted to `tmp/publish-gates`
+
+This keeps review approval and release approval as distinct checkpoints: human review authorizes staging, and the publish gate authorizes only a future publish candidate set.
+
 ## CLI
 ```bash
 npm run photos:curate -- --run-id <runId>
@@ -125,6 +158,9 @@ npm run photos:review -- --run-id <runId> --write-template
 npm run photos:review -- --run-id <runId> --validate-only
 npm run photos:stage-reviewed -- --run-id <runId> --validate-only
 npm run photos:stage-reviewed -- --run-id <runId>
+npm run photos:publish-gate -- --run-id <runId> --write-template
+npm run photos:publish-gate -- --run-id <runId> --validate-only
+npm run photos:publish-gate -- --run-id <runId>
 npm run photos:curate -- --run-id <runId> --mode incremental-sync
 npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 ```
@@ -136,7 +172,9 @@ npm run photos:curate -- --run-id <runId> --category mikina --limit 10
 - No publish action is executed.
 - Review/curation layers execute no staging action.
 - Approved-only staging writes only to `tmp/agent-staging` and `tmp/agent-manifests`.
+- Publish gate writes only to `tmp/publish-gates`.
 - Review decisions fail closed on invalid or ambiguous manifests.
+- Publish gate decisions fail closed on invalid, blocked, or colliding release batches.
 - No live asset writes occur.
 - No writes occur outside the designated tmp roots for each layer.
 
