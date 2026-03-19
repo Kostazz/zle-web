@@ -10,7 +10,8 @@ Current covered layers are:
 - publish gate / release authority decisions,
 - staged ingest execution via existing ingest CLI,
 - deterministic decisioning,
-- optional guarded publish,
+- explicit manual publish execution,
+- optional legacy guarded publish,
 - hash-linked audit artifacts.
 
 ## Layered Architecture
@@ -36,9 +37,13 @@ Current covered layers are:
    - Loads authoritative review decisions plus staging results and determines which staged items are explicitly approved for a future publish window.
    - Writes normalized release-authority artifacts only into `tmp/publish-gates/`.
    - Does not publish, perform live swaps, or write live assets.
-6. **Publish layer**
-   - Existing guarded publish path.
-   - Remains separate from curation, staging, and release authority.
+6. **Manual publish executor layer**
+   - `script/publish-totalboardshop-reviewed.ts` + `script/lib/manual-publish-executor.ts`
+   - Loads a validated publish gate manifest plus the staging execution report, selects only `ready_for_publish` + `eligible` + successfully staged items, and publishes only through the managed live asset root.
+   - This is the first and only layer in this flow allowed to write live assets.
+   - Writes publish reports only to `tmp/publish-reports/`.
+7. **Legacy publish layer**
+   - Existing guarded publish path for the older ingest pipeline remains separate.
 
 ## Trust Boundaries
 1. TotalBoardShop pages are untrusted input.
@@ -70,6 +75,10 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
   - Executes the release-authority layer after staging.
   - Validates that only review-approved, successfully staged items can receive release decisions and emits normalized gate artifacts in `tmp/publish-gates/`.
   - Never calls publish code and never writes to `client/public/images/products`.
+- `script/publish-totalboardshop-reviewed.ts` + `script/lib/manual-publish-executor.ts`
+  - Executes strict manual publish from a validated publish gate manifest plus staged artifacts only.
+  - Fails closed on malformed artifacts, missing staged outputs, collisions, unsafe paths, or writes outside the managed live root / `tmp/publish-reports`.
+  - Supports `--validate-only` planning without live writes.
 - Existing ingest agent (`npm run photos:ingest`) remains available for the older generic ingest path without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
@@ -98,6 +107,8 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - Approved staged outputs: `tmp/agent-staging/<runId>/...`
 - Publish gate manifest: `tmp/publish-gates/<runId>.publish-gate.json`
 - Publish gate summary: `tmp/publish-gates/<runId>.summary.md`
+- Manual publish report: `tmp/publish-reports/<runId>.publish.json`
+- Manual publish summary: `tmp/publish-reports/<runId>.summary.md`
 - Ingest report: `tmp/agent-reports/<runId>.json`
 - Ingest manifest: `tmp/agent-manifests/<runId>.run.json`
 - Decision: `tmp/agent-decisions/<runId>.decision.json`
@@ -114,6 +125,8 @@ npm run photos:stage-reviewed -- --run-id <runId>
 npm run photos:publish-gate -- --run-id <runId> --write-template
 npm run photos:publish-gate -- --run-id <runId> --validate-only
 npm run photos:publish-gate -- --run-id <runId>
+npm run photos:publish-reviewed -- --run-id <runId> --validate-only
+npm run photos:publish-reviewed -- --run-id <runId>
 npm run photos:ingest -- --input tmp/source-datasets/<runId>/images --staged --source-type manual --run-id <runId>
 npm run photos:decision -- --run-id <runId>
 npm run pipeline:totalboardshop -- --staged-only
@@ -156,6 +169,14 @@ The publish gate layer is a second explicit checkpoint after staging. It:
 - records explicit release decisions (`ready_for_publish`, `hold`, `reject_release`),
 - writes only to `tmp/publish-gates`,
 - still does **not** publish or write live assets.
+
+The explicit manual publish executor is the next and only live-writing layer. It:
+- requires a valid publish gate manifest plus the staging execution report,
+- selects only items with `releaseDecision = ready_for_publish`, `eligibilityStatus = eligible`, and staging status `staged`,
+- validates staged output completeness and path safety before any live swap,
+- writes live assets only inside `client/public/images/products`,
+- writes execution reports only to `tmp/publish-reports`,
+- supports `npm run photos:publish-reviewed -- --run-id <runId> --validate-only` for full planning validation without live writes.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.
