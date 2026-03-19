@@ -7,6 +7,7 @@ Current covered layers are:
 - source snapshot collection,
 - deterministic curation/review planning,
 - approved-only staging execution,
+- publish gate / release authority decisions,
 - staged ingest execution via existing ingest CLI,
 - deterministic decisioning,
 - optional guarded publish,
@@ -30,9 +31,14 @@ Current covered layers are:
    - Loads source + curation + authoritative review artifacts and stages only review-approved items into `tmp/agent-staging/`.
    - Writes execution manifests only into `tmp/agent-manifests/`.
    - Does not publish, write live assets, or perform live swaps.
-5. **Publish layer**
+5. **Publish gate / release authority layer**
+   - `script/publish-gate-totalboardshop.ts` + `script/lib/publish-gate-agent.ts`
+   - Loads authoritative review decisions plus staging results and determines which staged items are explicitly approved for a future publish window.
+   - Writes normalized release-authority artifacts only into `tmp/publish-gates/`.
+   - Does not publish, perform live swaps, or write live assets.
+6. **Publish layer**
    - Existing guarded publish path.
-   - Remains separate from curation and decisioning.
+   - Remains separate from curation, staging, and release authority.
 
 ## Trust Boundaries
 1. TotalBoardShop pages are untrusted input.
@@ -60,6 +66,10 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - `script/stage-totalboardshop-reviewed.ts` + `script/lib/staging-review-executor.ts`
   - Executes a strict staging-only layer after review authority.
   - Stages only `approved` items, rejects malformed/missing source image inputs, and writes manifests under `tmp/agent-manifests/`.
+- `script/publish-gate-totalboardshop.ts` + `script/lib/publish-gate-agent.ts`
+  - Executes the release-authority layer after staging.
+  - Validates that only review-approved, successfully staged items can receive release decisions and emits normalized gate artifacts in `tmp/publish-gates/`.
+  - Never calls publish code and never writes to `client/public/images/products`.
 - Existing ingest agent (`npm run photos:ingest`) remains available for the older generic ingest path without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
@@ -86,6 +96,8 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - Approved staging report: `tmp/agent-manifests/<runId>.staging.json`
 - Approved staging summary: `tmp/agent-manifests/<runId>.staging-summary.md`
 - Approved staged outputs: `tmp/agent-staging/<runId>/...`
+- Publish gate manifest: `tmp/publish-gates/<runId>.publish-gate.json`
+- Publish gate summary: `tmp/publish-gates/<runId>.summary.md`
 - Ingest report: `tmp/agent-reports/<runId>.json`
 - Ingest manifest: `tmp/agent-manifests/<runId>.run.json`
 - Decision: `tmp/agent-decisions/<runId>.decision.json`
@@ -99,6 +111,9 @@ npm run photos:review -- --run-id <runId> --write-template
 npm run photos:review -- --run-id <runId> --validate-only
 npm run photos:stage-reviewed -- --run-id <runId> --validate-only
 npm run photos:stage-reviewed -- --run-id <runId>
+npm run photos:publish-gate -- --run-id <runId> --write-template
+npm run photos:publish-gate -- --run-id <runId> --validate-only
+npm run photos:publish-gate -- --run-id <runId>
 npm run photos:ingest -- --input tmp/source-datasets/<runId>/images --staged --source-type manual --run-id <runId>
 npm run photos:decision -- --run-id <runId>
 npm run pipeline:totalboardshop -- --staged-only
@@ -133,6 +148,14 @@ The approved-only staging layer is a separate executor after that review checkpo
 - never publishes,
 - never writes to `client/public/images/products`,
 - never performs live swaps or DB writes.
+
+The publish gate layer is a second explicit checkpoint after staging. It:
+- loads the authoritative review manifest plus the staging execution report,
+- considers only successfully staged items,
+- computes eligibility from staged outputs,
+- records explicit release decisions (`ready_for_publish`, `hold`, `reject_release`),
+- writes only to `tmp/publish-gates`,
+- still does **not** publish or write live assets.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.
