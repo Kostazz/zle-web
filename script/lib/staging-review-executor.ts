@@ -64,6 +64,13 @@ function isPathInside(parentDir: string, childPath: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+function isSafeRelativeImagePath(imagePath: string): boolean {
+  return Boolean(imagePath)
+    && !imagePath.includes("\0")
+    && !path.isAbsolute(imagePath)
+    && !imagePath.includes("..");
+}
+
 function toPortablePath(value: string): string {
   return value.split(path.sep).join("/");
 }
@@ -304,14 +311,28 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
       throw new Error(`new_candidate must not carry approvedLocalProductId for ${decision.sourceProductKey}`);
     }
 
-    const sourceImagePaths = sourceProduct.downloadedImages.map((imagePath) => {
-      if (!imagePath || typeof imagePath !== "string") throw new Error(`Malformed source image path for ${decision.sourceProductKey}`);
-      if (imagePath.includes("\0") || path.isAbsolute(imagePath) || imagePath.includes("..")) {
-        throw new Error(`Malformed source image path for ${decision.sourceProductKey}: ${imagePath}`);
+    const imageRootCandidates = [
+      {
+        label: "ingested images root",
+        root: path.resolve(path.join("tmp", "source-images", dataset.runId)),
+        basePath: process.cwd(),
+        paths: sourceProduct.ingestedImagePaths ?? [],
+      },
+      {
+        label: "source dataset images root",
+        root: path.resolve(path.join(sourceRoot, dataset.runId, dataset.imagesPath)),
+        basePath: path.join(sourceRoot, dataset.runId),
+        paths: sourceProduct.downloadedImages ?? [],
+      },
+    ].filter((candidate) => candidate.paths.length > 0);
+
+    const selectedImageCandidate = imageRootCandidates[0];
+    const sourceImagePaths = (selectedImageCandidate?.paths ?? []).map((imagePath) => {
+      if (typeof imagePath !== "string" || !isSafeRelativeImagePath(imagePath)) {
+        throw new Error(`Malformed source image path for ${decision.sourceProductKey}: ${String(imagePath)}`);
       }
-      const resolved = path.resolve(path.join(sourceRoot, dataset.runId, imagePath));
-      const imagesRoot = path.resolve(path.join(sourceRoot, dataset.runId, dataset.imagesPath));
-      if (!isPathInside(imagesRoot, resolved)) {
+      const resolved = path.resolve(path.join(selectedImageCandidate.basePath, imagePath));
+      if (!isPathInside(selectedImageCandidate.root, resolved)) {
         throw new Error(`Source image path escapes images root for ${decision.sourceProductKey}: ${imagePath}`);
       }
       if (!fs.existsSync(resolved)) throw new Error(`Missing source image for ${decision.sourceProductKey}: ${imagePath}`);
