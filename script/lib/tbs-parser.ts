@@ -42,15 +42,23 @@ const WEDOS_PROTECTION_MARKERS = [
 
 const SIZE_TOKEN_RE = /\b(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL)\b/gi;
 
-function stripTags(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
+    .replace(/&#039;/g, "'");
+}
+
+function stripTags(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -185,7 +193,7 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
     };
   }
 
-  const title =
+  const rawTitle =
     firstCapture(html, [
       /<h1[^>]*class=["'][^"']*product_title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i,
       /<h1[^>]*>([\s\S]*?)<\/h1>/i,
@@ -193,6 +201,10 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
       /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
       /<title>([\s\S]*?)<\/title>/i,
     ]) || "";
+
+  const title = decodeHtmlEntities(rawTitle)
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .trim();
 
   if (!title) {
     return { failure: { code: "missing_title", reason: "Main product title missing" } };
