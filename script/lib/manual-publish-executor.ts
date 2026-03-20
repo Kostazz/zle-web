@@ -450,6 +450,16 @@ async function cleanupStaleTempDirs(liveRoot: string): Promise<void> {
   }
 }
 
+async function executePublishUnitsSequentially(units: PlannedPublishUnit[], input: ManualPublishExecutorInput, gateRunId: string, validateOnly: boolean): Promise<PublishExecutionItem[]> {
+  const executedItems: PublishExecutionItem[] = [];
+  let needsInitialTempCleanup = validateOnly !== true;
+  for (const unit of units) {
+    executedItems.push(await executePublishUnit(unit, input, gateRunId, validateOnly, needsInitialTempCleanup));
+    needsInitialTempCleanup = false;
+  }
+  return executedItems;
+}
+
 async function copyExistingLiveFiles(productDir: string, tempDir: string): Promise<void> {
   if (!fs.existsSync(productDir)) return;
   await fs.promises.cp(productDir, tempDir, { recursive: true, force: true });
@@ -561,7 +571,7 @@ function planPublishUnits(input: ManualPublishExecutorInput, gateManifest: Publi
   }).sort((a, b) => a.item.sourceProductKey.localeCompare(b.item.sourceProductKey));
 }
 
-async function executePublishUnit(unit: PlannedPublishUnit, input: ManualPublishExecutorInput, gateRunId: string, validateOnly: boolean): Promise<PublishExecutionItem> {
+async function executePublishUnit(unit: PlannedPublishUnit, input: ManualPublishExecutorInput, gateRunId: string, validateOnly: boolean, cleanupExistingTemps: boolean): Promise<PublishExecutionItem> {
   const liveRoot = path.resolve(input.liveRoot ?? DEFAULT_LIVE_ROOT);
   const tempRoot = path.resolve(input.tempRoot ?? DEFAULT_TEMP_ROOT);
   const productDir = assertInsideAllowedRoot(path.join(liveRoot, unit.liveTargetKey), liveRoot, "live publish target");
@@ -580,7 +590,7 @@ async function executePublishUnit(unit: PlannedPublishUnit, input: ManualPublish
   await ensureWritableDir(tempRoot, tempRoot);
   const releaseLock = await acquirePublishLock(liveRoot, unit.liveTargetKey, input.runId, gateRunId);
   try {
-    await cleanupStaleTempDirs(liveRoot);
+    if (cleanupExistingTemps) await cleanupStaleTempDirs(liveRoot);
     await fs.promises.mkdir(tempDir, { recursive: true });
     await assertNoSymlinkInPathChain(tempDir, liveRoot);
     await copyExistingLiveFiles(productDir, tempDir);
@@ -638,7 +648,7 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
   if (stagingReport.runId !== input.runId) throw new Error(`run id mismatch in staging report: expected ${input.runId}, received ${stagingReport.runId}`);
 
   const units = planPublishUnits(input, gateManifest, stagingReport);
-  const executedItems = await Promise.all(units.map((unit) => executePublishUnit(unit, input, gateRunId, input.validateOnly === true)));
+  const executedItems = await executePublishUnitsSequentially(units, input, gateRunId, input.validateOnly === true);
   const skippedItems: PublishExecutionItem[] = gateManifest.items
     .filter((item) => !(item.releaseDecision === "ready_for_publish" && item.eligibilityStatus === "eligible"))
     .sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey))

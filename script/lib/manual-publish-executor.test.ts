@@ -12,7 +12,14 @@ function uniqueRunId(label: string): string {
   return `${label}-${process.pid}-${Date.now()}-${randomUUID()}`;
 }
 
-async function writeFixture(root: string, runId: string, productId = "prod-1"): Promise<{ gateRunId: string; liveRoot: string; reportDir: string; tempRoot: string; stagingRoot: string }> {
+type FixtureProduct = {
+  sourceProductKey: string;
+  productId: string;
+  coverJpg?: string;
+  coverWebp?: string;
+};
+
+async function writeFixture(root: string, runId: string, products: FixtureProduct[] = [{ sourceProductKey: "source-1", productId: "prod-1" }]): Promise<{ gateRunId: string; liveRoot: string; reportDir: string; tempRoot: string; stagingRoot: string }> {
   const gateRunId = runId;
   const gateDir = path.join(root, "tmp", "publish-gates");
   const manifestDir = path.join(root, "tmp", "agent-manifests");
@@ -20,14 +27,48 @@ async function writeFixture(root: string, runId: string, productId = "prod-1"): 
   const reportDir = path.join(process.cwd(), "tmp", "publish-reports");
   const liveRoot = path.join(root, "client", "public", "images", "products");
   const tempRoot = path.join(root, "tmp");
-  const stagedDir = path.join(stagingRoot, runId, "existing", productId);
-  await fs.promises.mkdir(stagedDir, { recursive: true });
   await fs.promises.mkdir(gateDir, { recursive: true });
   await fs.promises.mkdir(manifestDir, { recursive: true });
   await fs.promises.mkdir(reportDir, { recursive: true });
   await fs.promises.mkdir(liveRoot, { recursive: true });
-  await fs.promises.writeFile(path.join(stagedDir, "cover.jpg"), "new-cover", "utf8");
-  await fs.promises.writeFile(path.join(stagedDir, "cover.webp"), "new-cover-webp", "utf8");
+
+  const stagingItems: StagingExecutionReport["items"] = [];
+  const gateItems: PublishGateManifest["items"] = [];
+
+  for (const product of products) {
+    const stagedDir = path.join(stagingRoot, runId, "existing", product.productId);
+    await fs.promises.mkdir(stagedDir, { recursive: true });
+    await fs.promises.writeFile(path.join(stagedDir, "cover.jpg"), product.coverJpg ?? `new-cover-${product.productId}`, "utf8");
+    await fs.promises.writeFile(path.join(stagedDir, "cover.webp"), product.coverWebp ?? `new-cover-webp-${product.productId}`, "utf8");
+    const plannedOutputs = [
+      `tmp/agent-staging/${runId}/existing/${product.productId}/cover.jpg`,
+      `tmp/agent-staging/${runId}/existing/${product.productId}/cover.webp`,
+    ];
+    stagingItems.push({
+      sourceProductKey: product.sourceProductKey,
+      resolutionType: "map_to_existing",
+      approvedLocalProductId: product.productId,
+      stagingTargetKey: `existing/${product.productId}`,
+      plannedOutputs,
+      producedOutputs: plannedOutputs,
+      status: "staged",
+      reasonCodes: [],
+    });
+    gateItems.push({
+      sourceProductKey: product.sourceProductKey,
+      sourceRunId: runId,
+      reviewRunId: runId,
+      stagingRunId: runId,
+      resolutionType: "map_to_existing",
+      approvedLocalProductId: product.productId,
+      stagingTargetKey: `existing/${product.productId}`,
+      plannedOutputs,
+      producedOutputs: plannedOutputs,
+      eligibilityStatus: "eligible",
+      reasonCodes: [],
+      releaseDecision: "ready_for_publish",
+    });
+  }
 
   const staging: StagingExecutionReport = {
     runId,
@@ -35,30 +76,15 @@ async function writeFixture(root: string, runId: string, productId = "prod-1"): 
     reviewRunId: runId,
     createdAt: new Date().toISOString(),
     summary: {
-      totalApprovedItems: 1,
-      selectedItems: 1,
-      stagedItems: 1,
+      totalApprovedItems: products.length,
+      selectedItems: products.length,
+      stagedItems: products.length,
       failedItems: 0,
       skippedItems: 0,
       validateOnly: false,
-      producedOutputs: 2,
+      producedOutputs: products.length * 2,
     },
-    items: [{
-      sourceProductKey: "source-1",
-      resolutionType: "map_to_existing",
-      approvedLocalProductId: productId,
-      stagingTargetKey: `existing/${productId}`,
-      plannedOutputs: [
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.jpg`,
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.webp`,
-      ],
-      producedOutputs: [
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.jpg`,
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.webp`,
-      ],
-      status: "staged",
-      reasonCodes: [],
-    }],
+    items: stagingItems,
   };
 
   const gate: PublishGateManifest = {
@@ -68,33 +94,14 @@ async function writeFixture(root: string, runId: string, productId = "prod-1"): 
     stagingRunId: runId,
     createdAt: new Date().toISOString(),
     summary: {
-      totalStagedItems: 1,
-      eligibleItems: 1,
+      totalStagedItems: products.length,
+      eligibleItems: products.length,
       blockedItems: 0,
-      readyForPublish: 1,
+      readyForPublish: products.length,
       holdCount: 0,
       rejectReleaseCount: 0,
     },
-    items: [{
-      sourceProductKey: "source-1",
-      sourceRunId: runId,
-      reviewRunId: runId,
-      stagingRunId: runId,
-      resolutionType: "map_to_existing",
-      approvedLocalProductId: productId,
-      stagingTargetKey: `existing/${productId}`,
-      plannedOutputs: [
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.jpg`,
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.webp`,
-      ],
-      producedOutputs: [
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.jpg`,
-        `tmp/agent-staging/${runId}/existing/${productId}/cover.webp`,
-      ],
-      eligibilityStatus: "eligible",
-      reasonCodes: [],
-      releaseDecision: "ready_for_publish",
-    }],
+    items: gateItems,
   };
 
   await fs.promises.writeFile(path.join(manifestDir, `${runId}.staging.json`), JSON.stringify(staging, null, 2), "utf8");
@@ -165,8 +172,8 @@ test("manual publish swaps staged outputs into the live root", async () => {
     });
 
     assert.equal(result.report.summary.published, 1);
-    assert.equal(await fs.promises.readFile(path.join(existingLiveDir, "cover.jpg"), "utf8"), "new-cover");
-    assert.equal(await fs.promises.readFile(path.join(existingLiveDir, "cover.webp"), "utf8"), "new-cover-webp");
+    assert.equal(await fs.promises.readFile(path.join(existingLiveDir, "cover.jpg"), "utf8"), "new-cover-prod-1");
+    assert.equal(await fs.promises.readFile(path.join(existingLiveDir, "cover.webp"), "utf8"), "new-cover-webp-prod-1");
     assert.equal(fs.existsSync(path.join(existingLiveDir, "01.jpg")), false);
     assert.equal(await fs.promises.readFile(path.join(existingLiveDir, "notes.txt"), "utf8"), "keep");
   } finally {
@@ -265,6 +272,103 @@ test("orphan .manual-publish-temp-* directories are cleaned up safely", async ()
 
     assert.equal(result.report.summary.published, 1);
     assert.equal(fs.existsSync(orphanDir), false);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+
+
+test("manual publish processes multi-item batches without cross-item temp-dir interference", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-multi-batch-"));
+  const runId = uniqueRunId("publish");
+  try {
+    const { gateRunId, liveRoot, reportDir } = await writeFixture(root, runId, [
+      { sourceProductKey: "source-1", productId: "prod-1", coverJpg: "cover-1-jpg", coverWebp: "cover-1-webp" },
+      { sourceProductKey: "source-2", productId: "prod-2", coverJpg: "cover-2-jpg", coverWebp: "cover-2-webp" },
+    ]);
+
+    const result = await runManualPublishExecutor({
+      runId,
+      gateRunId,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot: path.join(root, "tmp", "agent-staging"),
+      reportDir,
+      liveRoot,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    assert.equal(result.report.summary.published, 2);
+    assert.equal(result.report.summary.failed, 0);
+    assert.equal(await fs.promises.readFile(path.join(liveRoot, "prod-1", "cover.jpg"), "utf8"), "cover-1-jpg");
+    assert.equal(await fs.promises.readFile(path.join(liveRoot, "prod-1", "cover.webp"), "utf8"), "cover-1-webp");
+    assert.equal(await fs.promises.readFile(path.join(liveRoot, "prod-2", "cover.jpg"), "utf8"), "cover-2-jpg");
+    assert.equal(await fs.promises.readFile(path.join(liveRoot, "prod-2", "cover.webp"), "utf8"), "cover-2-webp");
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("per-run orphan temp cleanup happens before batch execution and cannot break another product publish", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-batch-cleanup-"));
+  const runId = uniqueRunId("publish");
+  try {
+    const { gateRunId, liveRoot, reportDir } = await writeFixture(root, runId, [
+      { sourceProductKey: "source-1", productId: "prod-1", coverJpg: "safe-1-jpg", coverWebp: "safe-1-webp" },
+      { sourceProductKey: "source-2", productId: "prod-2", coverJpg: "safe-2-jpg", coverWebp: "safe-2-webp" },
+    ]);
+    const orphanDir = path.join(liveRoot, ".manual-publish-temp-orphan");
+    await fs.promises.mkdir(orphanDir, { recursive: true });
+    await fs.promises.writeFile(path.join(orphanDir, "cover.jpg"), "stale-temp", "utf8");
+
+    const rmTargets: string[] = [];
+    const originalRm = fs.promises.rm.bind(fs.promises);
+    const result = await withPatchedFsPromises({
+      rm: (async (targetPath: fs.PathLike, options?: fs.RmOptions) => {
+        rmTargets.push(String(targetPath));
+        return originalRm(targetPath, options);
+      }) as typeof fs.promises.rm,
+    }, async () => runManualPublishExecutor({
+      runId,
+      gateRunId,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot: path.join(root, "tmp", "agent-staging"),
+      reportDir,
+      liveRoot,
+      tempRoot: path.join(root, "tmp"),
+    }));
+
+    assert.equal(result.report.summary.published, 2);
+    assert.equal(fs.existsSync(orphanDir), false);
+    assert.equal(rmTargets.filter((target) => target === orphanDir).length, 1);
+    assert.equal(await fs.promises.readFile(path.join(liveRoot, "prod-2", "cover.jpg"), "utf8"), "safe-2-jpg");
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("manual publish still fails closed when a staged output is missing", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-missing-output-"));
+  const runId = uniqueRunId("publish");
+  try {
+    const { gateRunId, reportDir, stagingRoot, liveRoot } = await writeFixture(root, runId);
+    await fs.promises.rm(path.join(stagingRoot, runId, "existing", "prod-1", "cover.webp"), { force: true });
+
+    await assert.rejects(() => runManualPublishExecutor({
+      runId,
+      gateRunId,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot,
+      reportDir,
+      liveRoot,
+      tempRoot: path.join(root, "tmp"),
+    }), /Missing staged output blocks publish/);
+
+    assert.equal(fs.existsSync(path.join(liveRoot, "prod-1", "cover.jpg")), false);
+    assert.equal(fs.existsSync(path.join(reportDir, `${runId}.publish.json`)), false);
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
