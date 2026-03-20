@@ -219,13 +219,27 @@ function createStagingTargetKey(
   return `new/${targetId}`;
 }
 
+function createStagingOutputDir(outputRoot: string, runId: string, stagingTargetKey: string): string {
+  const productId = sanitizePathSegment(
+    stagingTargetKey.replace(/^new\//, "").replace(/^existing\//, ""),
+  );
+  if (!productId) throw new Error(`Malformed stagingTargetKey: ${stagingTargetKey}`);
+  return assertInsideAllowedRoot(
+    path.join(outputRoot, runId, "products", productId),
+    ALLOWED_STAGING_ROOT,
+    "staging output directory",
+  );
+}
+
 function plannedOutputsForItem(runId: string, item: ApprovedStagingItem): string[] {
+  const outputDir = path.join("tmp", "agent-staging", runId, "products", sanitizePathSegment(
+    item.stagingTargetKey.replace(/^new\//, "").replace(/^existing\//, ""),
+  ));
   return item.sourceImagePaths.flatMap((_, index) => {
     const slot = index === 0 ? "cover" : String(index).padStart(2, "0");
-    const base = path.join(runId, item.stagingTargetKey, slot);
     return [
-      toPortablePath(path.join("tmp", "agent-staging", `${base}.jpg`)),
-      toPortablePath(path.join("tmp", "agent-staging", `${base}.webp`)),
+      toPortablePath(path.join(outputDir, `${slot}.jpg`)),
+      toPortablePath(path.join(outputDir, `${slot}.webp`)),
     ];
   });
 }
@@ -397,7 +411,8 @@ async function stageItem(runId: string, outputRoot: string, item: ApprovedStagin
     for (let index = 0; index < item.sourceImagePaths.length; index++) {
       const sourceImagePath = item.sourceImagePaths[index];
       const slot = index === 0 ? "cover" : String(index).padStart(2, "0");
-      const outputBase = path.join(outputRoot, runId, item.stagingTargetKey, slot);
+      const outputDir = createStagingOutputDir(outputRoot, runId, item.stagingTargetKey);
+      const outputBase = path.join(outputDir, slot);
       const { jpg, webp } = await renderOutputsWithSharp(sourceImagePath);
 
       const jpgPath = `${outputBase}.jpg`;
