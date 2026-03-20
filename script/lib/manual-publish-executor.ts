@@ -105,6 +105,31 @@ const stagingExecutionReportSchema = z.object({
   items: z.array(stagingExecutionItemSchema),
 }).strict();
 
+
+export class ManualPublishExecutorError extends Error {
+  report?: PublishExecutionReport;
+  summaryMarkdown?: string;
+  reportPath?: string;
+  summaryPath?: string;
+
+  constructor(
+    message: string,
+    details?: {
+      report?: PublishExecutionReport;
+      summaryMarkdown?: string;
+      reportPath?: string;
+      summaryPath?: string;
+    },
+  ) {
+    super(message);
+    this.name = "ManualPublishExecutorError";
+    this.report = details?.report;
+    this.summaryMarkdown = details?.summaryMarkdown;
+    this.reportPath = details?.reportPath;
+    this.summaryPath = details?.summaryPath;
+  }
+}
+
 type PublishLockMetadata = {
   liveTargetKey: string;
   runId: string;
@@ -642,6 +667,10 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
     createdAt: new Date().toISOString(),
     summary: computeSummary(items, gateManifest.items.length),
     items,
+    debug: {
+      hadPartialResults: items.length > 0,
+      errorStage: "execution",
+    },
   };
   const summaryMarkdown = renderSummaryMarkdown(report, input.validateOnly === true);
 
@@ -652,7 +681,10 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
   await safeWriteText(summaryPath, summaryMarkdown, DEFAULT_REPORT_ROOT);
 
   if (items.some((item) => item.status === "failed")) {
-    throw new Error(`Manual publish failed closed for ${items.filter((item) => item.status === "failed").length} item(s)`);
+    throw new ManualPublishExecutorError(
+      `Manual publish failed closed for ${items.filter((item) => item.status === "failed").length} item(s)`,
+      { report, summaryMarkdown, reportPath, summaryPath },
+    );
   }
 
   return { report, summaryMarkdown, reportPath, summaryPath };
