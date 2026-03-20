@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { PublishExecutionReport } from "./lib/publish-executor-types.ts";
-import { runManualPublishExecutor } from "./lib/manual-publish-executor.ts";
+import { ManualPublishExecutorError, runManualPublishExecutor } from "./lib/manual-publish-executor.ts";
 
 type CliArgs = {
   runId: string;
@@ -52,7 +52,11 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ reportPath: string; summaryPath: string }> {
+async function writeFailureArtifacts(
+  args: CliArgs,
+  message: string,
+  existingReport?: PublishExecutionReport,
+): Promise<{ reportPath: string; summaryPath: string }> {
   const reportDir = path.resolve(args.reportDir);
   if (!isPathInside(ALLOWED_REPORT_ROOT, reportDir)) {
     throw new Error(`Refusing to write outside tmp/publish-reports: ${args.reportDir}`);
@@ -60,35 +64,63 @@ async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ 
 
   await fs.promises.mkdir(reportDir, { recursive: true });
   const createdAt = new Date().toISOString();
-  const report: PublishExecutionReport = {
-    runId: args.runId,
-    sourceRunId: "unknown",
-    reviewRunId: "unknown",
-    stagingRunId: "unknown",
-    gateRunId: args.gateRunId?.trim() || args.runId,
-    createdAt,
-    summary: {
-      totalGateItems: 0,
-      readyForPublish: 0,
-      published: 0,
-      failed: 1,
-      skipped: 0,
-      mappedToExisting: 0,
-      newCandidatePublished: 0,
-    },
-    items: [{
-      sourceProductKey: args.runId,
-      resolutionType: "new_candidate",
-      approvedLocalProductId: null,
-      liveTargetKey: args.runId,
-      plannedOutputs: [],
-      publishedOutputs: [],
-      removedManagedOutputs: [],
-      status: "failed",
-      reasonCodes: ["publish_validation_failed"],
-      errorMessage: message,
-    }],
-  };
+  const hasPartialResults = (existingReport?.items?.length ?? 0) > 0;
+
+  let report: PublishExecutionReport;
+  if (hasPartialResults && existingReport) {
+    report = {
+      ...existingReport,
+      runId: existingReport.runId || args.runId,
+      gateRunId: existingReport.gateRunId || args.gateRunId?.trim() || args.runId,
+      sourceRunId: existingReport.sourceRunId || "unknown",
+      reviewRunId: existingReport.reviewRunId || "unknown",
+      stagingRunId: existingReport.stagingRunId || "unknown",
+      items: existingReport.items,
+      summary: {
+        ...existingReport.summary,
+        published: existingReport.items.filter((item) => item.status === "published").length,
+        failed: existingReport.items.filter((item) => item.status === "failed").length,
+      },
+      debug: {
+        hadPartialResults: true,
+        errorStage: "execution",
+      },
+    };
+  } else {
+    report = {
+      runId: args.runId,
+      sourceRunId: existingReport?.sourceRunId || "unknown",
+      reviewRunId: existingReport?.reviewRunId || "unknown",
+      stagingRunId: existingReport?.stagingRunId || "unknown",
+      gateRunId: existingReport?.gateRunId || args.gateRunId?.trim() || args.runId,
+      createdAt,
+      summary: {
+        totalGateItems: existingReport?.summary.totalGateItems ?? 0,
+        readyForPublish: existingReport?.summary.readyForPublish ?? 0,
+        published: 0,
+        failed: 1,
+        skipped: existingReport?.summary.skipped ?? 0,
+        mappedToExisting: existingReport?.summary.mappedToExisting ?? 0,
+        newCandidatePublished: existingReport?.summary.newCandidatePublished ?? 0,
+      },
+      items: [{
+        sourceProductKey: args.runId,
+        resolutionType: "new_candidate",
+        approvedLocalProductId: null,
+        liveTargetKey: args.runId,
+        plannedOutputs: [],
+        publishedOutputs: [],
+        removedManagedOutputs: [],
+        status: "failed",
+        reasonCodes: ["publish_validation_failed"],
+        errorMessage: message,
+      }],
+      debug: {
+        hadPartialResults: false,
+        errorStage: "validation",
+      },
+    };
+  }
 
   const summary = [
     "# TotalBoardShop Manual Publish Summary",
@@ -130,7 +162,8 @@ async function main(): Promise<void> {
     if (result.summaryPath) console.log(`summary ${result.summaryPath}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const failure = await writeFailureArtifacts(args, message);
+    const existingReport = error instanceof ManualPublishExecutorError ? error.report : undefined;
+    const failure = await writeFailureArtifacts(args, message, existingReport);
     console.error(message);
     console.error(`report ${failure.reportPath}`);
     console.error(`summary ${failure.summaryPath}`);

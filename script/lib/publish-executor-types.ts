@@ -21,6 +21,11 @@ export type PublishExecutionSummary = {
   newCandidatePublished: number;
 };
 
+export type PublishExecutionDebug = {
+  hadPartialResults: boolean;
+  errorStage: "validation" | "execution";
+};
+
 export type PublishExecutionReport = {
   runId: string;
   sourceRunId: string;
@@ -30,4 +35,5 @@ export type PublishExecutionReport = {
   createdAt: string;
   summary: PublishExecutionSummary;
   items: PublishExecutionItem[];
+  debug?: PublishExecutionDebug;
 };
