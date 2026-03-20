@@ -214,8 +214,9 @@ function createStagingTargetKey(
   if (item.resolutionType === "map_to_existing") {
     return `existing/${item.approvedLocalProductId}`;
   }
-  const titlePart = sanitizePathSegment(item.title) || "candidate";
-  return `new/${titlePart}--${item.sourceProductKey}`;
+  const baseSlug = item.sourceProductKey.split("--")[0];
+  const targetId = sanitizePathSegment(baseSlug) || sanitizePathSegment(item.title) || "candidate";
+  return `new/${targetId}`;
 }
 
 function plannedOutputsForItem(runId: string, item: ApprovedStagingItem): string[] {

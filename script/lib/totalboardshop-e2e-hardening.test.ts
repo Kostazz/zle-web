@@ -259,14 +259,16 @@ test("full reviewed TotalBoardShop chain stays connected in validate-only mode",
     ];
     for (const artifactPath of expectedArtifacts) assert.equal(fs.existsSync(artifactPath), true, artifactPath);
 
-    const stagingReport = JSON.parse(await fs.promises.readFile(path.join(stagingManifestDir, `${stagingRunId}.staging.json`), "utf8")) as { sourceRunId: string; reviewRunId: string; runId: string; items: Array<{ sourceProductKey: string }> };
-    const gateManifest = JSON.parse(await fs.promises.readFile(path.join(gateDir, `${gateRunId}.publish-gate.json`), "utf8")) as { sourceRunId: string; reviewRunId: string; stagingRunId: string; items: Array<{ sourceProductKey: string }> };
+    const stagingReport = JSON.parse(await fs.promises.readFile(path.join(stagingManifestDir, `${stagingRunId}.staging.json`), "utf8")) as { sourceRunId: string; reviewRunId: string; runId: string; items: Array<{ sourceProductKey: string; stagingTargetKey: string }> };
+    const gateManifest = JSON.parse(await fs.promises.readFile(path.join(gateDir, `${gateRunId}.publish-gate.json`), "utf8")) as { sourceRunId: string; reviewRunId: string; stagingRunId: string; items: Array<{ sourceProductKey: string; stagingTargetKey: string }> };
     assert.equal(stagingReport.sourceRunId, sourceRunId);
     assert.equal(stagingReport.reviewRunId, reviewRunId);
     assert.equal(gateManifest.sourceRunId, sourceRunId);
     assert.equal(gateManifest.reviewRunId, reviewRunId);
     assert.equal(gateManifest.stagingRunId, stagingRunId);
     assert.equal(gateManifest.items[0]?.sourceProductKey, product.sourceProductKey);
+    assert.equal(stagingReport.items[0]?.stagingTargetKey, "new/mikina-zle-audit");
+    assert.equal(gateManifest.items[0]?.stagingTargetKey, "new/mikina-zle-audit");
 
     assert.equal(await fs.promises.readFile(liveProbePath, "utf8"), "live-before");
     assert.equal(fs.existsSync(path.join(liveRoot, product.sourceProductKey, "cover.jpg")), false);
