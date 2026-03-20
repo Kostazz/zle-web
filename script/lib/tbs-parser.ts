@@ -186,7 +186,13 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
   }
 
   const title =
-    firstCapture(html, [/<h1[^>]*class=["'][^"']*product_title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i, /<h1[^>]*>([\s\S]*?)<\/h1>/i]) || "";
+    firstCapture(html, [
+      /<h1[^>]*class=["'][^"']*product_title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i,
+      /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+      /"name":"([^"]+)"/i,
+      /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+      /<title>([\s\S]*?)<\/title>/i,
+    ]) || "";
 
   if (!title) {
     return { failure: { code: "missing_title", reason: "Main product title missing" } };
