@@ -88,6 +88,24 @@ function parsePriceCzk(priceText: string): number | null {
   return Math.round(parsed);
 }
 
+const PRODUCT_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"] as const;
+const PRODUCT_IMAGE_EXCLUDED_PATH_MARKERS = [
+  "/wp-content/themes/",
+  "/images/facebook",
+  "/images/instagram",
+  "/facebook.svg",
+  "/instagram.svg",
+] as const;
+const PRODUCT_IMAGE_PREFERRED_PATH_MARKER = "/wp-content/uploads/";
+
+function isAllowedProductImageUrl(imageUrl: URL): boolean {
+  const pathname = imageUrl.pathname.toLowerCase();
+  if (pathname.endsWith(".svg")) return false;
+  if (PRODUCT_IMAGE_EXCLUDED_PATH_MARKERS.some((marker) => pathname.includes(marker))) return false;
+  if (!PRODUCT_IMAGE_EXTENSIONS.some((extension) => pathname.endsWith(extension))) return false;
+  return pathname.includes(PRODUCT_IMAGE_PREFERRED_PATH_MARKER);
+}
+
 function extractImageUrls(html: string, pageUrl: URL): string[] {
   const urls: string[] = [];
   const patterns = [
@@ -101,7 +119,9 @@ function extractImageUrls(html: string, pageUrl: URL): string[] {
       const candidate = match[1]?.trim();
       if (!candidate) continue;
       try {
-        const resolved = new URL(candidate, pageUrl).toString();
+        const resolvedUrl = new URL(candidate, pageUrl);
+        if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+        const resolved = resolvedUrl.toString();
         if (!urls.includes(resolved)) urls.push(resolved);
       } catch {
         continue;

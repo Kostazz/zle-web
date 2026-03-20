@@ -54,6 +54,32 @@ test("normal product HTML is not falsely classified as a protection page", () =>
   assert.equal(parsed.product?.title, "Mikina ZLE Classic");
 });
 
+test("product parsing keeps only uploaded raster product media", () => {
+  const parsed = parseTbsProductPage("https://totalboardshop.cz/obchod/palm-black-shirt/", `
+    <!doctype html>
+    <html>
+      <body>
+        <h1 class="product_title entry-title">Palm black shirt</h1>
+        <div>Značka: <span>ZLE</span></div>
+        <div>Kategorie: <span>Trika</span></div>
+        <p class="price">790 Kč</p>
+        <img src="/wp-content/themes/store/logo.png" />
+        <img src="/images/facebook.png" />
+        <img src="/images/instagram.png" />
+        <img src="/facebook.svg" />
+        <img src="/instagram.svg" />
+        <img src="/wp-content/uploads/2025/10/palm-black-front.jpg" />
+        <img data-src="/wp-content/uploads/2025/10/palm-black-back.webp?size=1200" />
+      </body>
+    </html>
+  `);
+
+  assert.deepEqual(parsed.product?.imageUrls, [
+    "https://totalboardshop.cz/wp-content/uploads/2025/10/palm-black-front.jpg",
+    "https://totalboardshop.cz/wp-content/uploads/2025/10/palm-black-back.webp?size=1200",
+  ]);
+});
+
 test("crawl log skippedProducts records blocked_by_protection for challenge HTML", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-protection-"));
   const originalFetch = globalThis.fetch;
