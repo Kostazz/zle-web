@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 import { build } from "esbuild";
 
-const isProd = process.env.NODE_ENV === "production";
+// The build script only produces the deployable server bundle, so keep runtime production-only
+// branches intact regardless of the shell environment used during `npm run build`.
+const isProd = true;
 
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const deps = Object.keys(packageJson.dependencies || {});
