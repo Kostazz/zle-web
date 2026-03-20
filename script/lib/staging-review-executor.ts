@@ -231,15 +231,13 @@ function createStagingOutputDir(outputRoot: string, runId: string, stagingTarget
   );
 }
 
-function plannedOutputsForItem(runId: string, item: ApprovedStagingItem): string[] {
-  const outputDir = path.join("tmp", "agent-staging", runId, "products", sanitizePathSegment(
-    item.stagingTargetKey.replace(/^new\//, "").replace(/^existing\//, ""),
-  ));
+function plannedOutputsForItem(outputRoot: string, runId: string, item: ApprovedStagingItem): string[] {
+  const outputDir = createStagingOutputDir(outputRoot, runId, item.stagingTargetKey);
   return item.sourceImagePaths.flatMap((_, index) => {
     const slot = index === 0 ? "cover" : String(index).padStart(2, "0");
     return [
-      toPortablePath(path.join(outputDir, `${slot}.jpg`)),
-      toPortablePath(path.join(outputDir, `${slot}.webp`)),
+      toPortablePath(path.relative(process.cwd(), path.join(outputDir, `${slot}.jpg`))),
+      toPortablePath(path.relative(process.cwd(), path.join(outputDir, `${slot}.webp`))),
     ];
   });
 }
@@ -390,7 +388,7 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
 }
 
 async function stageItem(runId: string, outputRoot: string, item: ApprovedStagingItem, validateOnly: boolean): Promise<StagingExecutionItem> {
-  const plannedOutputs = plannedOutputsForItem(runId, item);
+  const plannedOutputs = plannedOutputsForItem(outputRoot, runId, item);
   const execution: StagingExecutionItem = {
     sourceProductKey: item.sourceProductKey,
     resolutionType: item.resolutionType,
