@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { canonicalizeCategory } from "./category-normalization.ts";
+import { canonicalizeCategory, SUPPORTED_INTERNAL_CATEGORIES } from "./category-normalization.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 import type { Product } from "@shared/schema";
 
@@ -164,10 +164,9 @@ function listManagedLiveImages(productDir: string, liveTargetKey: string, liveIm
 
 function normalizeCategory(source: SourceProductRecord): Product["category"] {
   const normalized = canonicalizeCategory(source.structured.productType ?? source.categoryRaw);
-  const supportedCategories = ["hoodie", "tee", "cap", "beanie", "crewneck"] as const;
-  if (!normalized || !supportedCategories.includes(normalized as (typeof supportedCategories)[number])) {
+  if (!normalized || !SUPPORTED_INTERNAL_CATEGORIES.includes(normalized as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number])) {
     throw new Error(
-      `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${supportedCategories.join(",")}`,
+      `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${SUPPORTED_INTERNAL_CATEGORIES.join(",")}`,
     );
   }
   return normalized;

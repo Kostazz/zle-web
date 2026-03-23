@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Product } from "@shared/schema";
+import { canonicalizeCategory, normalizeCategory } from "./category-normalization.ts";
 import { mapPublishedItemToProduct, runImportTotalboardshopProducts } from "./import-totalboardshop-products.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 
@@ -102,6 +103,132 @@ async function writeFixture(root: string, runId: string, sourceRunId: string, pr
   return { reportRoot, sourceRoot, liveRoot, writes };
 }
 
+async function withLiveRoot<T>(fn: (liveRoot: string) => Promise<T>): Promise<T> {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-category-live-"));
+  try {
+    const liveRoot = path.join(root, "client", "public", "images", "products");
+    const liveDir = path.join(liveRoot, "new-product-a");
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "cover-jpg", "utf8");
+    return await fn(liveRoot);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+}
+
+test("category normalization removes diacritics, trims whitespace, and collapses separators", () => {
+  assert.equal(normalizeCategory(" Kšiltovky "), "ksiltovky");
+  assert.equal(normalizeCategory("Trička"), "tricka");
+  assert.equal(normalizeCategory("Tryčka"), "trycka");
+  assert.equal(normalizeCategory("Mikýny"), "mikyny");
+  assert.equal(normalizeCategory("  trucker---hat  "), "trucker hat");
+});
+
+test("Kšiltovky and cap-like synonyms map to cap", async () => {
+  assert.equal(canonicalizeCategory("Kšiltovky"), "cap");
+  assert.equal(canonicalizeCategory("snapbacky"), "cap");
+  assert.equal(canonicalizeCategory("trucker hats"), "cap");
+
+  await withLiveRoot(async (liveRoot) => {
+    const mapped = mapPublishedItemToProduct(createSourceProduct("cap-fixture", {
+      categoryRaw: "Kšiltovky",
+      structured: { productType: "trucker hat", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    }), "new-product-a", liveRoot);
+    assert.equal(mapped.category, "cap");
+  });
+});
+
+test("Trička, Tryčka, and tee variants map to tee", async () => {
+  assert.equal(canonicalizeCategory("Trička"), "tee");
+  assert.equal(canonicalizeCategory("Tryčka"), "tee");
+  assert.equal(canonicalizeCategory("t-shirts"), "tee");
+  assert.equal(canonicalizeCategory("Tees"), "tee");
+
+  await withLiveRoot(async (liveRoot) => {
+    const mapped = mapPublishedItemToProduct(createSourceProduct("tee-fixture", {
+      categoryRaw: "Trička",
+      structured: { productType: "Tryčka", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    }), "new-product-a", liveRoot);
+    assert.equal(mapped.category, "tee");
+  });
+});
+
+test("Mikina, Mikyna, and hoodie variants map to hoodie", async () => {
+  assert.equal(canonicalizeCategory("Mikina"), "hoodie");
+  assert.equal(canonicalizeCategory("Mikyna"), "hoodie");
+  assert.equal(canonicalizeCategory("hoodies"), "hoodie");
+
+  await withLiveRoot(async (liveRoot) => {
+    const mapped = mapPublishedItemToProduct(createSourceProduct("hoodie-fixture", {
+      categoryRaw: "Mikina",
+      structured: { productType: "Mikyna", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    }), "new-product-a", liveRoot);
+    assert.equal(mapped.category, "hoodie");
+  });
+});
+
+test("beanie variants map correctly", async () => {
+  assert.equal(canonicalizeCategory("Beanies"), "beanie");
+  assert.equal(canonicalizeCategory("Kulichy"), "beanie");
+  assert.equal(canonicalizeCategory("Zimní čepice"), "beanie");
+
+  await withLiveRoot(async (liveRoot) => {
+    const mapped = mapPublishedItemToProduct(createSourceProduct("beanie-fixture", {
+      categoryRaw: "Kulichy",
+      structured: { productType: "Zimní čepice", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    }), "new-product-a", liveRoot);
+    assert.equal(mapped.category, "beanie");
+  });
+});
+
+test("explicit non-hooded wording maps to crewneck only when clearly stated", async () => {
+  assert.equal(canonicalizeCategory("sweatshirt"), "crewneck");
+  assert.equal(canonicalizeCategory("Mikina bez kapuce"), "crewneck");
+
+  await withLiveRoot(async (liveRoot) => {
+    const mapped = mapPublishedItemToProduct(createSourceProduct("crew-fixture", {
+      categoryRaw: "Mikina bez kapuce",
+      structured: { productType: "sweatshirt", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    }), "new-product-a", liveRoot);
+    assert.equal(mapped.category, "crewneck");
+  });
+});
+
+test("unknown categories fail closed with detailed source category context", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-category-"));
+  try {
+    const source = createSourceProduct("category-fixture", {
+      categoryRaw: "Batohy",
+      structured: { productType: "batoh", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    });
+    const liveRoot = path.join(root, "client", "public", "images", "products");
+    const liveDir = path.join(liveRoot, "new-product-a");
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "cover-jpg", "utf8");
+
+    assert.throws(
+      () => mapPublishedItemToProduct(source, "new-product-a", liveRoot),
+      /Unsupported catalog category for source-category-fixture: categoryRaw="Batohy" productType="batoh"/,
+    );
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ambiguous values still fail closed", async () => {
+  await withLiveRoot(async (liveRoot) => {
+    const source = createSourceProduct("ambiguous-fixture", {
+      categoryRaw: "Čepice / kulich",
+      structured: { productType: null, audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+    });
+
+    assert.throws(
+      () => mapPublishedItemToProduct(source, "new-product-a", liveRoot),
+      /Unsupported catalog category for source-ambiguous-fixture: categoryRaw="Čepice \/ kulich" productType="null" normalized="cepice kulich"/,
+    );
+  });
+});
+
 test("imports only published new_candidate items and skips map_to_existing items", async () => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-"));
   const runId = uniqueRunId("publish");
@@ -196,27 +323,6 @@ test("maps deterministic image paths with jpg preference", async () => {
       "/images/products/new-product-a/01.jpg",
       "/images/products/new-product-a/02.webp",
     ]);
-  } finally {
-    await fs.promises.rm(root, { recursive: true, force: true });
-  }
-});
-
-test("unsupported categories fail closed with detailed source category context", async () => {
-  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-category-"));
-  try {
-    const source = createSourceProduct("category-fixture", {
-      categoryRaw: "Batohy",
-      structured: { productType: "batoh", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
-    });
-    const liveRoot = path.join(root, "client", "public", "images", "products");
-    const liveDir = path.join(liveRoot, "new-product-a");
-    await fs.promises.mkdir(liveDir, { recursive: true });
-    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "cover-jpg", "utf8");
-
-    assert.throws(
-      () => mapPublishedItemToProduct(source, "new-product-a", liveRoot),
-      /Unsupported catalog category for source-category-fixture: categoryRaw="Batohy" productType="batoh"/,
-    );
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
