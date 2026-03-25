@@ -9,6 +9,20 @@ export const DEFAULT_PUBLISH_REPORT_ROOT = path.resolve("tmp", "publish-reports"
 export const DEFAULT_SOURCE_DATASET_ROOT = path.resolve("tmp", "source-datasets");
 export const DEFAULT_LIVE_IMAGE_ROOT = path.resolve("client", "public", "images", "products");
 export const DEFAULT_STOCK = 100;
+const CANONICAL_SIZE_SET = new Set(["XS", "S", "M", "L", "XL", "XXL", "XXXL"]);
+const NON_SIZE_OPTION_PATTERNS = [
+  /^vyberte možnost$/i,
+  /^vyberte moznost$/i,
+  /^zvolte možnost$/i,
+  /^zvolte moznost$/i,
+  /^vyberte variantu$/i,
+  /^choose an? option$/i,
+  /^select an? option$/i,
+  /^choose size$/i,
+  /^select size$/i,
+  /^velikost$/i,
+  /^size$/i,
+];
 
 const publishItemSchema = z.object({
   sourceProductKey: z.string().min(1),
@@ -172,6 +186,41 @@ function normalizeCategory(source: SourceProductRecord): Product["category"] {
   return normalized;
 }
 
+function normalizeSizeTokenStrict(rawValue: string): string | null {
+  const compact = rawValue.trim().toUpperCase().replace(/\s+/g, "").replace(/-/g, "");
+  if (!compact) return null;
+  if (/^3XL$/.test(compact)) return "XXXL";
+  if (/^2XL$/.test(compact)) return "XXL";
+  if (!CANONICAL_SIZE_SET.has(compact)) return null;
+  return compact;
+}
+
+function isKnownNonSizeOption(rawValue: string): boolean {
+  const normalized = rawValue.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) return true;
+  return NON_SIZE_OPTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function deriveSizesFromOptionsRawStrict(optionsRaw: string[]): string[] {
+  const parsed: string[] = [];
+  const seen = new Set<string>();
+
+  for (const option of optionsRaw) {
+    if (isKnownNonSizeOption(option)) continue;
+    const normalized = normalizeSizeTokenStrict(option);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    parsed.push(normalized);
+  }
+
+  return parsed;
+}
+
+function resolveImportedSizes(source: SourceProductRecord): string[] {
+  if (source.sizes.length > 0) return [...source.sizes];
+  return deriveSizesFromOptionsRawStrict(source.optionsRaw);
+}
+
 export function mapPublishedItemToProduct(source: SourceProductRecord, liveTargetKey: string, liveImageRoot = DEFAULT_LIVE_IMAGE_ROOT): Product {
   if (!source.title.trim()) throw new Error(`Missing required title for ${source.sourceProductKey}`);
   if (source.priceCzk === null || !Number.isInteger(source.priceCzk) || source.priceCzk < 0) {
@@ -186,7 +235,7 @@ export function mapPublishedItemToProduct(source: SourceProductRecord, liveTarge
     id: liveTargetKey,
     name: source.title,
     price: source.priceCzk,
-    sizes: [...(source.sizes ?? [])],
+    sizes: resolveImportedSizes(source),
     category: normalizeCategory(source),
     description: source.descriptionRaw ?? "",
     stock: DEFAULT_STOCK,
