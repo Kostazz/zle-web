@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { useOverlay } from "@/lib/overlay-context";
 import { CartItem } from "./CartItem";
 import { ShoppingBag, ArrowRight } from "lucide-react";
+import { formatSizeLabel } from "@/lib/product-ui";
 
 const CART_INLINE_STATUS_EVENT = "zle:cart-inline-status";
 const INLINE_STATUS_HIDE_DELAY = 3000;
@@ -87,7 +88,7 @@ export function CartDrawer() {
           <div className="mt-4 border border-white/20 bg-white/[0.03] px-4 py-3">
             <p className="font-heading text-xs tracking-wider text-white">PŘIDÁNO DO KOŠÍKU</p>
             <p className="mt-1 font-sans text-xs text-white/65 break-words">
-              {inlineStatus.name} · {inlineStatus.size} · {inlineStatus.quantity} ks
+              {inlineStatus.name} · {formatSizeLabel(inlineStatus.size)} · {inlineStatus.quantity} ks
             </p>
           </div>
         )}

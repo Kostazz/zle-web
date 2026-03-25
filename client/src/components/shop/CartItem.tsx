@@ -1,6 +1,7 @@
 import type { CartItem as CartItemType } from "@shared/schema";
 import { useCart } from "@/lib/cart-context";
 import { Plus, Minus, X } from "lucide-react";
+import { formatSizeLabel } from "@/lib/product-ui";
 
 interface CartItemProps {
   item: CartItemType;
@@ -28,7 +29,7 @@ export function CartItem({ item }: CartItemProps) {
             <h4 className="font-heading text-sm font-bold text-white truncate">
               {item.name}
             </h4>
-            <p className="text-xs text-white/60 mt-1 truncate">Velikost: {item.size}</p>
+            <p className="text-xs text-white/60 mt-1 truncate">Velikost: {formatSizeLabel(item.size)}</p>
           </div>
           <button
             onClick={() => removeItem(item.productId, item.size)}
