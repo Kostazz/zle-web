@@ -6,7 +6,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Product } from "@shared/schema";
 import { canonicalizeCategory, normalizeCategory } from "./category-normalization.ts";
-import { mapPublishedItemToProduct, runImportTotalboardshopProducts } from "./import-totalboardshop-products.ts";
+import { deriveSizesFromOptionsRawStrict, mapPublishedItemToProduct, runImportTotalboardshopProducts } from "./import-totalboardshop-products.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 
 function uniqueRunId(label: string): string {
@@ -354,6 +354,72 @@ test("idempotent rerun behavior updates the same product id safely", async () =>
     assert.equal(second.summary.updated, 1);
     assert.equal(store.size, 1);
     assert.equal(store.get("new-product-a")?.name, product.title);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("derives apparel sizes from optionsRaw when sizes are empty", () => {
+  assert.deepEqual(
+    deriveSizesFromOptionsRawStrict(["Vyberte možnost", "XS", "S", "M", "L", "XL", "2XL", "3XL"]),
+    ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
+  );
+});
+
+test("strict parser removes placeholders and unknown noisy option values", () => {
+  assert.deepEqual(
+    deriveSizesFromOptionsRawStrict(["", "Vyberte možnost", "Velikost", "BLACK", "M", "Cotton", "L", "XYZ"]),
+    ["M", "L"],
+  );
+});
+
+test("cap-like options remain size-less when no valid size values exist", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-cap-sizeless-"));
+  try {
+    const liveRoot = path.join(root, "client", "public", "images", "products");
+    const liveDir = path.join(liveRoot, "new-product-a");
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "cover-jpg", "utf8");
+
+    const mapped = mapPublishedItemToProduct(createSourceProduct("cap-size-fixture", {
+      categoryRaw: "Kšiltovky",
+      structured: { productType: "cap", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
+      sizes: [],
+      optionsRaw: ["Vyberte možnost", "Black", "Red"],
+    }), "new-product-a", liveRoot);
+    assert.deepEqual(mapped.sizes, []);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("importer writes parsed sizes into product records when source sizes are empty", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-parsed-sizes-"));
+  const runId = uniqueRunId("publish");
+  const sourceRunId = uniqueRunId("source");
+  try {
+    const product = createSourceProduct(runId, {
+      sizes: [],
+      optionsRaw: ["Vyberte možnost", "S", "M", "L", "2XL", "3XL"],
+    });
+    const { reportRoot, sourceRoot, liveRoot, writes } = await writeFixture(root, runId, sourceRunId, [product]);
+    const result = await runImportTotalboardshopProducts({
+      runId,
+      reportRoot,
+      sourceRoot,
+      liveImageRoot: liveRoot,
+      productWriter: {
+        async upsertProduct(dbProduct) {
+          writes.push(dbProduct);
+          return { action: "inserted", product: dbProduct };
+        },
+      },
+      logger: { log() {}, error() {} },
+    });
+
+    assert.equal(result.products.length, 1);
+    assert.deepEqual(result.products[0]?.sizes, ["S", "M", "L", "XXL", "XXXL"]);
+    assert.deepEqual(writes[0]?.sizes, ["S", "M", "L", "XXL", "XXXL"]);
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });
   }
