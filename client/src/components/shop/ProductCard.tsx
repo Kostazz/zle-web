@@ -3,7 +3,12 @@ import { useOverlay } from "@/lib/overlay-context";
 import type { Product } from "@shared/schema";
 import { ProductModal } from "./ProductModal";
 import { ImageOff } from "lucide-react";
-import { formatSizeLabel, getProductImageCandidates, getSelectableSizes } from "@/lib/product-ui";
+import {
+  formatSizeLabel,
+  getDeclaredProductImages,
+  getProductImageCandidates,
+  getSelectableSizes,
+} from "@/lib/product-ui";
 
 function ImagePlaceholder({ name }: { name: string }) {
   return (
@@ -23,17 +28,19 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [primaryImageIndex, setPrimaryImageIndex] = useState(0);
-  const [secondaryImageIndex, setSecondaryImageIndex] = useState(1);
+  const [secondaryImageIndex, setSecondaryImageIndex] = useState(0);
   const { openOverlay } = useOverlay();
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
 
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
-  const hasPrimaryImage = primaryImageIndex < imageCandidates.length;
-  const hasSecondaryImage = secondaryImageIndex < imageCandidates.length;
+  const declaredImages = useMemo(() => getDeclaredProductImages(product), [product]);
+  const primaryDeclaredImage = declaredImages[0] ?? null;
+  const secondaryDeclaredImages = declaredImages.filter((image) => image !== primaryDeclaredImage);
 
+  const hasPrimaryImage = primaryImageIndex < imageCandidates.length;
   const primaryImage = hasPrimaryImage ? imageCandidates[primaryImageIndex] : null;
-  const secondaryImage = hasSecondaryImage ? imageCandidates[secondaryImageIndex] : null;
+  const secondaryImage = secondaryDeclaredImages[secondaryImageIndex] ?? null;
 
   const selectableSizes = getSelectableSizes(product);
 

@@ -15,6 +15,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { useOverlay } from "@/lib/overlay-context";
 import {
   formatSizeLabel,
+  getDeclaredProductImages,
   getDefaultSelectedSize,
   getProductImageCandidates,
   getSelectableSizes,
@@ -50,11 +51,15 @@ export function ProductModal({ product }: ProductModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(defaultSelectedSize);
   const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
+  const [resolvedImageSrc, setResolvedImageSrc] = useState<string | null>(null);
   const { addItem } = useCart();
   const { toast } = useToast();
   const { closeOverlay, getOverlay, openOverlay } = useOverlay();
 
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
+  const declaredImages = useMemo(() => getDeclaredProductImages(product), [product]);
+  const declaredPrimaryImage = declaredImages[0] ?? null;
+
   const imageSrc = imageIndex < imageCandidates.length ? imageCandidates[imageIndex] : null;
 
   const productOverlay = getOverlay("product");
@@ -72,6 +77,7 @@ export function ProductModal({ product }: ProductModalProps) {
     setSelectedSize(defaultSelectedSize);
     setQuantity(1);
     setImageIndex(0);
+    setResolvedImageSrc(null);
   }, [defaultSelectedSize, isOpen, product.id]);
 
   const handleClose = () => {
@@ -122,7 +128,7 @@ export function ProductModal({ product }: ProductModalProps) {
       price: product.price,
       size: resolvedSize,
       quantity,
-      image: imageSrc ?? imageCandidates[0] ?? product.image,
+      image: resolvedImageSrc ?? declaredPrimaryImage ?? "",
     });
 
     window.dispatchEvent(
@@ -167,6 +173,7 @@ export function ProductModal({ product }: ProductModalProps) {
                 alt={product.name}
                 className="w-full h-full object-cover"
                 onError={() => setImageIndex((index) => index + 1)}
+                onLoad={(event) => setResolvedImageSrc(event.currentTarget.currentSrc || imageSrc)}
               />
             )}
             {isSoldOut && (

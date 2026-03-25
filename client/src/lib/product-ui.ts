@@ -23,14 +23,20 @@ function normalizeImagePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+export function getDeclaredProductImages(product: Pick<Product, "image" | "images">): string[] {
+  const declaredCandidates = [product.image, ...(product.images ?? [])]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .map((value) => normalizeImagePath(value.trim()));
+
+  return Array.from(new Set(declaredCandidates));
+}
+
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
   const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
     (fileName) => `/images/products/${product.id}/${fileName}`
   );
 
-  const declaredCandidates = [product.image, ...(product.images ?? [])]
-    .filter((value): value is string => Boolean(value && value.trim()))
-    .map((value) => normalizeImagePath(value.trim()));
+  const declaredCandidates = getDeclaredProductImages(product);
 
   return Array.from(new Set([...localCandidates, ...declaredCandidates]));
 }
