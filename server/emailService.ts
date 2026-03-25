@@ -58,6 +58,11 @@ function safeNum(v: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function formatCustomerSize(size: string | undefined): string | undefined {
+  if (!size) return size;
+  return size === "ONE_SIZE" ? "ONE SIZE" : size;
+}
+
 function getCustomerFromOrder(order: Order) {
   // Current DB schema
   const name = (order as any).customerName ?? (order as any).name;
@@ -149,7 +154,7 @@ async function normalizeEmailItems(rawItems: any[]): Promise<EmailLineItem[]> {
 function formatItemsHtml(items: EmailLineItem[]) {
   return items
     .map((item) => {
-      const sizePart = item.size ? ` (${item.size})` : "";
+      const sizePart = item.size ? ` (${safeStr(formatCustomerSize(item.size), "-")})` : "";
       return `${item.quantity}× <b>${safeStr(item.name, "Produkt")}</b>${sizePart} — ${(
         item.unitPriceCzk || 0
       ).toLocaleString()} Kč`;
@@ -160,7 +165,7 @@ function formatItemsHtml(items: EmailLineItem[]) {
 function formatItemsText(items: EmailLineItem[]) {
   return items
     .map((item) => {
-      const sizePart = item.size ? ` (${item.size})` : "";
+      const sizePart = item.size ? ` (${safeStr(formatCustomerSize(item.size), "-")})` : "";
       return `${item.quantity}x ${safeStr(item.name, "Produkt")}${sizePart} - ${(
         item.unitPriceCzk || 0
       ).toLocaleString()} Kč`;
@@ -370,7 +375,7 @@ export async function sendFulfillmentNewOrderEmail(order: Order): Promise<boolea
         const qty = Math.max(0, item.quantity || 0);
         const unit = Math.max(0, item.unitPriceCzk || 0);
         const lineTotal = unit * qty;
-        const sizeLabel = item.size ? safeStr(item.size, "-") : "-";
+        const sizeLabel = item.size ? safeStr(formatCustomerSize(item.size), "-") : "-";
         return `
           <tr>
             <td style="padding:10px 12px;border-bottom:1px solid #e8e8e8;">

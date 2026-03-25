@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Product } from "@shared/schema";
 import {
   Dialog,
@@ -13,6 +13,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Minus, ShoppingBag, X, AlertTriangle, ImageOff } from "lucide-react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { useOverlay } from "@/lib/overlay-context";
+import {
+  formatSizeLabel,
+  getDeclaredProductImages,
+  getDefaultSelectedSize,
+  getProductImageCandidates,
+  getSelectableSizes,
+  requiresExplicitSizeSelection,
+} from "@/lib/product-ui";
 
 const CART_INLINE_STATUS_EVENT = "zle:cart-inline-status";
 
@@ -36,12 +44,23 @@ interface ProductModalProps {
 }
 
 export function ProductModal({ product }: ProductModalProps) {
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const selectableSizes = useMemo(() => getSelectableSizes(product), [product]);
+  const sizeSelectionRequired = requiresExplicitSizeSelection(product);
+  const defaultSelectedSize = getDefaultSelectedSize(product);
+
+  const [selectedSize, setSelectedSize] = useState<string | null>(defaultSelectedSize);
   const [quantity, setQuantity] = useState(1);
-  const [imageError, setImageError] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [resolvedImageSrc, setResolvedImageSrc] = useState<string | null>(null);
   const { addItem } = useCart();
   const { toast } = useToast();
   const { closeOverlay, getOverlay, openOverlay } = useOverlay();
+
+  const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
+  const declaredImages = useMemo(() => getDeclaredProductImages(product), [product]);
+  const declaredPrimaryImage = declaredImages[0] ?? null;
+
+  const imageSrc = imageIndex < imageCandidates.length ? imageCandidates[imageIndex] : null;
 
   const productOverlay = getOverlay("product");
   const isOpen = productOverlay?.productId === product.id;
@@ -49,7 +68,17 @@ export function ProductModal({ product }: ProductModalProps) {
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   const maxQuantity = Math.min(product.stock, 10);
-  const showPlaceholder = !product.image || imageError;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    setSelectedSize(defaultSelectedSize);
+    setQuantity(1);
+    setImageIndex(0);
+    setResolvedImageSrc(null);
+  }, [defaultSelectedSize, isOpen, product.id]);
 
   const handleClose = () => {
     closeOverlay("product");
@@ -65,7 +94,17 @@ export function ProductModal({ product }: ProductModalProps) {
       return;
     }
 
-    if (!selectedSize) {
+    if (sizeSelectionRequired && !selectedSize) {
+      toast({
+        title: "Vyber velikost",
+        description: "Pred pridanim do kosiku musis vybrat velikost.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const resolvedSize = selectedSize ?? defaultSelectedSize;
+    if (!resolvedSize) {
       toast({
         title: "Vyber velikost",
         description: "Pred pridanim do kosiku musis vybrat velikost.",
@@ -87,22 +126,22 @@ export function ProductModal({ product }: ProductModalProps) {
       productId: product.id,
       name: product.name,
       price: product.price,
-      size: selectedSize,
+      size: resolvedSize,
       quantity,
-      image: product.image,
+      image: resolvedImageSrc ?? declaredPrimaryImage ?? "",
     });
 
     window.dispatchEvent(
       new CustomEvent<CartInlineStatusDetail>(CART_INLINE_STATUS_EVENT, {
         detail: {
           name: product.name,
-          size: selectedSize,
+          size: resolvedSize,
           quantity,
         },
       })
     );
 
-    setSelectedSize(null);
+    setSelectedSize(defaultSelectedSize);
     setQuantity(1);
     openOverlay({ type: "cart" });
   };
@@ -126,14 +165,15 @@ export function ProductModal({ product }: ProductModalProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="relative aspect-[4/3] md:aspect-square bg-black">
-            {showPlaceholder ? (
+            {!imageSrc ? (
               <ModalImagePlaceholder name={product.name} />
             ) : (
               <img
-                src={product.image}
+                src={imageSrc}
                 alt={product.name}
                 className="w-full h-full object-cover"
-                onError={() => setImageError(true)}
+                onError={() => setImageIndex((index) => index + 1)}
+                onLoad={(event) => setResolvedImageSrc(event.currentTarget.currentSrc || imageSrc)}
               />
             )}
             {isSoldOut && (
@@ -172,7 +212,7 @@ export function ProductModal({ product }: ProductModalProps) {
                     VELIKOST
                   </label>
                   <div className="flex flex-wrap gap-1.5 md:gap-2">
-                    {product.sizes.map((size) => (
+                    {selectableSizes.map((size) => (
                       <button
                         key={size}
                         onClick={() => setSelectedSize(size)}
@@ -183,7 +223,7 @@ export function ProductModal({ product }: ProductModalProps) {
                         }`}
                         data-testid={`button-size-${size}`}
                       >
-                        {size}
+                        {formatSizeLabel(size)}
                       </button>
                     ))}
                   </div>
