@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCart } from "@/lib/cart-context";
+import { formatSizeLabel } from "@/lib/product-ui";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ShoppingBag, Loader2, CreditCard, Landmark, Wallet, Bitcoin, Coins, HandCoins } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
@@ -1116,7 +1117,7 @@ export default function Checkout() {
                         <div className="flex-1 min-w-0">
                           <h4 className="font-heading text-sm font-bold text-white truncate">{item.name}</h4>
                           <p className="text-xs text-white/60">
-                            {item.size} x {item.quantity}
+                            {formatSizeLabel(item.size)} x {item.quantity}
                           </p>
                         </div>
                         <span className="font-sans text-sm font-bold text-white">{item.price * item.quantity} Kč</span>
