@@ -1,0 +1,678 @@
+{
+  "runId": "tbs-20260320-scale20-01",
+  "sourceRunId": "tbs-20260320-scale20-01",
+  "createdAt": "2026-03-20T18:16:39.431Z",
+  "mode": "bootstrap-replacement",
+  "summary": {
+    "totalItems": 20,
+    "acceptedCandidates": 20,
+    "reviewRequired": 0,
+    "rejected": 0,
+    "deterministicMatches": 0,
+    "proposedNewCandidates": 20,
+    "malformedRejected": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "cepice-snapback-zle-black-grey-melange--a0b5155689",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-black-grey-melange/",
+      "title": "Čepice snapback ZLE - black/grey melange",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "black/grey melange",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:d493bcf73a0c518a5eb198c1d9943dabe9108db6b60f206fc51b17d5b7d98f96",
+        "contentFingerprint": "sha256:64f4bb04e72dbcccb8e649efed5275826fb22e20c165bd13151041d4d4e6cfe2",
+        "imageFingerprint": "sha256:74817e2b063355ffa5df8118a9b4878b53206494644c906a908231f37c58a509"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-purple--3363d4aa95",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-purple/",
+      "title": "Čepice snapback ZLE! - Purple",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "purple",
+        "colorTokens": []
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:88af6430de1184cc4e32683559996a6dc9633dfa0f8ea246801eadebc0e93126",
+        "contentFingerprint": "sha256:c3bf0444c950b69c9f41474f801bc4284fbcc1f8285a3116ff683ef1d533987d",
+        "imageFingerprint": "sha256:fb0d306e6b1f2b81cb02a1a122b95df10a0015fe8dd94b04826c111b0a670c2c"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-teg-grey--0f6ae6d07a",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-teg-grey/",
+      "title": "Čepice snapback ZLE! - teg/grey",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "teg/grey",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c7f5aa4cc7c8b15a4483afb8c3439700561661d4a2383a2322ee8e712b1e777a",
+        "contentFingerprint": "sha256:10b31a3fc79395c15ad484c261af1dafda9f0b6e4feae7b310a137e105f0eb7c",
+        "imageFingerprint": "sha256:73f6de2ff30b1568ad2351a16ff2a058d5fea6bb7a3305074481b05c3c62cddd"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-winter-grey--0fea674431",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-winter-grey/",
+      "title": "Čepice snapback ZLE - Winter grey",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "winter grey",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:a0773b0079f01a468175594508e4ad4fbc2ea424b5efb6792853d85ec09c2d54",
+        "contentFingerprint": "sha256:65fabb3b6c2e4159e8fbbddbbef875efb190edb458661bdce98b776699c0f8ca",
+        "imageFingerprint": "sha256:dfa20781a5c5d8be92b364a454ab9047dd5c26e3dcd72bfe4e43791308259dff"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-woodland--6b7d61e0dd",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-woodland/",
+      "title": "Čepice snapback ZLE - woodland",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "woodland",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:9c677031f3771424907503ca47640ff8fcc5125db7f8ea5c2777bd21b83acdce",
+        "contentFingerprint": "sha256:2ceea16f7a7200fc0c15b5aca4a6a04816440230e6b5b627225df7c180c614b3",
+        "imageFingerprint": "sha256:3a8e34a57d104ba2bc00fea42876c37390ffc50d7cee6682d2f5fc26092a5aa3"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-trucker-zle-white-black--4911298ee2",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-trucker-zle-white-black/",
+      "title": "Čepice trucker ZLE! - white/black",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "white/black",
+        "colorTokens": []
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:de344112a7532d6a1376a9f6f096b0c92444171e64b0e5288c5d75fe9665b3ee",
+        "contentFingerprint": "sha256:8ebe07d8f8bd358c94c096727e125345aeb85061a97351bb9c215dce566c67c0",
+        "imageFingerprint": "sha256:428afe948eff1edcc35866c34c7d3ac3cb38b112f5aa5829e6cda50e4efd4b41"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-black-white--e5bc263a5f",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-black-white/",
+      "title": "Čepice truckerka ZLE! - Mesh black/white",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "mesh black/white",
+        "colorTokens": []
+      },
+      "priceCzk": 390,
+      "sizes": [],
+      "imageCount": 6,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:515003e5622b67f16cc2dc4f88ccce3f359f16c3fb93d2085391682717d8a81a",
+        "contentFingerprint": "sha256:b8d3e42a5ffd843611291caa6ded8814ffdd509bb0b2b917819fd29b34fc4b49",
+        "imageFingerprint": "sha256:0e37c4062fc83c3c1e0041198a850083c0cf80ca8fff13c5b75e7db0944f87d3"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-blue-white--920a7cb672",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-blue-white/",
+      "title": "Čepice truckerka ZLE! - Mesh blue/white",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "mesh blue/white",
+        "colorTokens": []
+      },
+      "priceCzk": 350,
+      "sizes": [],
+      "imageCount": 5,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:0b1888c4e35fc55b26f1a0cc576f628d91cf53427afe0a72c88fe60771fcf281",
+        "contentFingerprint": "sha256:c8234498109a07892982cd52d163f5b8cf6524be9dcd4aaf416e4d3aba694871",
+        "imageFingerprint": "sha256:4e5c58de441f3deff7c4b7d59598f609ba3d4e745105f84806440bfb3c3820a6"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-logo-blue--36cf675e0a",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-logo-blue/",
+      "title": "Čepice truckerka ZLE! - Mesh logo blue",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "mesh logo blue",
+        "colorTokens": []
+      },
+      "priceCzk": 350,
+      "sizes": [],
+      "imageCount": 5,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:10de54f39b3f17200812947c540ce2fc2e0217edeecb3ebcb8111272e28fa29a",
+        "contentFingerprint": "sha256:a84800172a91b2137d20a4ae71df60ccd35a7cbb3f4bf2df9e849b3790165c74",
+        "imageFingerprint": "sha256:1a71bfb3e6708f3810905867708be0bac2c0cabff63fc4dbef9a13cc42f8a76f"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-pink-ice-cream--806fa079c1",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-pink-ice-cream/",
+      "title": "Čepice truckerka ZLE! - Mesh pink Ice cream",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "mesh pink ice cream",
+        "colorTokens": []
+      },
+      "priceCzk": 350,
+      "sizes": [],
+      "imageCount": 5,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:866e211e95012da80ad2b4b29b199970d45a19302f131da5884ac6ca995a94fa",
+        "contentFingerprint": "sha256:c5b9e3a259d4b49b90214f653b9141a28ec7d571c70376aa1dcd5ce21ec51564",
+        "imageFingerprint": "sha256:3459577134b2d7426ed50b43f3ea5acaa80c16ca6e1ca8f97435e78a5258d29d"
+      }
+    },
+    {
+      "sourceProductKey": "cepice-zle-rainy-cap-black--ab0b26704a",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-zle-rainy-cap-black/",
+      "title": "Čepice ZLE! - Rainy cap black",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "rainy cap black",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:efe36910411488ae9d3aa7bfdcbc9fa9d3dcf966d4eb6c29291b2b9e1d591add",
+        "contentFingerprint": "sha256:e2b6fe4d6ce8238479a3e6f9a10ab5648e94da00ade31a986b1606a4ab5081f7",
+        "imageFingerprint": "sha256:87da91c10e7ed1fb73bf34e6e770991e5d92898f07f13c79e7f93f8fa1d98325"
+      }
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-army-tyrkys--ea4a61e04f",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-army-tyrkys/",
+      "title": "Dětské Tričko ZLE! - Army (tyrkys)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Dětské",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "army",
+        "colorTokens": [
+          "tyrkys"
+        ]
+      },
+      "priceCzk": 269,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c10e2b86d8e02272ecbaecf892848e4c914979b4ad0920f37ab9fc2847bede0c",
+        "contentFingerprint": "sha256:1384f38766a47b3c694449dafc62bb84b6b6fdabae8c1c4e5e6243fbbc3c14d9",
+        "imageFingerprint": "sha256:a769ba1e681ee182c974675367cddff12e1c348d84ec3d911215457b7cfc98b8"
+      }
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-planet-on-fire-tyrkys--3be28ac00d",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-planet-on-fire-tyrkys/",
+      "title": "Dětské tričko ZLE! - planet on fire (tyrkys)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Dětské",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "planet on fire",
+        "colorTokens": [
+          "tyrkys"
+        ]
+      },
+      "priceCzk": 269,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:3fdef7bd3ac1759d523962875f5e2db0dbaa7ba5b895692fc8e2162793c532ff",
+        "contentFingerprint": "sha256:b01d520b4f668cfcae630073702a146e6d472ea9d1c89b4b09ef685c87132a52",
+        "imageFingerprint": "sha256:381647f7dddc5f32c8f1cf3c0ccfb30c7e1a35b076045b2ea947b64e2cf4aa31"
+      }
+    },
+    {
+      "sourceProductKey": "ksiltovka-zle-army-woodland--5d00ec8dbd",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/ksiltovka-zle-army-woodland/",
+      "title": "Kšiltovka ZLE! - Army/woodland",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "army/woodland",
+        "colorTokens": []
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:b42230510d32500fc50993c6f9bbe242be450a6afc19fc64acbf079f6e325d66",
+        "contentFingerprint": "sha256:1898a6d783b6d9c497805425b93b9bdd0dbf0bdfcd09fffa7af67ed8fc66a6c4",
+        "imageFingerprint": "sha256:ae3b52f700a8e177fd99c4017810529fdd8b9c6dfa485a80bce46a6413000850"
+      }
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-black-khaki--0ced0d3fe1",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-black-khaki/",
+      "title": "Pánská mikina ZLE skateboards – Abstract (Black/khaki)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Mikiny",
+      "structured": {
+        "productType": "mikina",
+        "audience": "pánská",
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "black",
+          "khaki"
+        ]
+      },
+      "priceCzk": 1350,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:dfcf8391e14adc866b13a66b45694714b79a6229f1e1f70a89bcc9a42c3b2101",
+        "contentFingerprint": "sha256:89ea1730e99a6ac6bb3eb3b915127b7213c3ea93edc5bfe337540e7740490b59",
+        "imageFingerprint": "sha256:a9c0685fd376c9b204c76f4fe991eafc9f36677008cf85b35cb806ec0c93d944"
+      }
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-grey-melange-blue--7db5fcbcda",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-grey-melange-blue/",
+      "title": "Pánská mikina ZLE skateboards – Abstract (grey melange/blue)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Mikiny",
+      "structured": {
+        "productType": "mikina",
+        "audience": "pánská",
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "grey melange",
+          "blue"
+        ]
+      },
+      "priceCzk": 1350,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c38ced8ffdc03e1bdc789451918f4a63826da1665c32c7f7296c39f66b2303a4",
+        "contentFingerprint": "sha256:66eb1d329d42daf4e2f4542b4fd0d3071655d98c2ae72070d6dc31a5072f118a",
+        "imageFingerprint": "sha256:6b3d9d49356a767f5ade4f7538c444e7baa4f896e277711228b3edfc52ab5b7e"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-black-khaky--feade92725",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-black-khaky/",
+      "title": "Pánské tričko ZLE skateboards – Abstract (black/khaky)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "black",
+          "khaky"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:2e7727561eb2545d1d0a77a54ef752c9ff4b230cff624bf98adb2d7fd9608560",
+        "contentFingerprint": "sha256:1da440a2d8c909f4f64ef73b8e238d641ba54457cf32487671787052de309757",
+        "imageFingerprint": "sha256:800efcdac4d037ff54203596176b62185ad5fd51a25a79c40e4418bf9410837c"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-grey-melange-blue--0dc3234040",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-grey-melange-blue/",
+      "title": "Pánské tričko ZLE skateboards – Abstract (grey melange/blue)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "grey melange",
+          "blue"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c37c97133205faf11fc7b8cd00dd2a3af61976a4061340edbd6d1e7b295dd513",
+        "contentFingerprint": "sha256:eada56394b4cb5970fedb01dce546cad5f8c9fa8e738e420b83ea2b7d7e54e19",
+        "imageFingerprint": "sha256:7beafddaf0228ec8b6fb95ad7654b826b74c4a40448392b5f5d15858b8aa5a9b"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-white-green--47199012e5",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-white-green/",
+      "title": "Pánské tričko ZLE skateboards - Abstract (white/green)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "white",
+          "green"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:6cf0d0adc1fed4f5fc299f70855977214c9334ef79277962d28a7e4fd77b808a",
+        "contentFingerprint": "sha256:4974ae3dfbacb1eaf51db8ac1fc176ae0ab62faf19813b7c09184bdd67f8455a",
+        "imageFingerprint": "sha256:6f4678c609128ec03f386e81849b2a108e547efba1c087ef5f6f49d412b2f91e"
+      }
+    },
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+      "title": "Tričko ZLE skateboards - Palm (black)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "palm",
+        "colorTokens": [
+          "black"
+        ]
+      },
+      "priceCzk": 650,
+      "sizes": [],
+      "imageCount": 5,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:e6394540ba09ca22c9de8e65c82d488da90ae0e8b366635083f2371af9261c69",
+        "contentFingerprint": "sha256:693af79326c0b5efa3528ee0e9c61b1e16f4d0e2f3664086bedcd8c8979f2250",
+        "imageFingerprint": "sha256:54f13be0f486a5fdf921e2777ff09ceb50562ba601c9207225a5c93805220022"
+      }
+    }
+  ]
+}

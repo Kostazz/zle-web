@@ -1,0 +1,32 @@
+{
+  "runId": "tbs-20260320-scale5-01",
+  "createdAt": "2026-03-20T17:36:22.666Z",
+  "sourceRunId": "tbs-20260320-scale5-01",
+  "decisions": [
+    {
+      "sourceProductKey": "ksiltovka-zle-army-woodland--5d00ec8dbd",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-black-khaki--0ced0d3fe1",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-grey-melange-blue--7db5fcbcda",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-black-khaky--feade92725",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    }
+  ]
+}

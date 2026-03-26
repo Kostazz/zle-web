@@ -1,0 +1,45 @@
+{
+  "runId": "tbs-20260320-1707-1p-clean",
+  "sourceRunId": "tbs-20260320-1707-1p-clean",
+  "reviewRunId": "tbs-20260320-1707-1p-clean",
+  "createdAt": "2026-03-20T17:18:37.815Z",
+  "summary": {
+    "totalApprovedItems": 1,
+    "selectedItems": 1,
+    "stagedItems": 1,
+    "failedItems": 0,
+    "skippedItems": 0,
+    "validateOnly": false,
+    "producedOutputs": 8
+  },
+  "items": [
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "resolutionType": "new_candidate",
+      "approvedLocalProductId": null,
+      "stagingTargetKey": "new/tricko-zle-skateboards-palm-black",
+      "plannedOutputs": [
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/cover.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/cover.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/01.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/01.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/02.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/02.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/03.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/03.webp"
+      ],
+      "producedOutputs": [
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/cover.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/cover.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/01.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/01.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/02.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/02.webp",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/03.jpg",
+        "tmp/agent-staging/tbs-20260320-1707-1p-clean/products/tricko-zle-skateboards-palm-black/03.webp"
+      ],
+      "status": "staged",
+      "reasonCodes": []
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "runId": "tbs-20260320-1707-1p-clean",
+  "createdAt": "2026-03-20T17:07:14.966Z",
+  "artifacts": {
+    "dataset": {
+      "path": "dataset.json",
+      "sha256": "sha256:e61f32e38390e53d5625a9faddeee4be0bc3f0709075de725eed15ffe6237c50"
+    },
+    "products": {
+      "path": "products.json",
+      "sha256": "sha256:df622adda66f2ed0768c4be6908663ab82b96bc53313a87a6a83c21a1f803a78"
+    },
+    "crawlLog": {
+      "path": "crawl-log.json",
+      "sha256": "sha256:4dee88f8765dd25bdc9307fd76972621d5021a2eecd47a6a9292c5f4282d0855"
+    }
+  },
+  "chain": {
+    "previousRunHash": "sha256:c58f2b7efb448555626a75797813cd149f7296190123a2c26b6cea6e27ee32be",
+    "currentRunHash": "sha256:7e919c3356f369f919f16ffb3b334cbc73d3813ac197982c138c119434244f09"
+  },
+  "sourceMode": "crawl-snapshot",
+  "trust": {
+    "sourceType": "live-crawl",
+    "operatorProvided": false,
+    "notes": [
+      "Artifacts originated from the live TotalBoardShop crawl path."
+    ]
+  }
+}

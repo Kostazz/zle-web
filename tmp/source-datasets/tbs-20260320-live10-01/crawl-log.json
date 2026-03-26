@@ -1,0 +1,162 @@
+{
+  "seedUrls": [
+    "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding"
+  ],
+  "visitedPages": [
+    "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding",
+    "https://totalboardshop.cz/obchod/",
+    "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+    "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/ksiltovka-zle-army-woodland/",
+    "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-black-khaki/",
+    "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-grey-melange-blue/",
+    "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-black-khaky/",
+    "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-grey-melange-blue/",
+    "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-white-green/",
+    "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-planet-on-fire-tyrkys/",
+    "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-army-tyrkys/",
+    "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-zle-rainy-cap-black/"
+  ],
+  "skippedUrls": [
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-pink-ice-cream/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-logo-blue/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-blue-white/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-truckerka-zle-mesh-black-white/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-trucker-zle-white-black/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-teg-grey/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-purple/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-woodland/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-black-grey-melange/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-snapback-zle-winter-grey/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-red/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-blue/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-blc-red/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-black-pink/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-earth-of-fire-black/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-2/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-mesh-eye-black-white-vine/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-zle-hologram-black-grey-yellow/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-mesh-zle-skateboarding-neon-yellow/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-mesh-zle-skateboarding-neon-orange/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-sitovka-mesh-zle-skateboarding-neon-green/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/skate-mikina-zle-sedy-melir/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/skate-mikina-zle-purple/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/skate-mikina-zle-fushia/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/skate-mikina-zle-cerna/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/mikina-zle-sb-camo-cofe/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/mikina-zle-ice-cream-spring-green/",
+      "reasonCode": "max_products_reached"
+    },
+    {
+      "url": "https://totalboardshop.cz/obchod/streetwear/mikiny/mikina-zle-ice-cream-peach/",
+      "reasonCode": "max_products_reached"
+    }
+  ],
+  "skippedProducts": [
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/",
+      "reasonCode": "brand_not_trusted",
+      "detail": "Untrusted or missing brand metadata: <empty>"
+    }
+  ],
+  "skippedProductSummary": {
+    "brand_not_trusted": 1
+  },
+  "downloadErrors": [],
+  "limits": {
+    "maxPages": 40,
+    "maxProducts": 10,
+    "maxImagesPerProduct": 8,
+    "maxImageBytes": 8000000
+  },
+  "mode": "crawl-snapshot",
+  "trust": {
+    "sourceType": "live-crawl",
+    "operatorProvided": false,
+    "notes": [
+      "Artifacts originated from the live TotalBoardShop crawl path."
+    ]
+  }
+}

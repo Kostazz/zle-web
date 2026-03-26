@@ -1,0 +1,59 @@
+{
+  "seedUrls": [
+    "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding"
+  ],
+  "visitedPages": [
+    "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding",
+    "https://totalboardshop.cz/obchod/",
+    "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+    "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/ksiltovka-zle-army-woodland/",
+    "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-black-khaki/",
+    "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-grey-melange-blue/"
+  ],
+  "skippedUrls": [],
+  "skippedProducts": [
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/",
+      "reasonCode": "missing_title",
+      "detail": "Main product title missing"
+    },
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+      "reasonCode": "missing_title",
+      "detail": "Main product title missing"
+    },
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/ksiltovka-zle-army-woodland/",
+      "reasonCode": "missing_title",
+      "detail": "Main product title missing"
+    },
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-black-khaki/",
+      "reasonCode": "missing_title",
+      "detail": "Main product title missing"
+    },
+    {
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-grey-melange-blue/",
+      "reasonCode": "missing_title",
+      "detail": "Main product title missing"
+    }
+  ],
+  "skippedProductSummary": {
+    "missing_title": 5
+  },
+  "downloadErrors": [],
+  "limits": {
+    "maxPages": 5,
+    "maxProducts": 1,
+    "maxImagesPerProduct": 4,
+    "maxImageBytes": 8000000
+  },
+  "mode": "crawl-snapshot",
+  "trust": {
+    "sourceType": "live-crawl",
+    "operatorProvided": false,
+    "notes": [
+      "Artifacts originated from the live TotalBoardShop crawl path."
+    ]
+  }
+}

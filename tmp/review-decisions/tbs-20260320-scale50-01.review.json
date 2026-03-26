@@ -1,0 +1,202 @@
+{
+  "runId": "tbs-20260320-scale50-01",
+  "createdAt": "2026-03-20T18:32:18.882Z",
+  "sourceRunId": "tbs-20260320-scale50-01",
+  "decisions": [
+    {
+      "sourceProductKey": "cepice-sitovka-mesh-zle-skateboarding-neon-green--0678c74ec8",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-mesh-zle-skateboarding-neon-orange--42ecac4724",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-mesh-zle-skateboarding-neon-yellow--9f999043f4",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle--2a0dd4d5bc",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-2--f04e82e37a",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-black-pink--ca7b5cf4e6",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-blc-red--19269505eb",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-blue--eaa59d4f56",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-earth-of-fire-black--c80c18abd9",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-hologram-black-grey-yellow--5f7d70591f",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-mesh-eye-black-white-vine--4370de3a6d",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-sitovka-zle-red--839f9840a6",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-black-grey-melange--a0b5155689",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-purple--3363d4aa95",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-teg-grey--0f6ae6d07a",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-winter-grey--0fea674431",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-snapback-zle-woodland--6b7d61e0dd",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-trucker-zle-white-black--4911298ee2",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-black-white--e5bc263a5f",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-blue-white--920a7cb672",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-logo-blue--36cf675e0a",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-truckerka-zle-mesh-pink-ice-cream--806fa079c1",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "cepice-zle-rainy-cap-black--ab0b26704a",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-army-tyrkys--ea4a61e04f",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-planet-on-fire-tyrkys--3be28ac00d",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "ksiltovka-zle-army-woodland--5d00ec8dbd",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "mikina-zle-ice-cream-peach--84fc3ed3fb",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "mikina-zle-ice-cream-spring-green--72c1bc4faf",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "mikina-zle-sb-camo-cofe--fa92a4020b",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-black-khaki--0ced0d3fe1",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-grey-melange-blue--7db5fcbcda",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-black-khaky--feade92725",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-grey-melange-blue--0dc3234040",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-white-green--47199012e5",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "skate-mikina-zle-cerna--ca080574c7",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "skate-mikina-zle-fushia--92ac71381e",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "skate-mikina-zle-purple--3ff68c34ab",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "skate-mikina-zle-sedy-melir--b5b2ec0132",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    },
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "decision": "approved",
+      "resolutionType": "new_candidate"
+    }
+  ]
+}
