@@ -30,6 +30,7 @@ type PlannedPublishUnit = {
   stagedItem: StagingExecutionItem;
   liveTargetKey: string;
   stagedFiles: Array<{ stagedRelativePath: string; stagedAbsolutePath: string; liveFileName: string }>;
+  excludedForeignStagedOutputs: string[];
 };
 
 const DEFAULT_GATE_ROOT = path.resolve("tmp", "publish-gates");
@@ -282,6 +283,28 @@ function createLiveTargetKey(item: PublishGateItem): string {
 function normalizeManagedLiveFileName(fileName: string): string {
   if (!MANAGED_PUBLISH_FILE_RE.test(fileName)) throw new Error(`Unsupported managed live filename: ${fileName}`);
   return fileName;
+}
+
+function getProductIdFromStagedRelativePath(relativePath: string, expectedRunId: string): string {
+  const normalized = path.posix.normalize(relativePath);
+  const segments = normalized.split("/");
+
+  if (
+    segments.length !== 6 ||
+    segments[0] !== "tmp" ||
+    segments[1] !== "agent-staging" ||
+    segments[2] !== expectedRunId ||
+    segments[3] !== "products"
+  ) {
+    throw new Error(`Malformed staged output path: ${relativePath}`);
+  }
+
+  const productId = segments[4];
+  if (!productId || productId === "." || productId === "..") {
+    throw new Error(`Malformed staged output path: ${relativePath}`);
+  }
+
+  return productId;
 }
 
 function computeSummary(items: PublishExecutionItem[], totalGateItems: number): PublishExecutionSummary {
@@ -546,15 +569,28 @@ function planPublishUnits(input: ManualPublishExecutorInput, gateManifest: Publi
     if (owner) throw new Error(`Live target collision detected: ${liveTargetKey} (${owner}, ${item.sourceProductKey})`);
     seenTargets.set(liveTargetKey, item.sourceProductKey);
 
-    const stagedFiles = plannedOutputs.map((relativePath) => {
+    const stagedFiles: PlannedPublishUnit["stagedFiles"] = [];
+    const excludedForeignStagedOutputs: string[] = [];
+    for (const relativePath of plannedOutputs) {
       const stagedAbsolutePath = validateRelativeArtifactPath(relativePath, gateManifest.stagingRunId, stagingRoot);
+      const stagedProductId = getProductIdFromStagedRelativePath(relativePath, gateManifest.stagingRunId);
+      if (stagedProductId !== liveTargetKey) {
+        excludedForeignStagedOutputs.push(relativePath);
+        continue;
+      }
       const fileName = normalizeManagedLiveFileName(path.basename(stagedAbsolutePath));
-      return {
+      stagedFiles.push({
         stagedRelativePath: relativePath,
         stagedAbsolutePath,
         liveFileName: fileName,
-      };
-    }).sort((a, b) => a.liveFileName.localeCompare(b.liveFileName));
+      });
+    }
+
+    if (stagedFiles.length < 1) {
+      throw new Error(`No valid staged outputs remain after product ownership filter: ${item.sourceProductKey}`);
+    }
+
+    stagedFiles.sort((a, b) => a.liveFileName.localeCompare(b.liveFileName));
 
     const fileNameSet = new Set<string>();
     for (const stagedFile of stagedFiles) {
@@ -567,7 +603,7 @@ function planPublishUnits(input: ManualPublishExecutorInput, gateManifest: Publi
       }
     }
 
-    return { item, stagedItem, liveTargetKey, stagedFiles };
+    return { item, stagedItem, liveTargetKey, stagedFiles, excludedForeignStagedOutputs };
   }).sort((a, b) => a.item.sourceProductKey.localeCompare(b.item.sourceProductKey));
 }
 
@@ -619,6 +655,10 @@ async function executePublishUnit(unit: PlannedPublishUnit, input: ManualPublish
     return buildExecutionItem(unit, "published", ["ready_for_publish"], {
       publishedOutputs: publishedOutputs.sort((a, b) => a.localeCompare(b)),
       removedManagedOutputs,
+      reasonCodes: normalizeStringArray([
+        "ready_for_publish",
+        ...(unit.excludedForeignStagedOutputs.length > 0 ? ["warning:excluded_foreign_staged_outputs"] : []),
+      ]),
     });
   } catch (error) {
     return buildExecutionItem(unit, "failed", ["ready_for_publish", "publish_failed"], {
@@ -666,6 +706,13 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
         `eligibility:${item.eligibilityStatus}`,
       ]),
     }));
+  for (const executed of executedItems) {
+    const planned = units.find((unit) => unit.item.sourceProductKey === executed.sourceProductKey);
+    if (!planned || planned.excludedForeignStagedOutputs.length < 1) continue;
+    const warning = `warning excluded foreign staged outputs for ${executed.sourceProductKey}: ${planned.excludedForeignStagedOutputs.join(", ")}`;
+    if (executed.status === "failed") console.error(warning);
+    else console.warn(warning);
+  }
   const items = [...executedItems, ...skippedItems].sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey));
 
   const report: PublishExecutionReport = {

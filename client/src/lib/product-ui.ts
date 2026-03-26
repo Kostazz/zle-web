@@ -31,12 +31,22 @@ export function getDeclaredProductImages(product: Pick<Product, "image" | "image
   return Array.from(new Set(declaredCandidates));
 }
 
+export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
+  const declaredImages = getDeclaredProductImages(product);
+  return declaredImages.filter((imagePath) => isImageOwnedByProduct(imagePath, product));
+}
+
+export function isImageOwnedByProduct(imagePath: string | null | undefined, product: Pick<Product, "id">): boolean {
+  if (!imagePath) return false;
+  return normalizeImagePath(imagePath).includes(`/images/products/${product.id}/`);
+}
+
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
   const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
     (fileName) => `/images/products/${product.id}/${fileName}`
   );
 
-  const declaredCandidates = getDeclaredProductImages(product);
+  const declaredCandidates = getOwnedDeclaredProductImages(product);
 
   return Array.from(new Set([...localCandidates, ...declaredCandidates]));
 }

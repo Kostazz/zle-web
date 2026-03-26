@@ -5,7 +5,7 @@ import { ProductModal } from "./ProductModal";
 import { ImageOff } from "lucide-react";
 import {
   formatSizeLabel,
-  getDeclaredProductImages,
+  getOwnedDeclaredProductImages,
   getProductImageCandidates,
   getSelectableSizes,
 } from "@/lib/product-ui";
@@ -34,7 +34,7 @@ export function ProductCard({ product }: ProductCardProps) {
   const isLowStock = product.stock > 0 && product.stock <= 5;
 
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
-  const declaredImages = useMemo(() => getDeclaredProductImages(product), [product]);
+  const declaredImages = useMemo(() => getOwnedDeclaredProductImages(product), [product]);
   const primaryDeclaredImage = declaredImages[0] ?? null;
   const secondaryDeclaredImages = declaredImages.filter((image) => image !== primaryDeclaredImage);
 
