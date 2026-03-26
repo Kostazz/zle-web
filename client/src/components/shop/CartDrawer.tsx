@@ -76,7 +76,7 @@ export function CartDrawer() {
         }
       }}
     >
-      <SheetContent className="w-full sm:max-w-md bg-black border-l border-white/20 flex flex-col">
+      <SheetContent className="w-full sm:max-w-md bg-black border-l border-white/20 flex flex-col [&>button]:text-white [&>button]:hover:text-white [&>button]:focus-visible:ring-white/60">
         <SheetHeader>
           <SheetTitle className="font-display text-2xl text-white tracking-tight flex items-center gap-3">
             <ShoppingBag className="h-6 w-6" />
