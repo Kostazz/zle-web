@@ -29,8 +29,17 @@ export async function publishCatalogRun(runId: string) {
     return error("staging_output_missing", `Staging directory not found: ${run.outputDir}`, 404);
   }
 
+  const nestedProductsDir = path.join(sourceDir, "products");
+  const stagedProductsRoot = fs.existsSync(nestedProductsDir) ? nestedProductsDir : sourceDir;
+
   await fs.promises.mkdir(FINAL_ASSET_DIR, { recursive: true });
-  await fs.promises.cp(sourceDir, FINAL_ASSET_DIR, { recursive: true, force: true });
+  const stagedEntries = await fs.promises.readdir(stagedProductsRoot, { withFileTypes: true });
+  for (const entry of stagedEntries) {
+    if (!entry.isDirectory()) continue;
+    const stagedProductDir = path.join(stagedProductsRoot, entry.name);
+    const finalProductDir = path.join(FINAL_ASSET_DIR, entry.name);
+    await fs.promises.cp(stagedProductDir, finalProductDir, { recursive: true, force: true });
+  }
 
   await markCatalogRunPublishState(runId, "published");
   return { ok: true as const, runId, publishState: "published" as const };
