@@ -12,9 +12,18 @@ export function CartItem({ item }: CartItemProps) {
 
   return (
     <div
-      className="flex gap-3 p-3 sm:gap-4 sm:p-4 bg-white/5 border border-white/10 overflow-x-hidden"
+      className="relative flex gap-3 p-3 pr-12 sm:gap-4 sm:p-4 sm:pr-14 bg-white/5 border border-white/10 overflow-x-hidden"
       data-testid={`cart-item-${item.productId}-${item.size}`}
     >
+      <button
+        onClick={() => removeItem(item.productId, item.size)}
+        className="absolute right-2 top-2 sm:right-3 sm:top-3 z-10 shrink-0 rounded-sm border border-white/50 bg-black/60 p-1.5 text-white hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black transition-all"
+        data-testid={`button-remove-${item.productId}-${item.size}`}
+        aria-label="Odstranit položku"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
       <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white flex-shrink-0">
         <img
           src={item.image}
@@ -31,14 +40,6 @@ export function CartItem({ item }: CartItemProps) {
             </h4>
             <p className="text-xs text-white/60 mt-1 truncate">Velikost: {formatSizeLabel(item.size)}</p>
           </div>
-          <button
-            onClick={() => removeItem(item.productId, item.size)}
-            className="shrink-0 p-2 border border-white/25 text-white/80 hover:text-white hover:border-white/60 transition-colors"
-            data-testid={`button-remove-${item.productId}-${item.size}`}
-            aria-label="Odstranit položku"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
