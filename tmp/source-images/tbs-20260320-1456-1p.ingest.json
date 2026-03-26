@@ -1,0 +1,29 @@
+{
+  "runId": "tbs-20260320-1456-1p",
+  "sourceRunId": "tbs-20260320-1456-1p",
+  "createdAt": "2026-03-20T14:58:14.592Z",
+  "validateOnly": false,
+  "sourceDatasetPath": "tmp/source-datasets/tbs-20260320-1456-1p/dataset.json",
+  "sourceProductsPath": "tmp/source-datasets/tbs-20260320-1456-1p/products.json",
+  "outputRoot": "tmp/source-images/tbs-20260320-1456-1p",
+  "downloadedImageCount": 4,
+  "failedImageCount": 0,
+  "products": [
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "imageCount": 4,
+      "ingestedImagePaths": [
+        "tmp/source-images/tbs-20260320-1456-1p/tricko-zle-skateboards-palm-black--303d6b6210/01.png",
+        "tmp/source-images/tbs-20260320-1456-1p/tricko-zle-skateboards-palm-black--303d6b6210/02.jpg",
+        "tmp/source-images/tbs-20260320-1456-1p/tricko-zle-skateboards-palm-black--303d6b6210/03.jpg",
+        "tmp/source-images/tbs-20260320-1456-1p/tricko-zle-skateboards-palm-black--303d6b6210/04.jpg"
+      ],
+      "downloadedImageHashes": [
+        "sha256:5b8c74d0dc20bdb98c99ebf2b988605fdd133f58de763e886412a46721821d72",
+        "sha256:3af4b02fa26fa79abaf7f66c12db2f2a21a04b452a143e9bbbafd2097be01a2d",
+        "sha256:91e6c07e740ffdfa02e65e9bf8d0dde3f76a9aba9744875e18c53cf1da2f5f38",
+        "sha256:84cade31c98b789bc3fa6a65a8ab0a14507d6bfa9a2bba130531dbc2857db4f5"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "runId": "publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44",
+  "sourceRunId": "publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44",
+  "reviewRunId": "publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44",
+  "stagingRunId": "publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44",
+  "gateRunId": "publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44",
+  "createdAt": "2026-03-23T10:56:28.744Z",
+  "summary": {
+    "totalGateItems": 1,
+    "readyForPublish": 1,
+    "published": 0,
+    "failed": 1,
+    "skipped": 0,
+    "mappedToExisting": 0,
+    "newCandidatePublished": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "source-1",
+      "resolutionType": "map_to_existing",
+      "approvedLocalProductId": "prod-1",
+      "liveTargetKey": "prod-1",
+      "plannedOutputs": [
+        "tmp/agent-staging/publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44/existing/prod-1/cover.jpg",
+        "tmp/agent-staging/publish-2400-1774263388703-7d063953-7611-4167-888e-6fc0615f6f44/existing/prod-1/cover.webp"
+      ],
+      "publishedOutputs": [],
+      "removedManagedOutputs": [],
+      "status": "failed",
+      "reasonCodes": [
+        "publish_failed",
+        "ready_for_publish"
+      ],
+      "errorMessage": "simulated cleanup failure"
+    }
+  ],
+  "debug": {
+    "hadPartialResults": true,
+    "errorStage": "execution"
+  }
+}

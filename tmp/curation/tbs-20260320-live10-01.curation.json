@@ -1,0 +1,358 @@
+{
+  "runId": "tbs-20260320-live10-01",
+  "sourceRunId": "tbs-20260320-live10-01",
+  "createdAt": "2026-03-20T18:47:59.511Z",
+  "mode": "bootstrap-replacement",
+  "summary": {
+    "totalItems": 10,
+    "acceptedCandidates": 10,
+    "reviewRequired": 0,
+    "rejected": 0,
+    "deterministicMatches": 0,
+    "proposedNewCandidates": 10,
+    "malformedRejected": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "cepice-zle-rainy-cap-black--ab0b26704a",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/cepice-zle-rainy-cap-black/",
+      "title": "Čepice ZLE! - Rainy cap black",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "rainy cap black",
+        "colorTokens": []
+      },
+      "priceCzk": 490,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:efe36910411488ae9d3aa7bfdcbc9fa9d3dcf966d4eb6c29291b2b9e1d591add",
+        "contentFingerprint": "sha256:e2b6fe4d6ce8238479a3e6f9a10ab5648e94da00ade31a986b1606a4ab5081f7",
+        "imageFingerprint": "sha256:3da95cd1fefdcdfd03f0edba756bea55d721b36042027be68e9889f03fcb7771"
+      }
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-army-tyrkys--ea4a61e04f",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-army-tyrkys/",
+      "title": "Dětské Tričko ZLE! - Army (tyrkys)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Dětské",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "army",
+        "colorTokens": [
+          "tyrkys"
+        ]
+      },
+      "priceCzk": 269,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c10e2b86d8e02272ecbaecf892848e4c914979b4ad0920f37ab9fc2847bede0c",
+        "contentFingerprint": "sha256:1384f38766a47b3c694449dafc62bb84b6b6fdabae8c1c4e5e6243fbbc3c14d9",
+        "imageFingerprint": "sha256:529881cee388b1b93c03f93c0f053946c1b3197fa9146c1f2156ebbe2166b764"
+      }
+    },
+    {
+      "sourceProductKey": "detske-tricko-zle-planet-on-fire-tyrkys--3be28ac00d",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/detske/detske-tricko-zle-planet-on-fire-tyrkys/",
+      "title": "Dětské tričko ZLE! - planet on fire (tyrkys)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Dětské",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "planet on fire",
+        "colorTokens": [
+          "tyrkys"
+        ]
+      },
+      "priceCzk": 269,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:3fdef7bd3ac1759d523962875f5e2db0dbaa7ba5b895692fc8e2162793c532ff",
+        "contentFingerprint": "sha256:b01d520b4f668cfcae630073702a146e6d472ea9d1c89b4b09ef685c87132a52",
+        "imageFingerprint": "sha256:032c9bfee2dd029c84a7678e36ee632fb4c7fd5c066e67baa47bb062a8947b32"
+      }
+    },
+    {
+      "sourceProductKey": "ksiltovka-zle-army-woodland--5d00ec8dbd",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/doplnky-street/ksiltovky/ksiltovka-zle-army-woodland/",
+      "title": "Kšiltovka ZLE! - Army/woodland",
+      "brandNormalized": "zle",
+      "categoryRaw": "Kšiltovky",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": null,
+        "designNormalized": "army/woodland",
+        "colorTokens": []
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:b42230510d32500fc50993c6f9bbe242be450a6afc19fc64acbf079f6e325d66",
+        "contentFingerprint": "sha256:1898a6d783b6d9c497805425b93b9bdd0dbf0bdfcd09fffa7af67ed8fc66a6c4",
+        "imageFingerprint": "sha256:41258b1bad4b15942359b5a8007ccb7aa021aa4afb649a9e8e1b8c0c49814e37"
+      }
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-black-khaki--0ced0d3fe1",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-black-khaki/",
+      "title": "Pánská mikina ZLE skateboards – Abstract (Black/khaki)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Mikiny",
+      "structured": {
+        "productType": "mikina",
+        "audience": "pánská",
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "black",
+          "khaki"
+        ]
+      },
+      "priceCzk": 1350,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:dfcf8391e14adc866b13a66b45694714b79a6229f1e1f70a89bcc9a42c3b2101",
+        "contentFingerprint": "sha256:89ea1730e99a6ac6bb3eb3b915127b7213c3ea93edc5bfe337540e7740490b59",
+        "imageFingerprint": "sha256:21ee69053994025bb82cd36bc7690d5749875ff9c710a8c896792e4eb3af7308"
+      }
+    },
+    {
+      "sourceProductKey": "panska-mikina-zle-skateboards-abstract-grey-melange-blue--7db5fcbcda",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/mikiny/panska-mikina-zle-skateboards-abstract-grey-melange-blue/",
+      "title": "Pánská mikina ZLE skateboards – Abstract (grey melange/blue)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Mikiny",
+      "structured": {
+        "productType": "mikina",
+        "audience": "pánská",
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "grey melange",
+          "blue"
+        ]
+      },
+      "priceCzk": 1350,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c38ced8ffdc03e1bdc789451918f4a63826da1665c32c7f7296c39f66b2303a4",
+        "contentFingerprint": "sha256:66eb1d329d42daf4e2f4542b4fd0d3071655d98c2ae72070d6dc31a5072f118a",
+        "imageFingerprint": "sha256:fad4767d316ece1db6866d64367b223a725c713d6fb59cadc60e258bcb6ed5cf"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-black-khaky--feade92725",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-black-khaky/",
+      "title": "Pánské tričko ZLE skateboards – Abstract (black/khaky)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "black",
+          "khaky"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:2e7727561eb2545d1d0a77a54ef752c9ff4b230cff624bf98adb2d7fd9608560",
+        "contentFingerprint": "sha256:1da440a2d8c909f4f64ef73b8e238d641ba54457cf32487671787052de309757",
+        "imageFingerprint": "sha256:00e4a90741af032515ec5e727ec05e47377a6085b38194ed50fdb05190ce5444"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-grey-melange-blue--0dc3234040",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-grey-melange-blue/",
+      "title": "Pánské tričko ZLE skateboards – Abstract (grey melange/blue)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "grey melange",
+          "blue"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 7,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:c37c97133205faf11fc7b8cd00dd2a3af61976a4061340edbd6d1e7b295dd513",
+        "contentFingerprint": "sha256:eada56394b4cb5970fedb01dce546cad5f8c9fa8e738e420b83ea2b7d7e54e19",
+        "imageFingerprint": "sha256:509dcc1bcb18a4e33b235fc7f877e961d66d2e3fe6153bcd7b9027695f4576d4"
+      }
+    },
+    {
+      "sourceProductKey": "panske-tricko-zle-skateboards-abstract-white-green--47199012e5",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/panske-tricko-zle-skateboards-abstract-white-green/",
+      "title": "Pánské tričko ZLE skateboards - Abstract (white/green)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "abstract",
+        "colorTokens": [
+          "white",
+          "green"
+        ]
+      },
+      "priceCzk": 450,
+      "sizes": [],
+      "imageCount": 8,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:6cf0d0adc1fed4f5fc299f70855977214c9334ef79277962d28a7e4fd77b808a",
+        "contentFingerprint": "sha256:4974ae3dfbacb1eaf51db8ac1fc176ae0ab62faf19813b7c09184bdd67f8455a",
+        "imageFingerprint": "sha256:31cf3977b72a282395564a12a98b2b87ed5206ba70eb8abc2286e90eb491e486"
+      }
+    },
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+      "title": "Tričko ZLE skateboards - Palm (black)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "palm",
+        "colorTokens": [
+          "black"
+        ]
+      },
+      "priceCzk": 650,
+      "sizes": [],
+      "imageCount": 5,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:e6394540ba09ca22c9de8e65c82d488da90ae0e8b366635083f2371af9261c69",
+        "contentFingerprint": "sha256:693af79326c0b5efa3528ee0e9c61b1e16f4d0e2f3664086bedcd8c8979f2250",
+        "imageFingerprint": "sha256:3b64b4e8ef65104c92c379328b568113ab5bb0e1aa0dbdd48b7a993861feab85"
+      }
+    }
+  ]
+}

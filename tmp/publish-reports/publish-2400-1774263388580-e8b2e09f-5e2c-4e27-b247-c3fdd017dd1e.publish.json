@@ -1,0 +1,44 @@
+{
+  "runId": "publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e",
+  "sourceRunId": "publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e",
+  "reviewRunId": "publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e",
+  "stagingRunId": "publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e",
+  "gateRunId": "publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e",
+  "createdAt": "2026-03-23T10:56:28.594Z",
+  "summary": {
+    "totalGateItems": 1,
+    "readyForPublish": 1,
+    "published": 1,
+    "failed": 0,
+    "skipped": 0,
+    "mappedToExisting": 1,
+    "newCandidatePublished": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "source-1",
+      "resolutionType": "map_to_existing",
+      "approvedLocalProductId": "prod-1",
+      "liveTargetKey": "prod-1",
+      "plannedOutputs": [
+        "tmp/agent-staging/publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e/existing/prod-1/cover.jpg",
+        "tmp/agent-staging/publish-2400-1774263388580-e8b2e09f-5e2c-4e27-b247-c3fdd017dd1e/existing/prod-1/cover.webp"
+      ],
+      "publishedOutputs": [
+        "../../tmp/manual-publish-live-txFvOp/client/public/images/products/prod-1/cover.jpg",
+        "../../tmp/manual-publish-live-txFvOp/client/public/images/products/prod-1/cover.webp"
+      ],
+      "removedManagedOutputs": [
+        "01.jpg"
+      ],
+      "status": "published",
+      "reasonCodes": [
+        "ready_for_publish"
+      ]
+    }
+  ],
+  "debug": {
+    "hadPartialResults": true,
+    "errorStage": "execution"
+  }
+}

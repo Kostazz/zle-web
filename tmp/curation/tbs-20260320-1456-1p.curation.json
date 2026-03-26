@@ -1,0 +1,51 @@
+{
+  "runId": "tbs-20260320-1456-1p",
+  "sourceRunId": "tbs-20260320-1456-1p",
+  "createdAt": "2026-03-20T15:00:16.803Z",
+  "mode": "bootstrap-replacement",
+  "summary": {
+    "totalItems": 1,
+    "acceptedCandidates": 1,
+    "reviewRequired": 0,
+    "rejected": 0,
+    "deterministicMatches": 0,
+    "proposedNewCandidates": 1,
+    "malformedRejected": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "sourceUrl": "https://totalboardshop.cz/obchod/streetwear/tricka/tricko-zle-skateboards-palm-black/",
+      "title": "Tri\\u010dko ZLE skateboards - Palm (black)",
+      "brandNormalized": "zle",
+      "categoryRaw": "Trička",
+      "structured": {
+        "productType": null,
+        "audience": null,
+        "lineNormalized": "skateboards",
+        "designNormalized": "palm",
+        "colorTokens": [
+          "black"
+        ]
+      },
+      "priceCzk": null,
+      "sizes": [],
+      "imageCount": 4,
+      "proposedLocalProductId": null,
+      "reconciliation": "CREATE",
+      "delta": "NEW",
+      "curationDecision": "ACCEPT_CANDIDATE",
+      "reasonCodes": [
+        "not_in_index",
+        "no_strong_candidate",
+        "accepted_valid_new_candidate"
+      ],
+      "requiresHumanReview": false,
+      "fingerprints": {
+        "identityFingerprint": "sha256:91864a87d1c5590990c5e4749bd467bf551611c971a4cc6fea6827ef5042eaca",
+        "contentFingerprint": "sha256:4879691d853864baa42ad160e8c389c5f55a3755ff10104205bbdf0892f459a6",
+        "imageFingerprint": "sha256:3dc79a75303ce6172bf698d3662649877dd59b15bcf020068bb1794feb1ee597"
+      }
+    }
+  ]
+}

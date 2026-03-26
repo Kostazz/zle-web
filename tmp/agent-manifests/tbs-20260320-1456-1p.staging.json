@@ -1,0 +1,42 @@
+{
+  "runId": "tbs-20260320-1456-1p",
+  "sourceRunId": "tbs-20260320-1456-1p",
+  "reviewRunId": "tbs-20260320-1456-1p",
+  "createdAt": "2026-03-20T15:13:16.265Z",
+  "summary": {
+    "totalApprovedItems": 1,
+    "selectedItems": 1,
+    "stagedItems": 0,
+    "failedItems": 1,
+    "skippedItems": 0,
+    "validateOnly": false,
+    "producedOutputs": 2
+  },
+  "items": [
+    {
+      "sourceProductKey": "tricko-zle-skateboards-palm-black--303d6b6210",
+      "resolutionType": "new_candidate",
+      "approvedLocalProductId": null,
+      "stagingTargetKey": "new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210",
+      "plannedOutputs": [
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/cover.jpg",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/cover.webp",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/01.jpg",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/01.webp",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/02.jpg",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/02.webp",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/03.jpg",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/03.webp"
+      ],
+      "producedOutputs": [
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/cover.jpg",
+        "tmp/agent-staging/tbs-20260320-1456-1p/new/tri-u010dko-zle-skateboards-palm-black--tricko-zle-skateboards-palm-black--303d6b6210/cover.webp"
+      ],
+      "status": "failed",
+      "reasonCodes": [
+        "stage_failed"
+      ],
+      "errorMessage": "Input file has corrupt header: glib: XML does not have <svg> root"
+    }
+  ]
+}

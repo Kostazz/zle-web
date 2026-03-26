@@ -1,0 +1,21 @@
+{
+  "runId": "tbs-20260320-1456-1p",
+  "source": "totalboardshop",
+  "sourceRoot": "https://totalboardshop.cz/",
+  "createdAt": "2026-03-20T14:56:49.161Z",
+  "mode": "crawl-snapshot",
+  "scope": {
+    "brand": "ZLE",
+    "matchMode": "exact"
+  },
+  "productCount": 1,
+  "imageCount": 4,
+  "productsPath": "products.json",
+  "crawlLogPath": "crawl-log.json",
+  "auditPath": "audit.json",
+  "imagesPath": "images",
+  "sourceInput": {
+    "type": "live-crawl",
+    "operatorProvided": false
+  }
+}

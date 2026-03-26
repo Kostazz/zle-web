@@ -1,0 +1,33 @@
+{
+  "runId": "tbs-20260320-scale50-01",
+  "sourceRunId": "unknown",
+  "reviewRunId": "unknown",
+  "stagingRunId": "unknown",
+  "gateRunId": "tbs-20260320-scale50-01",
+  "createdAt": "2026-03-20T18:41:46.333Z",
+  "summary": {
+    "totalGateItems": 0,
+    "readyForPublish": 0,
+    "published": 0,
+    "failed": 1,
+    "skipped": 0,
+    "mappedToExisting": 0,
+    "newCandidatePublished": 0
+  },
+  "items": [
+    {
+      "sourceProductKey": "tbs-20260320-scale50-01",
+      "resolutionType": "new_candidate",
+      "approvedLocalProductId": null,
+      "liveTargetKey": "tbs-20260320-scale50-01",
+      "plannedOutputs": [],
+      "publishedOutputs": [],
+      "removedManagedOutputs": [],
+      "status": "failed",
+      "reasonCodes": [
+        "publish_validation_failed"
+      ],
+      "errorMessage": "Manual publish failed closed for 7 item(s)"
+    }
+  ]
+}
