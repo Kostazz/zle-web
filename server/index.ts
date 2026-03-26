@@ -47,7 +47,10 @@ export function log(message: string, source = "express") {
 }
 
 // ----- static images -----
-app.use("/images", express.static(path.join(PROJECT_ROOT, "foto")));
+const liveImagesRoot = path.join(PROJECT_ROOT, "client", "public", "images");
+const legacyImagesRoot = path.join(PROJECT_ROOT, "foto");
+app.use("/images", express.static(liveImagesRoot));
+app.use("/images", express.static(legacyImagesRoot));
 
 // ----- server -----
 const httpServer = createServer(app);
