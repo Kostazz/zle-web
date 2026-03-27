@@ -229,7 +229,15 @@ export function mapPublishedItemToProduct(source: SourceProductRecord, liveTarge
 
   const productDir = assertPortablePathInside(liveImageRoot, path.join(liveImageRoot, liveTargetKey), "Live asset directory");
   const { image, images } = listManagedLiveImages(productDir, liveTargetKey, liveImageRoot);
-  if (images.length < 1) throw new Error(`No managed gallery images found for ${liveTargetKey}`);
+  const ownedPrefix = `/images/products/${liveTargetKey}/`;
+  const ownedImages = images.filter((img) => img.startsWith(ownedPrefix));
+  if (ownedImages.length < 1) throw new Error(`No managed gallery images found for ${liveTargetKey}`);
+  if (ownedImages.length !== images.length) {
+    throw new Error(`Detected non-owned image path(s) while mapping ${liveTargetKey}; refusing import`);
+  }
+  if (!image.startsWith(ownedPrefix)) {
+    throw new Error(`Detected non-owned primary image path while mapping ${liveTargetKey}; refusing import`);
+  }
 
   return {
     id: liveTargetKey,
@@ -241,7 +249,7 @@ export function mapPublishedItemToProduct(source: SourceProductRecord, liveTarge
     stock: DEFAULT_STOCK,
     isActive: true,
     image,
-    images,
+    images: ownedImages,
     productModel: "new",
     unitCost: null,
     stockOwner: null,
