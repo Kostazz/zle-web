@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { normalizeText } from "./catalog-index.ts";
 import type { PublishExecutionItem, PublishExecutionReport, PublishExecutionSummary } from "./publish-executor-types.ts";
 import type { PublishGateManifest, PublishGateItem } from "./publish-gate-types.ts";
 import type { StagingExecutionItem, StagingExecutionReport } from "./staging-review-types.ts";
@@ -283,6 +284,11 @@ function createLiveTargetKey(item: PublishGateItem): string {
 function normalizeManagedLiveFileName(fileName: string): string {
   if (!MANAGED_PUBLISH_FILE_RE.test(fileName)) throw new Error(`Unsupported managed live filename: ${fileName}`);
   return fileName;
+}
+
+function normalizeProductIdForFs(productId: string): string {
+  const normalized = normalizeText(productId).replace(/\s+/g, "-");
+  return normalized.replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
 function getProductIdFromStagedRelativePath(relativePath: string, expectedRunId: string): string {
@@ -571,10 +577,11 @@ function planPublishUnits(input: ManualPublishExecutorInput, gateManifest: Publi
 
     const stagedFiles: PlannedPublishUnit["stagedFiles"] = [];
     const excludedForeignStagedOutputs: string[] = [];
+    const normalizedTarget = normalizeProductIdForFs(liveTargetKey);
     for (const relativePath of plannedOutputs) {
       const stagedAbsolutePath = validateRelativeArtifactPath(relativePath, gateManifest.stagingRunId, stagingRoot);
       const stagedProductId = getProductIdFromStagedRelativePath(relativePath, gateManifest.stagingRunId);
-      if (stagedProductId !== liveTargetKey) {
+      if (stagedProductId !== normalizedTarget) {
         excludedForeignStagedOutputs.push(relativePath);
         continue;
       }
