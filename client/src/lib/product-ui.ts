@@ -35,10 +35,11 @@ export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: s
   const segments = normalizedLocalPath.split("/").filter(Boolean);
 
   return (
-    segments.length >= 4 &&
+    segments.length === 4 &&
     segments[0] === "images" &&
     segments[1] === "products" &&
-    segments[2] === product.id
+    segments[2] === product.id &&
+    Boolean(segments[3])
   );
 }
 
@@ -53,32 +54,7 @@ export function getDeclaredProductImages(product: Pick<Product, "id" | "image" |
 
 export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
   const declaredImages = getDeclaredProductImages(product);
-  return declaredImages.filter((imagePath) => isImageOwnedByProduct(imagePath, product));
-}
-
-export function isImageOwnedByProduct(imagePath: string | null | undefined, product: Pick<Product, "id">): boolean {
-  if (!imagePath) return false;
-
-  const normalized = normalizeImagePath(imagePath);
-  let pathname = normalized;
-
-  if (/^https?:\/\//i.test(normalized)) {
-    try {
-      pathname = new URL(normalized).pathname;
-    } catch {
-      return false;
-    }
-  }
-
-  const safePathname = new URL(pathname, "https://zle.local").pathname;
-  const segments = safePathname.split("/").filter(Boolean);
-
-  return (
-    segments.length >= 4
-    && segments[0] === "images"
-    && segments[1] === "products"
-    && segments[2] === product.id
-  );
+  return declaredImages.filter((imagePath) => isImageOwnedByProduct(product, imagePath));
 }
 
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
