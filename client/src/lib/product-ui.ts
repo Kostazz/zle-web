@@ -38,7 +38,27 @@ export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "ima
 
 export function isImageOwnedByProduct(imagePath: string | null | undefined, product: Pick<Product, "id">): boolean {
   if (!imagePath) return false;
-  return normalizeImagePath(imagePath).includes(`/images/products/${product.id}/`);
+
+  const normalized = normalizeImagePath(imagePath);
+  let pathname = normalized;
+
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      pathname = new URL(normalized).pathname;
+    } catch {
+      return false;
+    }
+  }
+
+  const safePathname = new URL(pathname, "https://zle.local").pathname;
+  const segments = safePathname.split("/").filter(Boolean);
+
+  return (
+    segments.length >= 4
+    && segments[0] === "images"
+    && segments[1] === "products"
+    && segments[2] === product.id
+  );
 }
 
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
