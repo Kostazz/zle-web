@@ -1,5 +1,4 @@
 import type { Product } from "@shared/schema";
-import path from "path";
 
 export const ONE_SIZE = "ONE_SIZE";
 
@@ -24,6 +23,31 @@ function normalizeImagePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function normalizeLocalAssetPath(input: string): string {
+  if (!input) {
+    return "";
+  }
+
+  const withLeadingSlash = input.startsWith("/") ? input : `/${input}`;
+  const segments = withLeadingSlash.split("/");
+  const resolvedSegments: string[] = [];
+
+  for (const segment of segments) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+
+    if (segment === "..") {
+      resolvedSegments.pop();
+      continue;
+    }
+
+    resolvedSegments.push(segment);
+  }
+
+  return `/${resolvedSegments.join("/")}`;
+}
+
 export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: string): boolean {
   const normalizedImagePath = normalizeImagePath(imagePath.trim());
 
@@ -31,7 +55,7 @@ export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: s
     return false;
   }
 
-  const normalizedLocalPath = path.posix.normalize(normalizedImagePath);
+  const normalizedLocalPath = normalizeLocalAssetPath(normalizedImagePath);
   const segments = normalizedLocalPath.split("/").filter(Boolean);
 
   return (
