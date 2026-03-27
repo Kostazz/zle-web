@@ -1,4 +1,5 @@
 import type { Product } from "@shared/schema";
+import path from "path";
 
 export const ONE_SIZE = "ONE_SIZE";
 
@@ -23,10 +24,29 @@ function normalizeImagePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
-export function getDeclaredProductImages(product: Pick<Product, "image" | "images">): string[] {
+export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: string): boolean {
+  const normalizedImagePath = normalizeImagePath(imagePath.trim());
+
+  if (!normalizedImagePath || /^https?:\/\//i.test(normalizedImagePath) || normalizedImagePath.startsWith("data:")) {
+    return false;
+  }
+
+  const normalizedLocalPath = path.posix.normalize(normalizedImagePath);
+  const segments = normalizedLocalPath.split("/").filter(Boolean);
+
+  return (
+    segments.length >= 4 &&
+    segments[0] === "images" &&
+    segments[1] === "products" &&
+    segments[2] === product.id
+  );
+}
+
+export function getDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
   const declaredCandidates = [product.image, ...(product.images ?? [])]
     .filter((value): value is string => Boolean(value && value.trim()))
-    .map((value) => normalizeImagePath(value.trim()));
+    .map((value) => normalizeImagePath(value.trim()))
+    .filter((value) => isImageOwnedByProduct(product, value));
 
   return Array.from(new Set(declaredCandidates));
 }

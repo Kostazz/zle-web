@@ -8,6 +8,7 @@ import {
   getOwnedDeclaredProductImages,
   getProductImageCandidates,
   getSelectableSizes,
+  isImageOwnedByProduct,
 } from "@/lib/product-ui";
 
 function ImagePlaceholder({ name }: { name: string }) {
@@ -40,7 +41,9 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const hasPrimaryImage = primaryImageIndex < imageCandidates.length;
   const primaryImage = hasPrimaryImage ? imageCandidates[primaryImageIndex] : null;
-  const secondaryImage = secondaryDeclaredImages[secondaryImageIndex] ?? null;
+  const secondaryCandidate = secondaryDeclaredImages[secondaryImageIndex] ?? null;
+  const secondaryImage =
+    secondaryCandidate && isImageOwnedByProduct(product, secondaryCandidate) ? secondaryCandidate : null;
 
   const selectableSizes = getSelectableSizes(product);
 
