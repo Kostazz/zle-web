@@ -9,8 +9,6 @@ interface CartContextType {
   clearCart: () => void;
   total: number;
   itemCount: number;
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -19,7 +17,6 @@ const CART_STORAGE_KEY = "zle-cart";
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
@@ -87,8 +84,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         clearCart,
         total,
         itemCount,
-        isOpen,
-        setIsOpen,
       }}
     >
       {children}
