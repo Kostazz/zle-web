@@ -36,13 +36,13 @@ async function writeFixture(root: string, runId: string, products: FixtureProduc
   const gateItems: PublishGateManifest["items"] = [];
 
   for (const product of products) {
-    const stagedDir = path.join(stagingRoot, runId, "existing", product.productId);
+    const stagedDir = path.join(stagingRoot, runId, "products", product.productId);
     await fs.promises.mkdir(stagedDir, { recursive: true });
     await fs.promises.writeFile(path.join(stagedDir, "cover.jpg"), product.coverJpg ?? `new-cover-${product.productId}`, "utf8");
     await fs.promises.writeFile(path.join(stagedDir, "cover.webp"), product.coverWebp ?? `new-cover-webp-${product.productId}`, "utf8");
     const plannedOutputs = [
-      `tmp/agent-staging/${runId}/existing/${product.productId}/cover.jpg`,
-      `tmp/agent-staging/${runId}/existing/${product.productId}/cover.webp`,
+      `tmp/agent-staging/${runId}/products/${product.productId}/cover.jpg`,
+      `tmp/agent-staging/${runId}/products/${product.productId}/cover.webp`,
     ];
     stagingItems.push({
       sourceProductKey: product.sourceProductKey,
@@ -277,6 +277,52 @@ test("orphan .manual-publish-temp-* directories are cleaned up safely", async ()
   }
 });
 
+test("manual publish excludes staged outputs that do not belong to target product", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-foreign-image-filter-"));
+  const runId = uniqueRunId("publish");
+  try {
+    const { gateRunId, liveRoot, reportDir } = await writeFixture(root, runId);
+    const stagingManifestPath = path.join(root, "tmp", "agent-manifests", `${runId}.staging.json`);
+    const gateManifestPath = path.join(root, "tmp", "publish-gates", `${gateRunId}.publish-gate.json`);
+    const staging = JSON.parse(await fs.promises.readFile(stagingManifestPath, "utf8")) as StagingExecutionReport;
+    const gate = JSON.parse(await fs.promises.readFile(gateManifestPath, "utf8")) as PublishGateManifest;
+
+    const foreignOutput = `tmp/agent-staging/${runId}/products/prod-2/01.jpg`;
+    const foreignOutputWebp = `tmp/agent-staging/${runId}/products/prod-2/01.webp`;
+    await fs.promises.mkdir(path.join(root, "tmp", "agent-staging", runId, "products", "prod-2"), { recursive: true });
+    await fs.promises.writeFile(path.join(root, foreignOutput), "foreign-jpg", "utf8");
+    await fs.promises.writeFile(path.join(root, foreignOutputWebp), "foreign-webp", "utf8");
+
+    staging.items[0]?.plannedOutputs.push(foreignOutput, foreignOutputWebp);
+    staging.items[0]?.producedOutputs.push(foreignOutput, foreignOutputWebp);
+    gate.items[0]?.plannedOutputs.push(foreignOutput, foreignOutputWebp);
+    gate.items[0]?.producedOutputs.push(foreignOutput, foreignOutputWebp);
+
+    await fs.promises.writeFile(stagingManifestPath, JSON.stringify(staging, null, 2), "utf8");
+    await fs.promises.writeFile(gateManifestPath, JSON.stringify(gate, null, 2), "utf8");
+
+    const result = await runManualPublishExecutor({
+      runId,
+      gateRunId,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot: path.join(root, "tmp", "agent-staging"),
+      reportDir,
+      liveRoot,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    assert.equal(result.report.summary.published, 1);
+    const publishedItem = result.report.items.find((item) => item.sourceProductKey === "source-1");
+    assert.ok(publishedItem);
+    assert.ok(publishedItem.reasonCodes.includes("warning:excluded_foreign_staged_outputs"));
+    assert.equal(fs.existsSync(path.join(liveRoot, "prod-1", "01.jpg")), false);
+    assert.equal(fs.existsSync(path.join(liveRoot, "prod-1", "01.webp")), false);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});
+
 
 
 test("manual publish processes multi-item batches without cross-item temp-dir interference", async () => {
@@ -354,7 +400,7 @@ test("manual publish still fails closed when a staged output is missing", async 
   const runId = uniqueRunId("publish");
   try {
     const { gateRunId, reportDir, stagingRoot, liveRoot } = await writeFixture(root, runId);
-    await fs.promises.rm(path.join(stagingRoot, runId, "existing", "prod-1", "cover.webp"), { force: true });
+    await fs.promises.rm(path.join(stagingRoot, runId, "products", "prod-1", "cover.webp"), { force: true });
 
     await assert.rejects(() => runManualPublishExecutor({
       runId,

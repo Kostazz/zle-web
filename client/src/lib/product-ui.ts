@@ -31,12 +31,42 @@ export function getDeclaredProductImages(product: Pick<Product, "image" | "image
   return Array.from(new Set(declaredCandidates));
 }
 
+export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
+  const declaredImages = getDeclaredProductImages(product);
+  return declaredImages.filter((imagePath) => isImageOwnedByProduct(imagePath, product));
+}
+
+export function isImageOwnedByProduct(imagePath: string | null | undefined, product: Pick<Product, "id">): boolean {
+  if (!imagePath) return false;
+
+  const normalized = normalizeImagePath(imagePath);
+  let pathname = normalized;
+
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      pathname = new URL(normalized).pathname;
+    } catch {
+      return false;
+    }
+  }
+
+  const safePathname = new URL(pathname, "https://zle.local").pathname;
+  const segments = safePathname.split("/").filter(Boolean);
+
+  return (
+    segments.length >= 4
+    && segments[0] === "images"
+    && segments[1] === "products"
+    && segments[2] === product.id
+  );
+}
+
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
   const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
     (fileName) => `/images/products/${product.id}/${fileName}`
   );
 
-  const declaredCandidates = getDeclaredProductImages(product);
+  const declaredCandidates = getOwnedDeclaredProductImages(product);
 
   return Array.from(new Set([...localCandidates, ...declaredCandidates]));
 }
