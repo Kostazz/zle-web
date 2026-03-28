@@ -137,6 +137,57 @@ test("ingest fails closed for malformed or forbidden image urls and prevents wri
   }
 });
 
+test("ingest continues on per-image HTTP failure and still writes ingest artifacts", async () => {
+  const runId = uniqueRunId("ingest-partial");
+  const imageA = await createImageBuffer({ r: 77, g: 88, b: 99 });
+  const imageB = await createImageBuffer({ r: 111, g: 122, b: 133 });
+  const imageMap = new Map([
+    ["https://totalboardshop.cz/wp-content/uploads/ok-a.jpg", imageA],
+    ["https://totalboardshop.cz/wp-content/uploads/ok-b.jpg", imageB],
+  ]);
+  const missingUrl = "https://totalboardshop.cz/wp-content/uploads/missing.jpg";
+  await writeSourceFixture(runId, [createProduct(runId, [imageMap.keys().next().value!, missingUrl, [...imageMap.keys()][1]!])]);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: URL | RequestInfo | undefined) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input instanceof Request ? input.url : "";
+    if (url === missingUrl) return new Response("not found", { status: 404 });
+    const body = imageMap.get(url);
+    if (!body) return new Response("not found", { status: 404 });
+    return new Response(body, { status: 200, headers: { "content-type": "image/jpeg" } });
+  }) as typeof fetch;
+
+  try {
+    const manifest = await runTotalboardshopSourceIngest({ runId, validateOnly: false });
+    assert.equal(manifest.downloadedImageCount, 2);
+    assert.equal(manifest.failedImageCount, 1);
+    assert.equal(manifest.failures.length, 1);
+    assert.equal(manifest.failures[0]?.sourceProductKey, manifest.products[0]?.sourceProductKey);
+    assert.equal(manifest.failures[0]?.imageUrl, missingUrl);
+    assert.match(manifest.failures[0]?.reason ?? "", /HTTP 404/);
+
+    assert.equal(manifest.products[0]?.imageCount, 2);
+    assert.equal(manifest.products[0]?.ingestedImagePaths.length, 2);
+    assert.equal(manifest.products[0]?.downloadedImageHashes.length, 2);
+
+    const product = manifest.products[0]!;
+    assert.equal(fs.existsSync(path.join(process.cwd(), product.ingestedImagePaths[0]!)), true);
+    assert.equal(fs.existsSync(path.join(process.cwd(), product.ingestedImagePaths[1]!)), true);
+    assert.equal(fs.existsSync(path.join("tmp", "source-images", runId, "image-manifest.json")), true);
+    assert.equal(fs.existsSync(path.join("tmp", "source-images", `${runId}.ingest.json`)), true);
+    assert.equal(fs.existsSync(path.join("tmp", "source-images", `${runId}.summary.md`)), true);
+
+    const summary = await fs.promises.readFile(path.join("tmp", "source-images", `${runId}.summary.md`), "utf8");
+    assert.match(summary, /Failed Image Count: 1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.promises.rm(path.join("tmp", "source-datasets", runId), { recursive: true, force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", runId), { recursive: true, force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", `${runId}.ingest.json`), { force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", `${runId}.summary.md`), { force: true });
+  }
+});
+
 test("reviewed staging consumes ingested local paths and still rejects remote-only source image paths", async () => {
   const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ingest-stage-"));
   const runId = uniqueRunId("stage-ingested");

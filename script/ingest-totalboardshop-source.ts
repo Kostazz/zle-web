@@ -27,6 +27,11 @@ type IngestManifest = {
   outputRoot: string;
   downloadedImageCount: number;
   failedImageCount: number;
+  failures: {
+    sourceProductKey: string;
+    imageUrl: string;
+    reason: string;
+  }[];
   products: IngestManifestProduct[];
 };
 
@@ -103,6 +108,16 @@ function sha256(buffer: Buffer): string {
   return `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
 }
 
+function isFatalImageError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.message.includes("Malformed URL:") ||
+    error.message.includes("Non-HTTPS URL blocked:") ||
+    error.message.includes("Non-allowlisted host blocked:") ||
+    error.message.includes("outside allowed root")
+  );
+}
+
 async function safeWriteBinary(targetPath: string, value: Buffer): Promise<void> {
   const resolved = assertInsideRoot(IMAGE_ROOT, targetPath, "Refusing image write");
   await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
@@ -136,6 +151,8 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
   const outputRoot = assertInsideRoot(IMAGE_ROOT, path.join(IMAGE_ROOT, args.runId), "Output root");
   const manifestProducts: IngestManifestProduct[] = [];
   let downloadedImageCount = 0;
+  let failedImageCount = 0;
+  const failures: IngestManifest["failures"] = [];
 
   for (const product of products) {
     if (!product.sourceProductKey?.trim()) throw new Error("Missing sourceProductKey");
@@ -149,16 +166,26 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
 
     for (let i = 0; i < limit; i++) {
       const imageUrl = product.imageUrls[i];
-      const normalized = normalizeAllowedUrl(imageUrl).toString();
-      const fetched = await safeFetchBinary(normalized, DEFAULT_FETCH_LIMITS, "image");
-      const ext = inferExt(normalized, fetched.contentType);
-      const fileName = `${String(i + 1).padStart(2, "0")}${ext}`;
-      const absoluteTarget = assertInsideRoot(productRoot, path.join(productRoot, fileName), "Image target");
-      const relativeTarget = path.relative(process.cwd(), absoluteTarget).split(path.sep).join("/");
-      if (!args.validateOnly) await safeWriteBinary(absoluteTarget, fetched.body);
-      ingestedImagePaths.push(relativeTarget);
-      downloadedImageHashes.push(sha256(fetched.body));
-      downloadedImageCount += 1;
+      try {
+        const normalized = normalizeAllowedUrl(imageUrl).toString();
+        const fetched = await safeFetchBinary(normalized, DEFAULT_FETCH_LIMITS, "image");
+        const ext = inferExt(normalized, fetched.contentType);
+        const fileName = `${String(i + 1).padStart(2, "0")}${ext}`;
+        const absoluteTarget = assertInsideRoot(productRoot, path.join(productRoot, fileName), "Image target");
+        const relativeTarget = path.relative(process.cwd(), absoluteTarget).split(path.sep).join("/");
+        if (!args.validateOnly) await safeWriteBinary(absoluteTarget, fetched.body);
+        ingestedImagePaths.push(relativeTarget);
+        downloadedImageHashes.push(sha256(fetched.body));
+        downloadedImageCount += 1;
+      } catch (error) {
+        if (isFatalImageError(error)) throw error;
+        failedImageCount += 1;
+        failures.push({
+          sourceProductKey: product.sourceProductKey,
+          imageUrl,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     product.ingestedImagePaths = ingestedImagePaths;
@@ -184,7 +211,8 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
     sourceProductsPath: path.relative(process.cwd(), productsPath).split(path.sep).join("/"),
     outputRoot: path.relative(process.cwd(), outputRoot).split(path.sep).join("/"),
     downloadedImageCount,
-    failedImageCount: 0,
+    failedImageCount,
+    failures,
     products: manifestProducts,
   };
 
