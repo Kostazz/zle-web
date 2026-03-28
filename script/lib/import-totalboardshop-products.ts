@@ -183,18 +183,39 @@ function normalizeCategory(source: SourceProductRecord): Product["category"] {
     source.title,
     source.sourceSlug,
   ];
-  const normalized = candidates
-    .map((candidate) => (typeof candidate === "string" ? canonicalizeCategory(candidate) : null))
-    .find((candidate) => (
-      Boolean(candidate)
-      && SUPPORTED_INTERNAL_CATEGORIES.includes(candidate as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number])
-    )) ?? null;
-  if (!normalized || !SUPPORTED_INTERNAL_CATEGORIES.includes(normalized as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number])) {
-    throw new Error(
-      `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${SUPPORTED_INTERNAL_CATEGORIES.join(",")}`,
-    );
+
+  for (const candidate of candidates) {
+    const normalized = canonicalizeCategory(candidate);
+    if (
+      normalized &&
+      SUPPORTED_INTERNAL_CATEGORIES.includes(
+        normalized as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number]
+      )
+    ) {
+      return normalized as Product["category"];
+    }
   }
-  return normalized;
+
+  const text = [source.title, source.sourceSlug]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (/\b(tricko|tee)\b/.test(text)) return "tee";
+  if (/\b(mikina|hoodie)\b/.test(text)) return "hoodie";
+  if (/\bcrewneck\b/.test(text)) return "crewneck";
+  if (/\b(kulich|beanie)\b/.test(text)) return "beanie";
+  if (/\b(cepice|ksiltovka|trucker|snapback|sitovka|cap)\b/.test(text)) return "cap";
+
+  const normalized = canonicalizeCategory(
+    source.structured.productType ?? source.categoryRaw
+  );
+
+  throw new Error(
+    `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${SUPPORTED_INTERNAL_CATEGORIES.join(",")}`,
+  );
 }
 
 function normalizeSizeTokenStrict(rawValue: string): string | null {
