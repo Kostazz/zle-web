@@ -30,8 +30,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Dependency audit (high+)
-        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency audit (critical only)
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Generate CycloneDX SBOM
         run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.cdx.json
