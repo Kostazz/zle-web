@@ -6,7 +6,6 @@ import { ImageOff } from "lucide-react";
 import {
   formatSizeLabel,
   getOwnedDeclaredProductImages,
-  getProductImageCandidates,
   getSelectableSizes,
   isImageOwnedByProduct,
 } from "@/lib/product-ui";
@@ -34,14 +33,57 @@ export function ProductCard({ product }: ProductCardProps) {
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
 
-  const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const declaredImages = useMemo(() => getOwnedDeclaredProductImages(product), [product]);
-  const primaryDeclaredImage = declaredImages[0] ?? null;
-  const secondaryDeclaredImages = declaredImages.filter((image) => image !== primaryDeclaredImage);
 
-  const hasPrimaryImage = primaryImageIndex < imageCandidates.length;
-  const primaryImage = hasPrimaryImage ? imageCandidates[primaryImageIndex] : null;
-  const secondaryCandidate = secondaryDeclaredImages[secondaryImageIndex] ?? null;
+  const localPrimaryCandidates = useMemo(
+    () => [
+      `/images/products/${product.id}/cover.jpg`,
+      `/images/products/${product.id}/cover.webp`,
+    ],
+    [product.id],
+  );
+
+  const localSecondaryCandidates = useMemo(
+    () => [`/images/products/${product.id}/01.jpg`, `/images/products/${product.id}/01.webp`],
+    [product.id],
+  );
+
+  const primaryCandidates = useMemo(() => {
+    const unique = new Set<string>();
+
+    for (const image of localPrimaryCandidates) {
+      unique.add(image);
+    }
+
+    for (const image of declaredImages) {
+      if (isImageOwnedByProduct(product, image)) {
+        unique.add(image);
+      }
+    }
+
+    return Array.from(unique);
+  }, [declaredImages, localPrimaryCandidates, product]);
+
+  const hasPrimaryImage = primaryImageIndex < primaryCandidates.length;
+  const primaryImage = hasPrimaryImage ? primaryCandidates[primaryImageIndex] : null;
+
+  const secondaryCandidates = useMemo(() => {
+    const unique = new Set<string>();
+
+    for (const image of localSecondaryCandidates) {
+      unique.add(image);
+    }
+
+    for (const image of declaredImages) {
+      if (isImageOwnedByProduct(product, image)) {
+        unique.add(image);
+      }
+    }
+
+    return Array.from(unique).filter((image) => image !== primaryImage);
+  }, [declaredImages, localSecondaryCandidates, primaryImage, product]);
+
+  const secondaryCandidate = secondaryCandidates[secondaryImageIndex] ?? null;
   const secondaryImage =
     secondaryCandidate && isImageOwnedByProduct(product, secondaryCandidate) ? secondaryCandidate : null;
 
