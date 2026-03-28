@@ -50,19 +50,15 @@ export function log(message: string, source = "express") {
 const liveImagesRoot = path.join(PROJECT_ROOT, "client", "public", "images");
 const liveProductsRoot = path.join(PROJECT_ROOT, "client", "public", "images", "products");
 const altLiveProductsRoot = path.join(PROJECT_ROOT, "public", "images", "products");
-const legacyImagesRoot = path.join(PROJECT_ROOT, "foto");
-const legacyProductsRoot = path.join(PROJECT_ROOT, "foto", "products");
 
 app.use("/images", express.static(liveImagesRoot));
-app.use("/images", express.static(legacyImagesRoot));
 
 // Compatibility mounts for product-image roots:
-// - new import/publish assets in client/public/images/products/<product-id>/...
-// - legacy flat assets in foto/products/<slug>.jpg
+// - primary assets in client/public/images/products/<product-id>/...
 // - alternate deploys that materialize public/images/products at repo root
+// NOTE: altLiveProductsRoot is intentionally kept until deploy strategy is fully unified.
 app.use("/images/products", express.static(liveProductsRoot));
 app.use("/images/products", express.static(altLiveProductsRoot));
-app.use("/images/products", express.static(legacyProductsRoot));
 
 // IMPORTANT:
 // Missing image/static asset requests must NOT fall through to SPA index.html.
