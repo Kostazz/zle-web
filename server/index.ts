@@ -64,6 +64,16 @@ app.use("/images/products", express.static(liveProductsRoot));
 app.use("/images/products", express.static(altLiveProductsRoot));
 app.use("/images/products", express.static(legacyProductsRoot));
 
+// IMPORTANT:
+// Missing image/static asset requests must NOT fall through to SPA index.html.
+// If no image file was found in any mounted image roots, return a real 404 here.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (/^\/images(?:\/|$)/.test(req.path)) {
+    return res.status(404).type("text/plain; charset=utf-8").send("Not Found");
+  }
+  return next();
+});
+
 // ----- server -----
 const httpServer = createServer(app);
 
