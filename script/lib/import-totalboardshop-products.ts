@@ -177,7 +177,18 @@ function listManagedLiveImages(productDir: string, liveTargetKey: string, liveIm
 }
 
 function normalizeCategory(source: SourceProductRecord): Product["category"] {
-  const normalized = canonicalizeCategory(source.structured.productType ?? source.categoryRaw);
+  const candidates = [
+    source.structured.productType,
+    source.categoryRaw,
+    source.title,
+    source.sourceSlug,
+  ];
+  const normalized = candidates
+    .map((candidate) => (typeof candidate === "string" ? canonicalizeCategory(candidate) : null))
+    .find((candidate) => (
+      Boolean(candidate)
+      && SUPPORTED_INTERNAL_CATEGORIES.includes(candidate as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number])
+    )) ?? null;
   if (!normalized || !SUPPORTED_INTERNAL_CATEGORIES.includes(normalized as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number])) {
     throw new Error(
       `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${SUPPORTED_INTERNAL_CATEGORIES.join(",")}`,
