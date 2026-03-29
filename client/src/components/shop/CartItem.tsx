@@ -12,28 +12,30 @@ export function CartItem({ item }: CartItemProps) {
 
   return (
     <div
-      className="flex gap-3 p-3 sm:gap-4 sm:p-4 bg-white/5 border border-white/10"
+      className="grid grid-cols-[auto,1fr] gap-3 overflow-hidden border border-white/10 bg-white/5 p-3 sm:gap-4 sm:p-4"
       data-testid={`cart-item-${item.productId}-${item.size}`}
     >
-      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white flex-shrink-0">
+      <div className="h-16 w-16 shrink-0 bg-white sm:h-20 sm:w-20">
         <img
           src={item.image}
           alt={item.name}
-          className="w-full h-full object-cover"
+          className="h-full w-full object-cover"
         />
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-2">
+      <div className="min-w-0 pr-0.5 sm:pr-1">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h4 className="font-heading text-sm font-bold text-white truncate">
+            <h4 className="truncate font-heading text-sm font-bold text-white">
               {item.name}
             </h4>
-            <p className="text-xs text-white/60 mt-1 truncate">Velikost: {formatSizeLabel(item.size)}</p>
+            <p className="mt-1 truncate text-xs text-white/60">
+              Velikost: {formatSizeLabel(item.size)}
+            </p>
           </div>
           <button
             onClick={() => removeItem(item.productId, item.size)}
-            className="shrink-0 rounded-sm border border-white/50 bg-black/60 p-1.5 text-white hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black transition-all"
+            className="mt-0.5 shrink-0 self-start rounded-sm border border-white/50 bg-black/60 p-1.5 text-white transition-all hover:border-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             data-testid={`button-remove-${item.productId}-${item.size}`}
             aria-label="Odstranit položku"
           >
@@ -41,29 +43,29 @@ export function CartItem({ item }: CartItemProps) {
           </button>
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => updateQuantity(item.productId, item.size, item.quantity - 1)}
-              className="p-1.5 border border-white/30 text-white/70 hover:text-white hover:border-white/60 transition-colors"
+              className="border border-white/30 p-1.5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
               data-testid={`button-cart-minus-${item.productId}-${item.size}`}
               aria-label="Snížit množství"
             >
               <Minus className="h-3 w-3" />
             </button>
-            <span className="font-sans text-sm font-semibold text-white min-w-[1.75rem] text-center">
+            <span className="min-w-[1.75rem] text-center font-sans text-sm font-semibold text-white">
               {item.quantity}
             </span>
             <button
               onClick={() => updateQuantity(item.productId, item.size, item.quantity + 1)}
-              className="p-1.5 border border-white/30 text-white/70 hover:text-white hover:border-white/60 transition-colors"
+              className="border border-white/30 p-1.5 text-white/70 transition-colors hover:border-white/60 hover:text-white"
               data-testid={`button-cart-plus-${item.productId}-${item.size}`}
               aria-label="Zvýšit množství"
             >
               <Plus className="h-3 w-3" />
             </button>
           </div>
-          <span className="font-sans text-sm font-bold text-white shrink-0">
+          <span className="shrink-0 text-right font-sans text-sm font-bold text-white">
             {item.price * item.quantity} Kč
           </span>
         </div>
