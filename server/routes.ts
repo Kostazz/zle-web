@@ -467,6 +467,35 @@ const CreateInPersonOrderSchema = z
   })
   .and(CustomerDetailsSchema);
 
+async function validateCheckoutStock(items: Array<{ productId: string; quantity: number }>) {
+  for (const item of items) {
+    const product = await storage.getProduct(item.productId);
+    if (!product) {
+      return {
+        ok: false as const,
+        status: 400 as const,
+        message: "Některá položka košíku je neplatná.",
+        details: { productId: item.productId },
+      };
+    }
+
+    if (item.quantity > product.stock) {
+      return {
+        ok: false as const,
+        status: 409 as const,
+        message: `Nedostupné množství pro produkt ${product.name}.`,
+        details: {
+          productId: product.id,
+          requested: item.quantity,
+          available: product.stock,
+        },
+      };
+    }
+  }
+
+  return { ok: true as const };
+}
+
 // -----------------------------
 // Routes
 // -----------------------------
@@ -667,6 +696,14 @@ export async function registerRoutes(app: Express) {
       }
 
       const parsed = CreateSessionSchema.parse(req.body);
+      const stockCheck = await validateCheckoutStock(parsed.items);
+      if (!stockCheck.ok) {
+        return sendCheckoutError(res, stockCheck.status, {
+          code: "OUT_OF_STOCK",
+          message: stockCheck.message,
+          details: stockCheck.details,
+        });
+      }
       const customerDetails = resolveCustomerDetails(parsed);
       const missingCustomerFields = Object.entries(customerDetails)
         .filter(([, value]) => !String(value || "").trim())
@@ -1273,6 +1310,14 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-cod-order", async (req, res) => {
     try {
       const parsed = CreateCodOrderSchema.parse(req.body);
+      const stockCheck = await validateCheckoutStock(parsed.items);
+      if (!stockCheck.ok) {
+        return sendCheckoutError(res, stockCheck.status, {
+          code: "OUT_OF_STOCK",
+          message: stockCheck.message,
+          details: stockCheck.details,
+        });
+      }
       const customerDetails = resolveCustomerDetails(parsed);
       const missingCustomerFields = Object.entries(customerDetails)
         .filter(([, value]) => !String(value || "").trim())
@@ -1466,6 +1511,14 @@ export async function registerRoutes(app: Express) {
   app.post("/api/checkout/create-in-person-order", async (req, res) => {
     try {
       const parsed = CreateInPersonOrderSchema.parse(req.body);
+      const stockCheck = await validateCheckoutStock(parsed.items);
+      if (!stockCheck.ok) {
+        return sendCheckoutError(res, stockCheck.status, {
+          code: "OUT_OF_STOCK",
+          message: stockCheck.message,
+          details: stockCheck.details,
+        });
+      }
       const customerDetails = resolveCustomerDetails(parsed);
       const missingCustomerFields = Object.entries(customerDetails)
         .filter(([, value]) => !String(value || "").trim())

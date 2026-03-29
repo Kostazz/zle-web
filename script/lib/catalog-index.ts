@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { products } from "../../client/src/data/products.ts";
 import type { CatalogIndex, CatalogIndexEntry, LocalCatalogProduct } from "./reconciliation-types.ts";
+import { toolingCatalogProducts } from "./tooling-catalog.ts";
 
 export const DEFAULT_CATALOG_INDEX_PATH = path.join("tmp", "catalog-index", "zle-source-index.json");
 
@@ -22,12 +22,10 @@ function tokenize(value: string): string[] {
 }
 
 export function loadLocalCatalog(): LocalCatalogProduct[] {
-  return products.map((product) => {
+  return toolingCatalogProducts.map((product) => {
     const nameNormalized = normalizeText(product.name);
     const categoryNormalized = normalizeText(product.category ?? "");
-    const imageHints = (product.images ?? [])
-      .map((img) => normalizeText(img.split("/").at(-1) ?? img))
-      .filter(Boolean);
+    const imageHints = product.imageHints.map((hint) => normalizeText(hint)).filter(Boolean);
 
     return {
       id: product.id,

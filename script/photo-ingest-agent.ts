@@ -1,7 +1,7 @@
 import path from "node:path";
-import { products } from "../client/src/data/products.ts";
 import { runProductPhotoIngest } from "./lib/product-photo-ingest.ts";
 import type { IngestSourceType } from "./lib/ingest-manifest.ts";
+import { toolingCatalogProducts } from "./lib/tooling-catalog.ts";
 
 type CliArgs = {
   input?: string;
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
 
   assertSafeInput(args.input);
 
-  const knownProducts = new Set(products.map((product) => product.id));
+  const knownProducts = new Set(toolingCatalogProducts.map((product) => product.id));
   if (args.product && !knownProducts.has(args.product)) throw new Error(`Unknown product override: ${args.product}`);
 
   if (args.maxImagesPerProduct < 1 || !Number.isInteger(args.maxImagesPerProduct)) {

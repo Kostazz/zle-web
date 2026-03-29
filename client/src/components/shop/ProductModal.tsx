@@ -54,7 +54,7 @@ export function ProductModal({ product }: ProductModalProps) {
   const [resolvedImageSrc, setResolvedImageSrc] = useState<string | null>(null);
   const { addItem } = useCart();
   const { toast } = useToast();
-  const { closeOverlay, getOverlay, openOverlay } = useOverlay();
+  const { closeOverlay, closeOverlayAndWait, getOverlay, isTopOverlay, openOverlay } = useOverlay();
 
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const declaredImages = useMemo(() => getDeclaredProductImages(product), [product]);
@@ -63,7 +63,7 @@ export function ProductModal({ product }: ProductModalProps) {
   const imageSrc = imageIndex < imageCandidates.length ? imageCandidates[imageIndex] : null;
 
   const productOverlay = getOverlay("product");
-  const isOpen = productOverlay?.productId === product.id;
+  const isOpen = isTopOverlay("product") && productOverlay?.productId === product.id;
 
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
@@ -84,7 +84,7 @@ export function ProductModal({ product }: ProductModalProps) {
     closeOverlay("product");
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (isSoldOut) {
       toast({
         title: "Vyprodano",
@@ -128,7 +128,7 @@ export function ProductModal({ product }: ProductModalProps) {
       price: product.price,
       size: resolvedSize,
       quantity,
-      image: resolvedImageSrc ?? declaredPrimaryImage ?? "",
+      image: resolvedImageSrc ?? declaredPrimaryImage ?? imageCandidates[0] ?? "",
     });
 
     window.dispatchEvent(
@@ -143,6 +143,7 @@ export function ProductModal({ product }: ProductModalProps) {
 
     setSelectedSize(defaultSelectedSize);
     setQuantity(1);
+    await closeOverlayAndWait("product");
     openOverlay({ type: "cart" });
   };
 

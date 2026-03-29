@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { products } from "../../client/src/data/products.ts";
+import { toolingCatalogProducts } from "./tooling-catalog.ts";
 import {
   createRunId,
   type AssetManifest,
@@ -38,7 +38,10 @@ const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_INPUT_BYTES = 40 * 1024 * 1024;
 const LIVE_OUTPUT_ROOT = path.resolve(process.cwd(), "client", "public", "images", "products");
 
-const PRODUCT_DESCRIPTORS: ProductDescriptor[] = products.map((product) => ({ id: product.id, name: product.name }));
+const PRODUCT_DESCRIPTORS: ProductDescriptor[] = toolingCatalogProducts.map((product) => ({
+  id: product.id,
+  name: product.name,
+}));
 
 function toPortablePath(value: string): string {
   return value.split(path.sep).join("/");
@@ -699,7 +702,10 @@ export async function runProductPhotoIngest(options: IngestOptions): Promise<Ing
       const webpOutputPath = path.join(targetDir, `${slot}.webp`);
       assertSafeWritePath(jpgOutputPath, [normalizedOutputBase]);
       assertSafeWritePath(webpOutputPath, [normalizedOutputBase]);
-      const draftPayload: ProductDraftPayload = { productId, category: products.find((p) => p.id === productId)?.category };
+      const draftPayload: ProductDraftPayload = {
+        productId,
+        category: toolingCatalogProducts.find((p) => p.id === productId)?.category,
+      };
 
       try {
         const fingerprint = await computeAssetFingerprint(candidate.absolutePath);
