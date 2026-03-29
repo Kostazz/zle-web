@@ -35,6 +35,8 @@ export default function LegalPrivacy() {
             <br />
             Sídlo: {legalConfig.operatorAddress}
             <br />
+            IČO: {legalConfig.companyId}
+            <br />
             Kontakt (e-mail): {legalConfig.contactEmail}
           </p>
         </section>

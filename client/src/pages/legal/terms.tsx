@@ -37,9 +37,11 @@ export default function LegalTerms() {
             <br />
             Sídlo: {legalConfig.operatorAddress}
             <br />
-            IČO (pokud je): neuvedeno
+            IČO: {legalConfig.companyId}
             <br />
             Kontakt: {legalConfig.contactEmail}
+            <br />
+            Fyzická osoba zapsaná v živnostenském rejstříku.
           </p>
         </section>
 

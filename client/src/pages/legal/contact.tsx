@@ -19,6 +19,12 @@ export default function LegalContact() {
         </p>
 
         <p className="mb-4">
+          Provozovatel: {legalConfig.operatorName}
+          <br />
+          IČO: {legalConfig.companyId}
+          <br />
+          Sídlo: {legalConfig.operatorAddress}
+          <br />
           E-mail: {legalConfig.contactEmail}
         </p>
 
