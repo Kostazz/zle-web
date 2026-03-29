@@ -19,6 +19,11 @@ const operatorAddress = getValue(
   "Adresa není uvedena",
   "VITE_LEGAL_OPERATOR_ADDRESS"
 );
+const companyId = getValue(
+  import.meta.env.VITE_LEGAL_COMPANY_ID,
+  "neuvedeno",
+  "VITE_LEGAL_COMPANY_ID"
+);
 const contactEmail = getValue(
   import.meta.env.VITE_LEGAL_CONTACT_EMAIL,
   "kontakt@zle.cz",
@@ -33,6 +38,7 @@ const lastUpdated = getValue(
 export const legalConfig = {
   operatorName,
   operatorAddress,
+  companyId,
   contactEmail,
   lastUpdated,
   siteUrl: import.meta.env.VITE_PUBLIC_SITE_URL?.trim() || "",

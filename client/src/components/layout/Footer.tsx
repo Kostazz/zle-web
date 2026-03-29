@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Instagram, Mail, ExternalLink } from "lucide-react";
 import { ZleLogo } from "@/components/ZleLogo";
+import { legalConfig } from "@/config/legal";
 
 export function Footer() {
   return (
@@ -105,6 +106,9 @@ export function Footer() {
         <div className="mt-12 pt-8 border-t border-white/10">
           <p className="text-center text-white/40 text-xs font-sans">
             {new Date().getFullYear()} ZLE. Jeď to zle.
+          </p>
+          <p className="text-center text-white/30 text-xs font-sans mt-1">
+            Provozovatel: {legalConfig.operatorName} · IČO {legalConfig.companyId}
           </p>
         </div>
       </div>
