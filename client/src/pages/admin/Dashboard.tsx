@@ -326,7 +326,7 @@ function ProductForm({
     name: product?.name || '',
     price: product?.price || 0,
     sizes: product?.sizes?.join(', ') || 'S, M, L, XL',
-    image: product?.image || '/api/images/tee',
+    image: product?.image || '',
     category: product?.category || 'tee',
     description: product?.description || '',
     stock: product?.stock || 100,

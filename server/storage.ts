@@ -1,4 +1,4 @@
-import { 
+import {
   type User, type UpsertUser,
   type Product, type InsertProduct, 
   type Order, type InsertOrder,
@@ -68,7 +68,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProducts(): Promise<Product[]> {
-    return db.select().from(products).where(eq(products.isActive, true));
+    return db
+      .select()
+      .from(products)
+      .where(eq(products.isActive, true))
+      .orderBy(products.id);
   }
 
   async getAllProducts(): Promise<Product[]> {
@@ -81,8 +85,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProductsByCategory(category: string): Promise<Product[]> {
-    return db.select().from(products)
-      .where(eq(products.category, category));
+    return db
+      .select()
+      .from(products)
+      .where(eq(products.category, category))
+      .orderBy(products.id);
   }
 
   async createProduct(product: Product): Promise<Product> {
