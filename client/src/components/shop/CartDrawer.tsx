@@ -115,7 +115,7 @@ export function CartDrawer() {
         ) : (
           <>
             <ScrollArea className="flex-1 mt-4">
-              <div className="space-y-3 pb-4">
+              <div className="space-y-3 pb-4 pr-3 sm:pr-4">
                 {items.map((item) => (
                   <CartItem key={`${item.productId}-${item.size}`} item={item} />
                 ))}
