@@ -1,22 +1,29 @@
 import { useState, useEffect } from "react";
-import { getTodayQuote, type ZleQuoteData } from "@/data/zleQuotes";
+import { getImmediateTodayQuote, getTodayQuote, type ZleQuoteData } from "@/data/zleQuotes";
 
 export function ZleQuote() {
-  const [quote, setQuote] = useState<ZleQuoteData | null>(null);
+  const [quote, setQuote] = useState<ZleQuoteData>(() => getImmediateTodayQuote());
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const todayQuote = getTodayQuote();
-    setQuote(todayQuote);
-    
+    let isMounted = true;
     const timer = setTimeout(() => {
       setIsVisible(true);
     }, 100);
 
-    return () => clearTimeout(timer);
-  }, []);
+    getTodayQuote()
+      .then((todayQuote) => {
+        if (isMounted) {
+          setQuote(todayQuote);
+        }
+      })
+      .catch(() => {});
 
-  if (!quote) return null;
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
 
   return (
     <section className="relative py-16 md:py-24 overflow-hidden">

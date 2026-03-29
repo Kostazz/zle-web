@@ -440,6 +440,8 @@ export const dailyLines = pgTable(
     text: text("text").notNull(),
     mode: text("mode").notNull().default("daily"),
     seed: text("seed"),
+    contextSnapshot: jsonb("context_snapshot"),
+    generationMeta: jsonb("generation_meta"),
 
     createdAt: timestamp("created_at").defaultNow(),
   },

@@ -28,6 +28,7 @@ import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
 import { db } from "./db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { getDailyLineForDate } from "./dailyLine/service";
 
 // -----------------------------
 // Stripe setup
@@ -676,6 +677,52 @@ export async function registerRoutes(app: Express) {
       return sendApiError(res, 500, {
         code: "failed_to_load_products",
         reason: "failed_to_load_products",
+      });
+    }
+  });
+
+  app.get("/api/daily-line", async (_req, res) => {
+    try {
+      const payload = await getDailyLineForDate();
+      return res.json(payload);
+    } catch (error: any) {
+      console.error("[daily-line] failed", {
+        message: error?.message || "unknown_error",
+      });
+      return sendApiError(res, 500, {
+        code: "failed_to_generate_daily_line",
+        reason: "failed_to_generate_daily_line",
+      });
+    }
+  });
+
+  app.post("/api/daily-line/refresh", async (req, res) => {
+    try {
+      if (String(env.DAILY_LINE_ENABLE || "false").toLowerCase() !== "true") {
+        return sendApiError(res, 403, {
+          code: "daily_line_disabled",
+          reason: "daily_line_disabled",
+        });
+      }
+
+      const expectedSecret = String(env.DAILY_LINE_CRON_SECRET || "");
+      const providedSecret = String(req.header("x-cron-secret") || "");
+      if (!expectedSecret || providedSecret !== expectedSecret) {
+        return sendApiError(res, 401, {
+          code: "unauthorized",
+          reason: "unauthorized",
+        });
+      }
+
+      const payload = await getDailyLineForDate();
+      return res.json({ ok: true, ...payload });
+    } catch (error: any) {
+      console.error("[daily-line] refresh failed", {
+        message: error?.message || "unknown_error",
+      });
+      return sendApiError(res, 500, {
+        code: "failed_to_refresh_daily_line",
+        reason: "failed_to_refresh_daily_line",
       });
     }
   });
