@@ -18,6 +18,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -193,6 +194,9 @@ function ProductsTab() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Nový produkt</DialogTitle>
+              <DialogDescription className="sr-only">
+                Formulář pro vytvoření nového produktu v administraci.
+              </DialogDescription>
             </DialogHeader>
             <ProductForm 
               onSubmit={(data) => createMutation.mutate(data)} 
@@ -282,6 +286,9 @@ function ProductsTab() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Upravit produkt</DialogTitle>
+                        <DialogDescription className="sr-only">
+                          Formulář pro úpravu existujícího produktu v administraci.
+                        </DialogDescription>
                       </DialogHeader>
                       <ProductForm 
                         product={product}

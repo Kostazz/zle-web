@@ -36,7 +36,7 @@ export function StructuredData() {
       "@type": "Organization",
       name: "ZLE",
       url: baseUrl,
-      logo: `${baseUrl}/favicon.png`,
+      logo: `${baseUrl}/zle-favicon.svg`,
       sameAs: [],
     });
 

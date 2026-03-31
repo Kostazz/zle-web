@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCart } from "@/lib/cart-context";
@@ -82,6 +82,9 @@ export function CartDrawer() {
             <ShoppingBag className="h-6 w-6" />
             KOŠÍK
           </SheetTitle>
+          <SheetDescription className="sr-only">
+            Obsah košíku, úprava položek a přechod k objednávce.
+          </SheetDescription>
         </SheetHeader>
 
         {inlineStatus && (
