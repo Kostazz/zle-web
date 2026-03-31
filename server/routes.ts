@@ -28,7 +28,7 @@ import { registerOpsRoutes } from "./opsRoutes";
 import { emitOrderEvent, OpsEventType } from "./ops/events";
 import { db } from "./db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { getDailyLineForDate } from "./dailyLine/service";
+import { buildFallbackDailyLine, getDailyLineForDate, getPragueDateString } from "./dailyLine/service";
 
 // -----------------------------
 // Stripe setup
@@ -689,10 +689,7 @@ export async function registerRoutes(app: Express) {
       console.error("[daily-line] failed", {
         message: error?.message || "unknown_error",
       });
-      return sendApiError(res, 500, {
-        code: "failed_to_generate_daily_line",
-        reason: "failed_to_generate_daily_line",
-      });
+      return res.json(buildFallbackDailyLine(getPragueDateString()));
     }
   });
 
@@ -720,10 +717,8 @@ export async function registerRoutes(app: Express) {
       console.error("[daily-line] refresh failed", {
         message: error?.message || "unknown_error",
       });
-      return sendApiError(res, 500, {
-        code: "failed_to_refresh_daily_line",
-        reason: "failed_to_refresh_daily_line",
-      });
+      const fallback = buildFallbackDailyLine(getPragueDateString());
+      return res.json({ ok: true, ...fallback });
     }
   });
 
