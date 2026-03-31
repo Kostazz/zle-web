@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, getRouteMeta } from "@/components/seo/seoConfig";
+import { useProducts } from "@/hooks/use-products";
+import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, getRouteMetaWithProduct } from "@/components/seo/seoConfig";
 
 function setMeta(name: string, content: string) {
   let tag = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
@@ -14,9 +15,10 @@ function setMeta(name: string, content: string) {
 
 export function SeoManager() {
   const [location] = useLocation();
+  const { data: products } = useProducts();
 
   useEffect(() => {
-    const route = getRouteMeta(location);
+    const route = getRouteMetaWithProduct(location, products);
     const title = route?.title || DEFAULT_TITLE;
     const description = route?.description || DEFAULT_DESCRIPTION;
 
@@ -34,7 +36,7 @@ export function SeoManager() {
     } else if (robotsTag) {
       robotsTag.remove();
     }
-  }, [location]);
+  }, [location, products]);
 
   return null;
 }
