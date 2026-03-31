@@ -3,6 +3,7 @@ import { Link } from "wouter";
 
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useOverlay } from "@/lib/overlay-context";
+import { legalConfig } from "@/config/legal";
 
 const secondaryLinks = [
   { href: "/story", label: "STORY" },
@@ -101,7 +102,7 @@ export function MobileNavDrawer({ location }: MobileNavDrawerProps) {
             >
               Instagram
             </a>
-            <a href="mailto:info@zleskate.cz" className="zle-mobile-nav-utility-link" onClick={closeDrawer}>
+            <a href={`mailto:${legalConfig.contactEmail}`} className="zle-mobile-nav-utility-link" onClick={closeDrawer}>
               Email
             </a>
           </div>
