@@ -844,88 +844,92 @@ export default function Checkout() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
               <div>
-                <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">TVOJE ÚDAJE</h2>
-
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div>
-                    <Label htmlFor="name" className="font-heading text-xs text-white/60 tracking-wider">
-                      JMÉNO A PŘÍJMENÍ *
-                    </Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      className="mt-2 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white"
-                      placeholder="Jan Novák"
-                      required
-                      data-testid="input-name"
-                    />
-                  </div>
+                  <div className="rounded-2xl border border-white/15 bg-white/[0.04] px-5 py-6 md:px-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <h2 className="font-heading text-lg font-bold text-white tracking-wider mb-6">TVOJE ÚDAJE</h2>
 
-                  <div>
-                    <Label htmlFor="email" className="font-heading text-xs text-white/60 tracking-wider">
-                      EMAIL *
-                    </Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className="mt-2 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white"
-                      placeholder="jan@email.cz"
-                      required
-                      data-testid="input-email"
-                    />
-                  </div>
+                    <div className="space-y-6">
+                      <div>
+                        <Label htmlFor="name" className="font-heading text-xs text-white/75 tracking-widest">
+                          JMÉNO A PŘÍJMENÍ *
+                        </Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-white/80 focus-visible:ring-1 focus-visible:ring-white/35"
+                          placeholder="Jan Novák"
+                          required
+                          data-testid="input-name"
+                        />
+                      </div>
 
-                  <div>
-                    <Label htmlFor="address" className="font-heading text-xs text-white/60 tracking-wider">
-                      ULICE A ČÍSLO *
-                    </Label>
-                    <Input
-                      id="address"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      className="mt-2 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white"
-                      placeholder="Skate Street 123"
-                      required
-                      data-testid="input-address"
-                    />
-                  </div>
+                      <div>
+                        <Label htmlFor="email" className="font-heading text-xs text-white/75 tracking-widest">
+                          EMAIL *
+                        </Label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-white/80 focus-visible:ring-1 focus-visible:ring-white/35"
+                          placeholder="jan@email.cz"
+                          required
+                          data-testid="input-email"
+                        />
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="city" className="font-heading text-xs text-white/60 tracking-wider">
-                        MĚSTO *
-                      </Label>
-                      <Input
-                        id="city"
-                        name="city"
-                        value={formData.city}
-                        onChange={handleInputChange}
-                        className="mt-2 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white"
-                        placeholder="Praha"
-                        required
-                        data-testid="input-city"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="zip" className="font-heading text-xs text-white/60 tracking-wider">
-                        PSČ *
-                      </Label>
-                      <Input
-                        id="zip"
-                        name="zip"
-                        value={formData.zip}
-                        onChange={handleInputChange}
-                        className="mt-2 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus:border-white"
-                        placeholder="12000"
-                        required
-                        data-testid="input-zip"
-                      />
+                      <div>
+                        <Label htmlFor="address" className="font-heading text-xs text-white/75 tracking-widest">
+                          ULICE A ČÍSLO *
+                        </Label>
+                        <Input
+                          id="address"
+                          name="address"
+                          value={formData.address}
+                          onChange={handleInputChange}
+                          className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-white/80 focus-visible:ring-1 focus-visible:ring-white/35"
+                          placeholder="Skate Street 123"
+                          required
+                          data-testid="input-address"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="city" className="font-heading text-xs text-white/75 tracking-widest">
+                            MĚSTO *
+                          </Label>
+                          <Input
+                            id="city"
+                            name="city"
+                            value={formData.city}
+                            onChange={handleInputChange}
+                            className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-white/80 focus-visible:ring-1 focus-visible:ring-white/35"
+                            placeholder="Praha"
+                            required
+                            data-testid="input-city"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="zip" className="font-heading text-xs text-white/75 tracking-widest">
+                            PSČ *
+                          </Label>
+                          <Input
+                            id="zip"
+                            name="zip"
+                            value={formData.zip}
+                            onChange={handleInputChange}
+                            className="mt-2 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-white/80 focus-visible:ring-1 focus-visible:ring-white/35"
+                            placeholder="12000"
+                            required
+                            data-testid="input-zip"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
