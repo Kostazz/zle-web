@@ -129,7 +129,6 @@ export function CartDrawer() {
                   {total} Kč
                 </span>
               </div>
-              <p className="mb-4 font-sans text-xs text-white/60">Vybral sis to. Teď to unes.</p>
 
               <Button
                 className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 group"
