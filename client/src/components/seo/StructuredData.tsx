@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { getRouteMeta } from "@/components/seo/seoConfig";
+import { useProducts } from "@/hooks/use-products";
+import { getRouteMetaWithProduct } from "@/components/seo/seoConfig";
 
 const baseUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://zleshop.cz").replace(/\/+$/, "");
 
@@ -27,9 +28,10 @@ function removeJsonLd(id: string) {
 
 export function StructuredData() {
   const [location] = useLocation();
+  const { data: products } = useProducts();
 
   useEffect(() => {
-    const route = getRouteMeta(location);
+    const route = getRouteMetaWithProduct(location, products);
 
     upsertJsonLd("zle-org-schema", {
       "@context": "https://schema.org",
@@ -66,7 +68,7 @@ export function StructuredData() {
     } else {
       removeJsonLd("zle-breadcrumb-schema");
     }
-  }, [location]);
+  }, [location, products]);
 
   return null;
 }

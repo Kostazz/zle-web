@@ -19,6 +19,7 @@ import Home from "@/pages/Home";
 
 // Route-level code splitting (mobile speed): keep Home eager, lazy-load the rest.
 const Shop = lazy(() => import("@/pages/Shop"));
+const ProductDetail = lazy(() => import("@/pages/ProductDetail"));
 const Story = lazy(() => import("@/pages/Story"));
 const Crew = lazy(() => import("@/pages/Crew"));
 const Contact = lazy(() => import("@/pages/Contact"));
@@ -51,6 +52,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/shop" component={Shop} />
+        <Route path="/p/:id" component={ProductDetail} />
         <Route path="/story" component={Story} />
         <Route path="/crew" component={Crew} />
         <Route path="/contact" component={Contact} />

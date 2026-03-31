@@ -3,6 +3,7 @@ export const DEFAULT_DESCRIPTION =
   "ZLE — underground skate/street crew. Live raw, ride hard. No filters, no bullshit.";
 
 export const DEFAULT_OG_IMAGE = "/images/brand/hero.png";
+const PRODUCT_PATH_PATTERN = /^\/p\/([^/]+)$/;
 
 type BreadcrumbItem = {
   label: string;
@@ -16,6 +17,13 @@ export type RouteMeta = {
   noindex?: boolean;
   ogImage?: string;
   breadcrumb?: BreadcrumbItem[];
+};
+
+type ProductSeoSource = {
+  id: string;
+  name: string;
+  description: string;
+  image?: string | null;
 };
 
 export const ROUTE_META: RouteMeta[] = [
@@ -144,4 +152,80 @@ export const ROUTE_META: RouteMeta[] = [
 
 export function getRouteMeta(pathname: string): RouteMeta | undefined {
   return ROUTE_META.find((entry) => entry.match.test(pathname));
+}
+
+export function getProductIdFromPath(pathname: string): string | null {
+  const match = pathname.match(PRODUCT_PATH_PATTERN);
+  return match?.[1] ?? null;
+}
+
+export function getRouteMetaWithProduct(
+  pathname: string,
+  products: ProductSeoSource[] | undefined,
+): RouteMeta | undefined {
+  const staticRouteMeta = getRouteMeta(pathname);
+  if (staticRouteMeta) {
+    return staticRouteMeta;
+  }
+
+  const productId = getProductIdFromPath(pathname);
+  if (!productId) {
+    return undefined;
+  }
+
+  const product = products?.find((item) => item.id === productId);
+  if (!product) {
+    return {
+      match: PRODUCT_PATH_PATTERN,
+      title: "Produkt | ZLE",
+      description: "Produkt nebyl nalezen. Prohlédni si aktuální merch v našem shopu.",
+      ogImage: DEFAULT_OG_IMAGE,
+      breadcrumb: [
+        { label: "Home", path: "/" },
+        { label: "Shop", path: "/shop" },
+      ],
+    };
+  }
+
+  return {
+    match: PRODUCT_PATH_PATTERN,
+    title: `${product.name} | ZLE Shop`,
+    description: product.description,
+    ogImage: product.image || DEFAULT_OG_IMAGE,
+    breadcrumb: [
+      { label: "Home", path: "/" },
+      { label: "Shop", path: "/shop" },
+      { label: product.name, path: `/p/${product.id}` },
+    ],
+  };
+}
+
+function normalizePathname(pathname: string): string {
+  if (!pathname) {
+    return "/";
+  }
+
+  const pathOnly = pathname.split("#")[0].split("?")[0] || "/";
+  return pathOnly.replace(/\/+$/, "") || "/";
+}
+
+export function getCanonicalPath(
+  pathname: string,
+  products: ProductSeoSource[] | undefined,
+): string {
+  const normalizedPath = normalizePathname(pathname);
+  const productId = getProductIdFromPath(normalizedPath);
+
+  if (productId) {
+    return `/p/${productId}`;
+  }
+
+  const routeMeta = getRouteMetaWithProduct(normalizedPath, products);
+  const breadcrumbPath = routeMeta?.breadcrumb?.[routeMeta.breadcrumb.length - 1]?.path;
+
+  if (breadcrumbPath) {
+    return normalizePathname(breadcrumbPath);
+  }
+
+  return normalizedPath;
 }

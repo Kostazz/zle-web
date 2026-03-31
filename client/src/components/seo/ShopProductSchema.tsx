@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useProducts } from "@/hooks/use-products";
+import { getProductImageCandidates } from "@/lib/product-ui";
 
 const SHOP_SCHEMA_ID = "zle-shop-itemlist-schema";
+const PRODUCT_SCHEMA_ID = "zle-product-schema";
 const baseUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://zleshop.cz").replace(/\/+$/, "");
 
 function toAbsoluteImageUrl(path: string) {
@@ -35,71 +37,105 @@ export function ShopProductSchema() {
     .slice(0, 10);
 
   useEffect(() => {
+    const productId = location.match(/^\/p\/([^/]+)$/)?.[1];
+    const currentProduct = productId ? products?.find((item) => item.id === productId) : undefined;
+
     if (location !== "/shop") {
       removeJsonLd(SHOP_SCHEMA_ID);
-      return;
-    }
-
-    if (!products || products.length === 0) {
+    } else if (!products || products.length === 0) {
       removeJsonLd(SHOP_SCHEMA_ID);
-      return;
-    }
+    } else {
+      const itemListElement = products.map((product, index) => {
+        const productUrl = `${baseUrl}/p/${product.id}`;
+        const uniqueImages = Array.from(
+          new Set(getProductImageCandidates(product).map((image) => toAbsoluteImageUrl(image))),
+        );
 
-    const itemListElement = products.map((product, index) => {
-      const productUrl = `${baseUrl}/shop#product-${product.id}`;
-      const allImages = [product.image, ...(product.images || [])].filter(Boolean);
-      const uniqueImages = Array.from(new Set(allImages.map((image) => toAbsoluteImageUrl(image))));
-
-      return {
-        "@type": "ListItem",
-        position: index + 1,
-        url: productUrl,
-        item: {
-          "@type": "Product",
-          name: product.name,
-          description: product.description,
-          image: uniqueImages,
-          sku: product.id,
-          brand: {
-            "@type": "Brand",
-            name: "ZLE",
-          },
-          category: product.category,
-          additionalProperty: [
-            {
-              "@type": "PropertyValue",
-              name: "sizes",
-              value: product.sizes.join(","),
-            },
-          ],
-          offers: {
-            "@type": "Offer",
-            priceCurrency: "CZK",
-            price: String(product.price),
-            priceValidUntil,
-            seller: {
-              "@type": "Organization",
+        return {
+          "@type": "ListItem",
+          position: index + 1,
+          url: productUrl,
+          item: {
+            "@type": "Product",
+            name: product.name,
+            description: product.description,
+            image: uniqueImages,
+            sku: product.id,
+            brand: {
+              "@type": "Brand",
               name: "ZLE",
             },
-            priceSpecification: {
-              "@type": "PriceSpecification",
+            category: product.category,
+            additionalProperty: [
+              {
+                "@type": "PropertyValue",
+                name: "sizes",
+                value: product.sizes.join(","),
+              },
+            ],
+            offers: {
+              "@type": "Offer",
               priceCurrency: "CZK",
               price: String(product.price),
+              priceValidUntil,
+              seller: {
+                "@type": "Organization",
+                name: "ZLE",
+              },
+              priceSpecification: {
+                "@type": "PriceSpecification",
+                priceCurrency: "CZK",
+                price: String(product.price),
+              },
+              url: productUrl,
+              availability: product.isActive && product.stock > 0
+                ? "https://schema.org/InStock"
+                : "https://schema.org/OutOfStock",
+              itemCondition: "https://schema.org/NewCondition",
             },
-            url: productUrl,
-            availability: product.stock > 0
-              ? "https://schema.org/InStock"
-              : "https://schema.org/OutOfStock",
-            itemCondition: "https://schema.org/NewCondition",
           },
-        },
-      };
-    });
+        };
+      });
 
-    upsertJsonLd(SHOP_SCHEMA_ID, {
+      upsertJsonLd(SHOP_SCHEMA_ID, {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        itemListElement,
+      });
+    }
+
+    if (!currentProduct) {
+      removeJsonLd(PRODUCT_SCHEMA_ID);
+      return;
+    }
+
+    const productUrl = `${baseUrl}/p/${currentProduct.id}`;
+    const images = Array.from(
+      new Set(getProductImageCandidates(currentProduct).map((image) => toAbsoluteImageUrl(image))),
+    );
+
+    upsertJsonLd(PRODUCT_SCHEMA_ID, {
       "@context": "https://schema.org",
-      "@type": "ItemList",
-      itemListElement,
+      "@type": "Product",
+      name: currentProduct.name,
+      description: currentProduct.description,
+      sku: currentProduct.id,
+      url: productUrl,
+      image: images,
+      brand: {
+        "@type": "Brand",
+        name: "ZLE",
+      },
+      offers: {
+        "@type": "Offer",
+        url: productUrl,
+        priceCurrency: "CZK",
+        price: String(currentProduct.price),
+        availability: currentProduct.isActive && currentProduct.stock > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
+        itemCondition: "https://schema.org/NewCondition",
+      },
     });
   }, [location, products]);
 

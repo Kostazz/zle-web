@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { useProducts } from "@/hooks/use-products";
+import { getCanonicalPath } from "@/components/seo/seoConfig";
 
 /**
  * ZLE SEO: Canonical + OG URL
@@ -8,11 +10,12 @@ import { useLocation } from "wouter";
  */
 export function Canonical() {
   const [location] = useLocation();
+  const { data: products } = useProducts();
 
   useEffect(() => {
     const base = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://zleshop.cz").replace(/\/+$/, "");
-    const path = (window.location?.pathname || location || "/").replace(/\/+$/, "") || "/";
-    const canonicalUrl = `${base}${path === "/" ? "/" : path}`;
+    const path = getCanonicalPath(window.location?.pathname || location || "/", products);
+    const canonicalUrl = `${base}${path}`;
 
     // <link rel="canonical" />
     let link = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
@@ -31,7 +34,7 @@ export function Canonical() {
       document.head.appendChild(og);
     }
     og.setAttribute("content", canonicalUrl);
-  }, [location]);
+  }, [location, products]);
 
   return null;
 }
