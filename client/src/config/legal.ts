@@ -11,27 +11,27 @@ const getValue = (value: string | undefined, fallback: string, key: string) => {
 
 const operatorName = getValue(
   import.meta.env.VITE_LEGAL_OPERATOR_NAME,
-  "ZLE",
+  "Konstantin Tunturov",
   "VITE_LEGAL_OPERATOR_NAME"
 );
 const operatorAddress = getValue(
   import.meta.env.VITE_LEGAL_OPERATOR_ADDRESS,
-  "Adresa není uvedena",
+  "náměstí Plukovníka Vlčka 693/6, 198 00 Praha 9 – Černý Most",
   "VITE_LEGAL_OPERATOR_ADDRESS"
 );
 const companyId = getValue(
   import.meta.env.VITE_LEGAL_COMPANY_ID,
-  "neuvedeno",
+  "76583465",
   "VITE_LEGAL_COMPANY_ID"
 );
 const contactEmail = getValue(
   import.meta.env.VITE_LEGAL_CONTACT_EMAIL,
-  "kontakt@zle.cz",
+  "zleshop.admin@gmail.com",
   "VITE_LEGAL_CONTACT_EMAIL"
 );
 const lastUpdated = getValue(
   import.meta.env.VITE_LEGAL_LAST_UPDATED,
-  "neuvedeno",
+  "2025-01-01",
   "VITE_LEGAL_LAST_UPDATED"
 );
 
