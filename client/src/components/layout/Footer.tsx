@@ -70,12 +70,12 @@ export function Footer() {
             </h4>
             <div className="flex flex-col gap-3">
               <a
-                href="mailto:info@zleskate.cz"
+                href={`mailto:${legalConfig.contactEmail}`}
                 className="flex items-center gap-2 text-white/60 hover:text-white text-sm transition-colors"
                 data-testid="link-email"
               >
                 <Mail className="h-4 w-4" />
-                info@zleskate.cz
+                {legalConfig.contactEmail}
               </a>
 
               <a
