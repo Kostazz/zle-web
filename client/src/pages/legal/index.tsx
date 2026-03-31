@@ -39,6 +39,11 @@ export default function LegalHub() {
             </Link>
           </li>
           <li>
+            <Link href="/legal/withdrawal" className="hover:text-white underline underline-offset-4" data-testid="link-legal-withdrawal">
+              Odstoupení od smlouvy / vrácení do 14 dnů
+            </Link>
+          </li>
+          <li>
             <Link href="/legal/contact" className="hover:text-white underline underline-offset-4" data-testid="link-legal-contact">
               Kontakt pro právní dotazy
             </Link>

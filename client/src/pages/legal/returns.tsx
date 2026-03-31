@@ -14,6 +14,11 @@ export default function LegalReturns() {
         
         <h1 className="text-3xl font-bold mb-6" data-testid="text-returns-title">Reklamační řád ZLE</h1>
 
+        <p className="mb-6">
+          Tato stránka řeší pouze reklamace vadného zboží. Pro odstoupení od smlouvy do 14 dnů použij
+          samostatnou stránku <Link href="/legal/withdrawal" className="underline underline-offset-4 hover:text-white">/legal/withdrawal</Link>.
+        </p>
+
         <section className="mb-6">
           <h2 className="font-semibold mb-2">1. Uplatnění reklamace</h2>
           <p>

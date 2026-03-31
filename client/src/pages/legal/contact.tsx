@@ -31,6 +31,27 @@ export default function LegalContact() {
         <p className="text-neutral-400 text-xs">
           Napiš klidně do předmětu „ZLE – právní dotaz / reklamace", abychom věděli, že to má prioritu.
         </p>
+
+        <div className="mt-6 text-sm text-neutral-300 space-y-2">
+          <p>
+            Reklamace:{" "}
+            <Link href="/legal/returns" className="underline underline-offset-4 hover:text-white">
+              /legal/returns
+            </Link>
+          </p>
+          <p>
+            Odstoupení od smlouvy:{" "}
+            <Link href="/legal/withdrawal" className="underline underline-offset-4 hover:text-white">
+              /legal/withdrawal
+            </Link>
+          </p>
+          <p>
+            Ochrana osobních údajů:{" "}
+            <Link href="/legal/privacy" className="underline underline-offset-4 hover:text-white">
+              /legal/privacy
+            </Link>
+          </p>
+        </div>
       </main>
     </Layout>
   );

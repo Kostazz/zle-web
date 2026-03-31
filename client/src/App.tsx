@@ -35,6 +35,7 @@ const LegalPrivacy = lazy(() => import("@/pages/legal/privacy"));
 const LegalCookies = lazy(() => import("@/pages/legal/cookies"));
 const LegalReturns = lazy(() => import("@/pages/legal/returns"));
 const LegalContact = lazy(() => import("@/pages/legal/contact"));
+const LegalWithdrawal = lazy(() => import("@/pages/legal/withdrawal"));
 const ServerError = lazy(() => import("@/pages/errors/ServerError"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -71,6 +72,7 @@ function Router() {
         <Route path="/legal/cookies" component={LegalCookies} />
         <Route path="/legal/returns" component={LegalReturns} />
         <Route path="/legal/contact" component={LegalContact} />
+        <Route path="/legal/withdrawal" component={LegalWithdrawal} />
         <Route path="/500" component={ServerError} />
         <Route component={NotFound} />
       </Switch>

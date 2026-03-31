@@ -48,7 +48,7 @@ export default function LegalPrivacy() {
             <li>identifikační údaje (jméno, příjmení)</li>
             <li>kontaktní údaje (e-mail, telefon, doručovací adresa)</li>
             <li>údaje o objednávkách a platbách</li>
-            <li>technické údaje z cookies (IP adresa, typ zařízení, základní analytika)</li>
+            <li>technické a provozní údaje nutné pro bezpečnost a fungování webu (např. IP adresa, typ zařízení)</li>
           </ul>
         </section>
 
@@ -59,7 +59,7 @@ export default function LegalPrivacy() {
             <li>vyřízení objednávek a doručení zboží</li>
             <li>komunikace se zákazníky (dotazy, podpora, reklamace)</li>
             <li>plnění právních povinností (daňové, účetní předpisy)</li>
-            <li>základní analytiky a ochrany webu (oprávněný zájem)</li>
+            <li>zajištění bezpečnosti a provozu webu</li>
           </ul>
         </section>
 
@@ -69,8 +69,8 @@ export default function LegalPrivacy() {
           <ul className="list-disc list-inside mt-2">
             <li>plnění smlouvy (objednávka zboží)</li>
             <li>splnění právní povinnosti (vedení účetnictví apod.)</li>
-            <li>oprávněného zájmu správce (bezpečnost, analytika)</li>
-            <li>souhlasu subjektu údajů (např. newsletter – pokud bude použit)</li>
+            <li>oprávněného zájmu správce (bezpečnost a provoz webu)</li>
+            <li>souhlasu subjektu údajů (pouze pokud budou v budoucnu aktivovány dobrovolné nástroje)</li>
           </ul>
         </section>
 

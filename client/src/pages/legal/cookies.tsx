@@ -16,8 +16,8 @@ export default function LegalCookies() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">1. Co jsou cookies</h2>
           <p>
-            Cookies jsou malé textové soubory ukládané ve vašem prohlížeči při návštěvě webu. 
-            Pomáhají zajistit základní funkce webu a zlepšit uživatelský zážitek.
+            Cookies a obdobná lokální úložiště jsou malé soubory ukládané ve vašem zařízení při
+            návštěvě webu. Slouží hlavně k zajištění základních technických funkcí.
           </p>
         </section>
 
@@ -25,26 +25,31 @@ export default function LegalCookies() {
           <h2 className="font-semibold mb-2">2. Jaké cookies používáme</h2>
           <ul className="list-disc list-inside mt-2">
             <li>
-              <span className="font-semibold">Nezbytné cookies</span> – nutné pro správné fungování webu (nelze je vypnout v našich systémech).
-            </li>
-            <li>
-              <span className="font-semibold">Analytické cookies</span> – anonymní statistiky návštěvnosti a chování uživatelů na webu.
+              <span className="font-semibold">Nezbytné technické cookies / lokální úložiště</span> – nutné
+              pro správné fungování webu a bezpečný provoz služby.
             </li>
           </ul>
+          <p className="mt-3">
+            Analytické a marketingové cookies aktuálně nejsou aktivní.
+          </p>
         </section>
 
         <section className="mb-6">
-          <h2 className="font-semibold mb-2">3. Jak cookies spravovat</h2>
+          <h2 className="font-semibold mb-2">3. Budoucí změny</h2>
           <p>
-            Používání cookies můžete upravit v nastavení svého prohlížeče. 
-            Můžete je omezit nebo zcela zakázat. V takovém případě však některé části webu nemusí fungovat správně.
+            Pokud v budoucnu nasadíme analytické nebo marketingové nástroje, bude to až po zavedení
+            odpovídající souhlasové vrstvy.
           </p>
         </section>
 
         <section>
-          <h2 className="font-semibold mb-2">4. Další informace</h2>
+          <h2 className="font-semibold mb-2">4. Jak technická cookies omezit</h2>
           <p>
-            Další informace o tom, jak nakládáme s údaji, naleznete v dokumentu „Ochrana osobních údajů (GDPR)".
+            Nastavení cookies můžete upravit ve svém prohlížeči. Omezení nezbytných cookies může
+            ovlivnit funkčnost některých částí webu.
+          </p>
+          <p className="mt-2">
+            Další informace o zpracování údajů najdete v dokumentu „Ochrana osobních údajů (GDPR)".
           </p>
         </section>
       </main>

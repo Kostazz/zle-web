@@ -66,6 +66,7 @@ export default function LegalTerms() {
           <h2 className="font-semibold mb-2">4. Cena a způsoby platby</h2>
           <p>
             Cena zboží je vždy uvedena u konkrétního produktu. Ceny jsou konečné.
+            Celková cena včetně dopravy a případných poplatků je zobrazena před odesláním objednávky.
             Dostupné platební metody jsou vždy zobrazené přímo v checkoutu podle aktuální dostupnosti.
           </p>
         </section>
@@ -75,16 +76,29 @@ export default function LegalTerms() {
           <p>
             Zboží je doručováno prostřednictvím dostupných dopravních metod zobrazených v checkoutu
             (např. výdejní místo nebo doručení na adresu). Konkrétní cena dopravy a očekávaný termín doručení
-            se zobrazují před dokončením objednávky podle zvoleného způsobu doručení.
+            se zobrazují před dokončením objednávky podle zvoleného způsobu doručení. Případná omezení dopravy
+            jsou rovněž uvedena v checkoutu před odesláním objednávky.
           </p>
         </section>
 
         <section className="mb-6">
           <h2 className="font-semibold mb-2">6. Odstoupení od smlouvy</h2>
           <p>
-            Zákazník – spotřebitel má právo odstoupit od smlouvy do 14 dnů od převzetí zboží, není-li stanoveno
-            jinak. Pro odstoupení lze použít kontaktní e-mail uvedený výše. Zboží by mělo být vráceno čisté,
-            nepoškozené a pokud možno v původním obalu.
+            Zákazník – spotřebitel má právo odstoupit od smlouvy do 14 dnů od převzetí zboží.
+            Odstoupení lze zaslat na e-mail {legalConfig.contactEmail}. Zákazník může využít také vzorový
+            formulář na stránce{" "}
+            <Link href="/legal/withdrawal" className="underline underline-offset-4 hover:text-white">
+              /legal/withdrawal
+            </Link>
+            .
+          </p>
+          <p className="mt-2">
+            Peníze vracíme bez zbytečného odkladu, nejpozději do 14 dnů od odstoupení od smlouvy, ne však dříve,
+            než obdržíme vrácené zboží nebo doklad o jeho odeslání.
+          </p>
+          <p className="mt-2">
+            Náklady na vrácení zboží hradí zákazník. Zákazník odpovídá za snížení hodnoty zboží, pokud s ním
+            nakládal jinak, než je nutné k seznámení se s jeho povahou, vlastnostmi a funkčností.
           </p>
         </section>
 
@@ -104,8 +118,16 @@ export default function LegalTerms() {
           </p>
         </section>
 
+        <section className="mb-6">
+          <h2 className="font-semibold mb-2">9. Mimosoudní řešení spotřebitelských sporů</h2>
+          <p>
+            V případě spotřebitelského sporu může zákazník využít mimosoudní řešení sporu u České obchodní
+            inspekce.
+          </p>
+        </section>
+
         <section>
-          <h2 className="font-semibold mb-2">9. Závěrečná ustanovení</h2>
+          <h2 className="font-semibold mb-2">10. Závěrečná ustanovení</h2>
           <p>
             Tyto obchodní podmínky se řídí právem České republiky. Provozovatel si vyhrazuje právo podmínky
             aktualizovat. Aktuální znění je vždy zveřejněno na této stránce.
