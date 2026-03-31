@@ -100,7 +100,7 @@ export function CartDrawer() {
             </div>
             <p className="font-heading text-lg text-white mb-2">Košík je prázdný</p>
             <p className="font-sans text-sm text-white/60 mb-8">
-              Podívej se do shopu a najdi něco pro sebe.
+              Zatím nic neneseš. Podívej se do shopu a najdi něco pro sebe.
             </p>
             <Button
               onClick={handleClose}
@@ -129,6 +129,7 @@ export function CartDrawer() {
                   {total} Kč
                 </span>
               </div>
+              <p className="mb-4 font-sans text-xs text-white/60">Vybral sis to. Teď to unes.</p>
 
               <Button
                 className="w-full font-heading text-sm tracking-wider bg-white text-black hover:bg-white/90 py-6 group"

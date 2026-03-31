@@ -162,6 +162,7 @@ export function ProductCard({ product }: ProductCardProps) {
           >
             {product.name}
           </h3>
+          <p className="font-sans text-xs text-white/70">Není to jen produkt.</p>
           <p
             className="font-sans text-lg md:text-xl font-semibold text-white"
             data-testid={`text-product-price-${product.id}`}
