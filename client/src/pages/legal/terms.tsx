@@ -31,7 +31,7 @@ export default function LegalTerms() {
         <section className="mb-6">
           <h2 className="font-semibold mb-2">1. Provozovatel</h2>
           <p>
-            Provozovatel značky ZLE (dále jen „provozovatel"):
+            Provozovatel e-shopu (dále jen „provozovatel“):
             <br />
             Jméno / název: {legalConfig.operatorName}
             <br />

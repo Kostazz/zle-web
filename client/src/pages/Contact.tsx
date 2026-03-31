@@ -1,6 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Mail, Instagram, ExternalLink } from "lucide-react";
+import { legalConfig } from "@/config/legal";
 
 export default function Contact() {
   return (
@@ -28,7 +29,7 @@ export default function Contact() {
                 
                 <div className="space-y-4">
                   <a
-                    href="mailto:info@zleskate.cz"
+                    href={`mailto:${legalConfig.contactEmail}`}
                     className="flex items-center gap-4 text-white/80 hover:text-white transition-colors group"
                     data-testid="link-contact-email"
                   >
@@ -37,7 +38,7 @@ export default function Contact() {
                     </div>
                     <div>
                       <span className="font-heading text-xs text-white/50 block">EMAIL</span>
-                      <span className="font-sans">info@zleskate.cz</span>
+                      <span className="font-sans">{legalConfig.contactEmail}</span>
                     </div>
                   </a>
 
