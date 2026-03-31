@@ -53,6 +53,11 @@
     <priority>0.2</priority>
   </url>
   <url>
+    <loc>https://zleshop.cz/legal/withdrawal</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
     <loc>https://zleshop.cz/legal/contact</loc>
     <changefreq>yearly</changefreq>
     <priority>0.2</priority>

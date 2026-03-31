@@ -1087,12 +1087,26 @@ export default function Checkout() {
                         )}
                         {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
                           ? "POKRAČOVAT K PLATBĚ"
-                          : paymentMethod === "in_person"
-                            ? "POTVRDIT OBJEDNÁVKU"
-                            : "ODESLAT OBJEDNÁVKU"}
+                          : "OBJEDNAT S POVINNOSTÍ PLATBY"}
                       </>
                     )}
                   </Button>
+
+                  <p className="font-sans text-xs text-white/70 text-center mt-4 leading-relaxed">
+                    Odesláním objednávky potvrzuješ, že ses seznámil s{" "}
+                    <Link href="/legal/terms" className="underline underline-offset-4 hover:text-white">
+                      obchodními podmínkami
+                    </Link>
+                    ,{" "}
+                    <Link href="/legal/privacy" className="underline underline-offset-4 hover:text-white">
+                      ochranou osobních údajů
+                    </Link>{" "}
+                    a{" "}
+                    <Link href="/legal/withdrawal" className="underline underline-offset-4 hover:text-white">
+                      informacemi o odstoupení od smlouvy
+                    </Link>
+                    {" "}a souhlasíš s nimi. Objednávka zavazuje k platbě.
+                  </p>
 
                   <p className="font-sans text-xs text-white/40 text-center mt-4">
                     {paymentMethod === "card" || paymentMethod === "gpay" || paymentMethod === "applepay"
@@ -1153,6 +1167,9 @@ export default function Checkout() {
                         {quote ? `${totalWithShipping} Kč` : "—"}
                       </span>
                     </div>
+                    <p className="pt-2 text-xs text-white/50 leading-relaxed">
+                      Celková cena včetně dopravy a případných poplatků je zobrazena před odesláním objednávky.
+                    </p>
                   </div>
                 </div>
 

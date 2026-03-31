@@ -106,12 +106,22 @@ export const ROUTE_META: RouteMeta[] = [
   },
   {
     match: /^\/legal\/returns$/,
-    title: "Reklamace & vrácení | ZLE",
-    description: "Postup reklamace a vrácení zboží u objednávek ZLE.",
+    title: "Reklamační řád | ZLE",
+    description: "Postup reklamace zboží u objednávek ZLE.",
     breadcrumb: [
       { label: "Home", path: "/" },
       { label: "Právní", path: "/legal" },
-      { label: "Reklamace & vrácení", path: "/legal/returns" },
+      { label: "Reklamační řád", path: "/legal/returns" },
+    ],
+  },
+  {
+    match: /^\/legal\/withdrawal$/,
+    title: "Odstoupení od smlouvy | ZLE",
+    description: "Informace o odstoupení od smlouvy, vrácení zboží do 14 dnů a vzorový formulář.",
+    breadcrumb: [
+      { label: "Home", path: "/" },
+      { label: "Právní", path: "/legal" },
+      { label: "Odstoupení od smlouvy", path: "/legal/withdrawal" },
     ],
   },
   {
