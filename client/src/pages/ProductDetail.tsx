@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCart } from "@/lib/cart-context";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingBag } from "lucide-react";
+import { ArrowLeft, ShoppingBag } from "lucide-react";
 import {
   formatSizeLabel,
   getDefaultSelectedSize,
-  getProductImageCandidates,
+  getOwnedProductGalleryImages,
   getSelectableSizes,
   requiresExplicitSizeSelection,
 } from "@/lib/product-ui";
@@ -58,7 +58,7 @@ export default function ProductDetail() {
     return <NotFound />;
   }
 
-  const images = getProductImageCandidates(product);
+  const images = getOwnedProductGalleryImages(product, 8);
   const mainImage = images[selectedImageIndex] ?? images[0] ?? "";
   const selectableSizes = getSelectableSizes(product);
   const defaultSelectedSize = getDefaultSelectedSize(product);
@@ -103,6 +103,13 @@ export default function ProductDetail() {
     <Layout>
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
+          <Link
+            href="/shop"
+            className="mb-6 inline-flex items-center gap-2 font-heading text-sm tracking-wider text-white/85 hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            ZPĚT DO SHOPU
+          </Link>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
             <div>
               <div className="relative aspect-square bg-black/20 border border-white/10 overflow-hidden">
@@ -118,7 +125,7 @@ export default function ProductDetail() {
                 )}
               </div>
               {images.length > 1 && (
-                <div className="grid grid-cols-5 gap-2 mt-3">
+                <div className="grid grid-cols-4 md:grid-cols-5 gap-2 mt-3">
                   {images.map((image, index) => (
                     <button
                       key={`${image}-${index}`}
