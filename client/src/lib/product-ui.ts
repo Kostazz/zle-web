@@ -9,6 +9,10 @@ const LOCAL_IMAGE_CANDIDATE_NAMES = [
   "01.webp",
   "02.jpg",
   "02.webp",
+  "03.jpg",
+  "03.webp",
+  "04.jpg",
+  "04.webp",
 ] as const;
 
 function normalizeImagePath(path: string): string {
@@ -89,6 +93,29 @@ export function getProductImageCandidates(product: Pick<Product, "id" | "image" 
   const declaredCandidates = getOwnedDeclaredProductImages(product);
 
   return Array.from(new Set([...localCandidates, ...declaredCandidates]));
+}
+
+export function getOwnedProductGalleryImages(
+  product: Pick<Product, "id" | "image" | "images">,
+  limit = 8
+): string[] {
+  const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
+    (fileName) => `/images/products/${product.id}/${fileName}`
+  );
+  const declaredCandidates = [...getOwnedDeclaredProductImages(product)].sort((a, b) => a.localeCompare(b));
+  const mergedCandidates = [...localCandidates];
+  const seenCandidates = new Set(localCandidates);
+
+  for (const candidate of declaredCandidates) {
+    if (seenCandidates.has(candidate)) {
+      continue;
+    }
+
+    mergedCandidates.push(candidate);
+    seenCandidates.add(candidate);
+  }
+
+  return Array.from(new Set(mergedCandidates)).slice(0, Math.max(1, limit));
 }
 
 export function getSelectableSizes(product: Pick<Product, "sizes">): string[] {
