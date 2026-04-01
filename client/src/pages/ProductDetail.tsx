@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import NotFound from "@/pages/not-found";
@@ -37,7 +37,27 @@ export default function ProductDetail() {
   const { addItem } = useCart();
   const { toast } = useToast();
 
-  if (isLoading) {
+  const productState = isLoading ? "loading" : error || !product ? "NOT_FOUND" : "found";
+
+  useEffect(() => {
+    let robotsTag = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+
+    if (productState === "NOT_FOUND") {
+      if (!robotsTag) {
+        robotsTag = document.createElement("meta");
+        robotsTag.setAttribute("name", "robots");
+        document.head.appendChild(robotsTag);
+      }
+      robotsTag.setAttribute("content", "noindex");
+      return;
+    }
+
+    if (robotsTag?.getAttribute("content") === "noindex") {
+      robotsTag.remove();
+    }
+  }, [productState]);
+
+  if (productState === "loading") {
     return (
       <Layout>
         <section className="py-16 md:py-24">
@@ -54,7 +74,11 @@ export default function ProductDetail() {
     );
   }
 
-  if (error || !product) {
+  if (productState === "NOT_FOUND") {
+    return <NotFound />;
+  }
+
+  if (!product) {
     return <NotFound />;
   }
 

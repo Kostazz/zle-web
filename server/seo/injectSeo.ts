@@ -2,6 +2,7 @@ import { attachOfferPolicySchema, buildMerchantReturnPolicy, buildOfferShippingD
 
 const canonicalRegex = /<link\b(?=[^>]*\brel\s*=\s*(?:["']?canonical["']?))[^>]*>/i;
 const ogUrlRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:url["']?))[^>]*>/i;
+const robotsRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?robots["']?))[^>]*>/i;
 const headCloseRegex = /<\/head>/i;
 const headOpenRegex = /<head[^>]*>/i;
 const htmlOpenRegex = /<html[^>]*>/i;
@@ -153,4 +154,32 @@ export function injectSeo(html: string, canonicalUrl: string): string {
   }
 
   return output;
+}
+
+export function injectSeoWithOptions(
+  html: string,
+  canonicalUrl: string,
+  options?: {
+    robots?: string;
+  },
+): string {
+  let output = injectSeo(html, canonicalUrl);
+  const robots = options?.robots?.trim();
+
+  if (!robots) {
+    return output;
+  }
+
+  const robotsTag = `<meta name="robots" content="${escapeHtmlAttr(robots)}">`;
+
+  if (robotsRegex.test(output)) {
+    output = output.replace(robotsRegex, robotsTag);
+    return output;
+  }
+
+  if (headCloseRegex.test(output)) {
+    return output.replace(headCloseRegex, `  ${robotsTag}\n</head>`);
+  }
+
+  return `${output}\n${robotsTag}`;
 }
