@@ -3,6 +3,15 @@ import { attachOfferPolicySchema, buildMerchantReturnPolicy, buildOfferShippingD
 const canonicalRegex = /<link\b(?=[^>]*\brel\s*=\s*(?:["']?canonical["']?))[^>]*>/i;
 const ogUrlRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:url["']?))[^>]*>/i;
 const robotsRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?robots["']?))[^>]*>/i;
+const titleRegex = /<title\b[^>]*>[\s\S]*?<\/title>/i;
+const descriptionRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?description["']?))[^>]*>/i;
+const ogTitleRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:title["']?))[^>]*>/i;
+const ogDescriptionRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:description["']?))[^>]*>/i;
+const ogImageRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:image["']?))[^>]*>/i;
+const twitterCardRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:card["']?))[^>]*>/i;
+const twitterTitleRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:title["']?))[^>]*>/i;
+const twitterDescriptionRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:description["']?))[^>]*>/i;
+const twitterImageRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:image["']?))[^>]*>/i;
 const headCloseRegex = /<\/head>/i;
 const headOpenRegex = /<head[^>]*>/i;
 const htmlOpenRegex = /<html[^>]*>/i;
@@ -27,6 +36,19 @@ function sanitizeCanonicalUrl(canonicalUrl: string): string {
     return `${url.origin}${url.pathname}${url.search}${url.hash}`;
   } catch {
     return "https://zleshop.cz/";
+  }
+}
+
+function sanitizeAbsoluteUrl(url: string): string {
+  const value = (url || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    if (!/^https?:$/.test(parsed.protocol)) return "";
+    if (/localhost|127\.0\.0\.1|::1/i.test(parsed.hostname)) return "";
+    return parsed.toString();
+  } catch {
+    return "";
   }
 }
 
@@ -117,10 +139,31 @@ function augmentJsonLdScripts(html: string): { output: string; hasOfferJsonLd: b
   return { output, hasOfferJsonLd };
 }
 
-export function injectSeo(html: string, canonicalUrl: string): string {
+export type SeoMeta = {
+  title?: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  twitterCard?: string;
+  twitterTitle?: string;
+  twitterDescription?: string;
+  twitterImage?: string;
+  ogUrl?: string;
+};
+
+function upsertTag(output: string, regex: RegExp, tag: string): { output: string; exists: boolean } {
+  if (regex.test(output)) {
+    return { output: output.replace(regex, tag), exists: true };
+  }
+  return { output, exists: false };
+}
+
+export function injectSeo(html: string, canonicalUrl: string, seoMeta?: SeoMeta): string {
   const safeUrl = escapeHtmlAttr(sanitizeCanonicalUrl(canonicalUrl));
   const canonicalTag = `<link rel="canonical" href="${safeUrl}">`;
-  const ogUrlTag = `<meta property="og:url" content="${safeUrl}">`;
+  const safeOgUrl = escapeHtmlAttr(sanitizeAbsoluteUrl(seoMeta?.ogUrl || canonicalUrl) || sanitizeCanonicalUrl(canonicalUrl));
+  const ogUrlTag = `<meta property="og:url" content="${safeOgUrl}">`;
 
   const augmented = augmentJsonLdScripts(html);
   let output = augmented.output;
@@ -136,9 +179,37 @@ export function injectSeo(html: string, canonicalUrl: string): string {
     hasCanonical = true;
   }
 
-  if (ogUrlRegex.test(output)) {
-    output = output.replace(ogUrlRegex, ogUrlTag);
-    hasOgUrl = true;
+  ({ output, exists: hasOgUrl } = upsertTag(output, ogUrlRegex, ogUrlTag));
+
+  const title = seoMeta?.title?.trim();
+  const description = seoMeta?.description?.trim();
+  const ogTitle = seoMeta?.ogTitle?.trim();
+  const ogDescription = seoMeta?.ogDescription?.trim();
+  const ogImage = sanitizeAbsoluteUrl(seoMeta?.ogImage || "");
+  const twitterCard = seoMeta?.twitterCard?.trim();
+  const twitterTitle = seoMeta?.twitterTitle?.trim();
+  const twitterDescription = seoMeta?.twitterDescription?.trim();
+  const twitterImage = sanitizeAbsoluteUrl(seoMeta?.twitterImage || "");
+
+  const dynamicTags = [
+    title ? { regex: titleRegex, tag: `<title>${escapeHtmlAttr(title)}</title>` } : null,
+    description ? { regex: descriptionRegex, tag: `<meta name="description" content="${escapeHtmlAttr(description)}">` } : null,
+    ogTitle ? { regex: ogTitleRegex, tag: `<meta property="og:title" content="${escapeHtmlAttr(ogTitle)}">` } : null,
+    ogDescription ? { regex: ogDescriptionRegex, tag: `<meta property="og:description" content="${escapeHtmlAttr(ogDescription)}">` } : null,
+    ogImage ? { regex: ogImageRegex, tag: `<meta property="og:image" content="${escapeHtmlAttr(ogImage)}">` } : null,
+    twitterCard ? { regex: twitterCardRegex, tag: `<meta name="twitter:card" content="${escapeHtmlAttr(twitterCard)}">` } : null,
+    twitterTitle ? { regex: twitterTitleRegex, tag: `<meta name="twitter:title" content="${escapeHtmlAttr(twitterTitle)}">` } : null,
+    twitterDescription ? { regex: twitterDescriptionRegex, tag: `<meta name="twitter:description" content="${escapeHtmlAttr(twitterDescription)}">` } : null,
+    twitterImage ? { regex: twitterImageRegex, tag: `<meta name="twitter:image" content="${escapeHtmlAttr(twitterImage)}">` } : null,
+  ].filter((item): item is { regex: RegExp; tag: string } => Boolean(item));
+
+  const missingDynamicTags: string[] = [];
+  for (const { regex, tag } of dynamicTags) {
+    const result = upsertTag(output, regex, tag);
+    output = result.output;
+    if (!result.exists) {
+      missingDynamicTags.push(tag);
+    }
   }
 
   if (!hasCanonical || !hasOgUrl) {
@@ -146,6 +217,15 @@ export function injectSeo(html: string, canonicalUrl: string): string {
       .filter(Boolean)
       .join("\n  ");
 
+    if (headCloseRegex.test(output)) {
+      output = output.replace(headCloseRegex, `  ${missingTags}\n</head>`);
+    } else {
+      output += `\n${missingTags}`;
+    }
+  }
+
+  if (missingDynamicTags.length > 0) {
+    const missingTags = missingDynamicTags.join("\n  ");
     if (headCloseRegex.test(output)) {
       output = output.replace(headCloseRegex, `  ${missingTags}\n</head>`);
     } else {
