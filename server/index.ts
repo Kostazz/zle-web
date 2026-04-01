@@ -248,27 +248,69 @@ function serveStaticProd(app: express.Express) {
   app.get("*", async (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
 
-    const base = (
+    const configuredBase = (
       process.env.VITE_PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL || "https://zleshop.cz"
     ).replace(/\/+$/, "");
+    const base = (() => {
+      try {
+        const parsed = new URL(configuredBase);
+        if (/localhost|127\.0\.0\.1|::1/i.test(parsed.hostname)) {
+          return "https://zleshop.cz";
+        }
+        return `${parsed.protocol}//${parsed.host}`;
+      } catch {
+        return "https://zleshop.cz";
+      }
+    })();
     const cleanPath = (req.path || "/").replace(/\/+$/, "") || "/";
     const canonicalUrl = `${base}${cleanPath === "/" ? "/" : cleanPath}`;
 
     const productPathMatch = cleanPath.match(/^\/p\/([^/]+)$/);
     const productId = productPathMatch?.[1] ? decodeURIComponent(productPathMatch[1]) : null;
 
-    let productExists = true;
+    let product = null;
     if (productId) {
       try {
-        productExists = Boolean(await storage.getProduct(productId));
+        product = await storage.getProduct(productId);
       } catch {
-        productExists = true;
+        product = null;
       }
     }
 
-    const html = productExists
+    const productExists = Boolean(productId ? product : true);
+    const defaultOgImage = `${base}/images/brand/hero.png`;
+
+    const html = !productId
       ? injectSeo(indexHtmlTemplate, canonicalUrl)
-      : injectSeoWithOptions(indexHtmlTemplate, canonicalUrl, { robots: "noindex, nofollow" });
+      : productExists && product
+        ? (() => {
+            const productTitle = `${product.name} | ZLE Shop`;
+            const coverPath = `/images/products/${product.id}/cover.jpg`;
+            const hasCoverImage = fs.existsSync(path.join(liveProductsRoot, product.id, "cover.jpg"))
+              || fs.existsSync(path.join(altLiveProductsRoot, product.id, "cover.jpg"));
+            const fallbackImage = (product.image || "").trim();
+            const productImage = hasCoverImage
+              ? `${base}${coverPath}`
+              : /^https?:\/\//i.test(fallbackImage)
+                ? fallbackImage
+                : /^\//.test(fallbackImage)
+                  ? `${base}${fallbackImage}`
+                  : defaultOgImage;
+
+            return injectSeo(indexHtmlTemplate, canonicalUrl, {
+              title: productTitle,
+              description: product.description,
+              ogTitle: productTitle,
+              ogDescription: product.description,
+              ogImage: productImage,
+              twitterCard: "summary_large_image",
+              twitterTitle: productTitle,
+              twitterDescription: product.description,
+              twitterImage: productImage,
+              ogUrl: canonicalUrl,
+            });
+          })()
+        : injectSeoWithOptions(indexHtmlTemplate, canonicalUrl, { robots: "noindex, nofollow" });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache");
