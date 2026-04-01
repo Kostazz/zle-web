@@ -179,6 +179,7 @@ export function getRouteMetaWithProduct(
       match: PRODUCT_PATH_PATTERN,
       title: "Produkt | ZLE",
       description: "Produkt nebyl nalezen. Prohlédni si aktuální merch v našem shopu.",
+      noindex: true,
       ogImage: DEFAULT_OG_IMAGE,
       breadcrumb: [
         { label: "Home", path: "/" },

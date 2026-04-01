@@ -14,7 +14,8 @@ import { requestIdMiddleware } from "./middleware/requestId";
 import { apiLimiter, strictLimiter } from "./middleware/rateLimit";
 import { env, flags, printEnvStatus, getHealthData } from "./env";
 import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
-import { injectSeo } from "./seo/injectSeo";
+import { injectSeo, injectSeoWithOptions } from "./seo/injectSeo";
+import { storage } from "./storage";
 import { validateRequiredEnv } from "./utils/validateEnv";
 
 validateRequiredEnv();
@@ -244,7 +245,7 @@ function serveStaticProd(app: express.Express) {
 
   app.use(express.static(distDir, { maxAge: "1h", etag: true, index: false }));
 
-  app.get("*", (req, res, next) => {
+  app.get("*", async (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
 
     const base = (
@@ -253,11 +254,25 @@ function serveStaticProd(app: express.Express) {
     const cleanPath = (req.path || "/").replace(/\/+$/, "") || "/";
     const canonicalUrl = `${base}${cleanPath === "/" ? "/" : cleanPath}`;
 
-    const html = injectSeo(indexHtmlTemplate, canonicalUrl);
+    const productPathMatch = cleanPath.match(/^\/p\/([^/]+)$/);
+    const productId = productPathMatch?.[1] ? decodeURIComponent(productPathMatch[1]) : null;
+
+    let productExists = true;
+    if (productId) {
+      try {
+        productExists = Boolean(await storage.getProduct(productId));
+      } catch {
+        productExists = true;
+      }
+    }
+
+    const html = productExists
+      ? injectSeo(indexHtmlTemplate, canonicalUrl)
+      : injectSeoWithOptions(indexHtmlTemplate, canonicalUrl, { robots: "noindex, nofollow" });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache");
-    res.send(html);
+    res.status(productExists ? 200 : 404).send(html);
   });
 }
 
