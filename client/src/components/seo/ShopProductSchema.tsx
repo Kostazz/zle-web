@@ -29,20 +29,6 @@ function removeJsonLd(id: string) {
   if (script) script.remove();
 }
 
-type ProductSchemaIdentity = {
-  url?: string;
-};
-
-function readProductSchemaIdentity(script: HTMLScriptElement | null): ProductSchemaIdentity | null {
-  if (!script?.textContent) return null;
-
-  try {
-    return JSON.parse(script.textContent) as ProductSchemaIdentity;
-  } catch {
-    return null;
-  }
-}
-
 export function ShopProductSchema() {
   const [location] = useLocation();
   const { data: products, isFetched } = useProducts();
@@ -60,16 +46,10 @@ export function ShopProductSchema() {
     if (currentProduct) {
       const declaredImages = getOwnedDeclaredProductImages(currentProduct);
       const image = declaredImages[0] || currentProduct.image || "/images/brand/hero.png";
-      const ssrScript = document.getElementById(SSR_PRODUCT_SCHEMA_ID) as HTMLScriptElement | null;
-      const expectedUrl = `${baseUrl}/p/${encodeURIComponent(currentProduct.id)}`;
-      const identity = readProductSchemaIdentity(ssrScript);
-
-      if (!ssrScript || identity?.url !== expectedUrl) {
-        upsertJsonLd(SSR_PRODUCT_SCHEMA_ID, buildProductJsonLd(currentProduct, {
-          siteUrl: baseUrl,
-          imageUrl: image,
-        }));
-      }
+      upsertJsonLd(SSR_PRODUCT_SCHEMA_ID, buildProductJsonLd(currentProduct, {
+        siteUrl: baseUrl,
+        imageUrl: image,
+      }));
     } else if (!productId) {
       removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
     } else if (isFetched) {
