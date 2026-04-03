@@ -17,26 +17,46 @@ function cleanText(value: string | null | undefined): string {
   return (value || "").trim();
 }
 
-function categoryLabel(category?: string | null): string {
-  const value = cleanText(category);
-  if (!value) return "";
-
-  return value
+function normalizeKey(value: string | null | undefined): string {
+  return cleanText(value)
+    .toLowerCase()
     .replace(/[\-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+    .replace(/\s+/g, " ");
+}
+
+function inferProductType(product: ProductSeoData): string | null {
+  const category = normalizeKey(product.category);
+  const name = normalizeKey(product.name);
+  const haystack = `${category} ${name}`;
+
+  if (/snapback|5 panel|cap|kšilt|cepic|čepic/.test(haystack)) return "Snapback čepice ZLE";
+  if (/hoodie|mikina/.test(haystack)) return "Mikina ZLE";
+  if (/tee|tričko|triko|shirt/.test(haystack)) return "Tričko ZLE";
+  if (/beanie|kulich|beanie/.test(haystack)) return "Beanie ZLE";
+  if (/crewneck/.test(haystack)) return "Crewneck mikina ZLE";
+
+  return null;
+}
+
+function extractFeatureFragments(text: string): string[] {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return [];
+
+  return compact
+    .split(/[.!?]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 8)
+    .slice(0, 2)
+    .map((part) => part.replace(/[,;:]$/, ""));
 }
 
 function formatSizes(sizes?: string[] | null): string {
-  if (!Array.isArray(sizes) || sizes.length === 0) {
-    return "";
-  }
+  if (!Array.isArray(sizes) || sizes.length === 0) return "";
 
-  const normalized = Array.from(new Set(sizes.map((size) => cleanText(size)).filter(Boolean))).slice(0, 3);
-  if (normalized.length === 0) return "";
+  const normalized = Array.from(new Set(sizes.map((size) => cleanText(size)).filter(Boolean))).slice(0, 4);
+  if (normalized.length <= 1) return "";
 
-  return normalized.length === 1 ? `velikost ${normalized[0]}` : `velikosti ${normalized.join(", ")}`;
+  return `Velikosti ${normalized.join("-")}`;
 }
 
 function formatPrice(price?: number | null): string {
@@ -47,25 +67,36 @@ function formatPrice(price?: number | null): string {
   return `${Math.round(price)} Kč`;
 }
 
+function formatSentence(parts: string[]): string {
+  return parts.filter(Boolean).join(". ").replace(/\.+$/, "").concat(".");
+}
+
+function trimForSnippet(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+
+  const clipped = text.slice(0, maxLength - 1);
+  const safe = clipped.slice(0, Math.max(clipped.lastIndexOf(" "), 40)).trimEnd();
+  return `${safe}…`;
+}
+
 export function buildProductSeoDescription(product: ProductSeoData): string {
-  const name = cleanText(product.name) || "Produkt";
-  const category = categoryLabel(product.category);
-  const base = category ? `${name} (${category})` : name;
+  const title = inferProductType(product) || cleanText(product.name) || "Produkt ZLE";
+  const featureParts = extractFeatureFragments(cleanText(product.description));
+  const sizes = formatSizes(product.sizes);
+  const price = formatPrice(product.price);
 
-  const attributes = [formatPrice(product.price), formatSizes(product.sizes)].filter(Boolean).slice(0, 2);
+  const core = [title, ...featureParts.slice(0, 2), sizes, price].filter(Boolean);
+  const built = formatSentence(core);
+  return trimForSnippet(built, 158);
+}
 
-  if (attributes.length > 0) {
-    return `${base} od ZLE. ${attributes.join(", ")}.`;
-  }
+export function buildProductOgDescription(product: ProductSeoData): string {
+  const title = inferProductType(product) || cleanText(product.name) || "Produkt ZLE";
+  const feature = extractFeatureFragments(cleanText(product.description))[0];
+  const price = formatPrice(product.price);
 
-  const sourceDescription = cleanText(product.description);
-  if (sourceDescription) {
-    const compact = sourceDescription.replace(/\s+/g, " ").trim();
-    const snippet = compact.length > 110 ? `${compact.slice(0, 107).trimEnd()}...` : compact;
-    return `${name} od ZLE. ${snippet}`;
-  }
-
-  return `${name} od ZLE. Produkt z aktuální nabídky ZLE shopu.`;
+  const parts = [title, feature, price].filter(Boolean);
+  return trimForSnippet(formatSentence(parts), 132);
 }
 
 export function getProductCanonicalPath(productId: string): string {
@@ -95,6 +126,7 @@ export function buildProductJsonLd(product: ProductSeoData, input: { siteUrl?: s
     "@type": "Offer",
     url,
     priceCurrency: "CZK",
+    itemCondition: "https://schema.org/NewCondition",
   };
 
   if (typeof product.price === "number" && Number.isFinite(product.price) && product.price > 0) {
@@ -111,6 +143,7 @@ export function buildProductJsonLd(product: ProductSeoData, input: { siteUrl?: s
     "@context": "https://schema.org",
     "@type": "Product",
     name: cleanText(product.name) || "Produkt ZLE",
+    sku: cleanText(product.id),
     image,
     description,
     brand: {

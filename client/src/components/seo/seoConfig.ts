@@ -1,4 +1,4 @@
-import { buildProductSeoDescription } from "@shared/productSeo";
+import { buildProductOgDescription, buildProductSeoDescription } from "@shared/productSeo";
 export const DEFAULT_TITLE = "ZLE — Live Raw, Ride Hard";
 export const DEFAULT_DESCRIPTION =
   "ZLE — underground skate/street crew. Live raw, ride hard. No filters, no bullshit.";
@@ -17,6 +17,7 @@ export type RouteMeta = {
   description: string;
   noindex?: boolean;
   ogImage?: string;
+  ogDescription?: string;
   breadcrumb?: BreadcrumbItem[];
 };
 
@@ -185,6 +186,7 @@ export function getRouteMetaWithProduct(
       description: "Produkt nebyl nalezen. Prohlédni si aktuální merch v našem shopu.",
       noindex: true,
       ogImage: DEFAULT_OG_IMAGE,
+      ogDescription: "Produkt není dostupný. Podívej se na aktuální nabídku ZLE shopu.",
       breadcrumb: [
         { label: "Home", path: "/" },
         { label: "Shop", path: "/shop" },
@@ -197,6 +199,7 @@ export function getRouteMetaWithProduct(
     title: `${product.name} | ZLE Shop`,
     description: buildProductSeoDescription(product),
     ogImage: product.image || DEFAULT_OG_IMAGE,
+    ogDescription: buildProductOgDescription(product),
     breadcrumb: [
       { label: "Home", path: "/" },
       { label: "Shop", path: "/shop" },

@@ -17,7 +17,7 @@ import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 import { injectSeo, injectSeoWithOptions } from "./seo/injectSeo";
 import { storage } from "./storage";
 import { validateRequiredEnv } from "./utils/validateEnv";
-import { buildProductJsonLd, buildProductSeoDescription, toAbsoluteUrl } from "@shared/productSeo";
+import { buildProductJsonLd, buildProductOgDescription, buildProductSeoDescription, toAbsoluteUrl } from "@shared/productSeo";
 
 validateRequiredEnv();
 
@@ -310,6 +310,7 @@ function serveStaticProd(app: express.Express) {
                   : defaultOgImage;
 
             const productDescription = buildProductSeoDescription(product);
+            const productOgDescription = buildProductOgDescription(product);
             const productSchema = buildProductJsonLd(product, {
               siteUrl: base,
               imageUrl: productImage,
@@ -318,12 +319,12 @@ function serveStaticProd(app: express.Express) {
               title: productTitle,
               description: productDescription,
               ogTitle: productTitle,
-              ogDescription: productDescription,
+              ogDescription: productOgDescription,
               ogImage: toAbsoluteUrl(productImage, base),
               ogType: "product",
               twitterCard: "summary_large_image",
               twitterTitle: productTitle,
-              twitterDescription: productDescription,
+              twitterDescription: productOgDescription,
               twitterImage: toAbsoluteUrl(productImage, base),
               ogUrl: canonicalUrl,
             });

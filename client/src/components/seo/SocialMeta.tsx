@@ -45,11 +45,12 @@ export function SocialMeta() {
     const route = getRouteMetaWithProduct(location, products);
     const title = route?.title || DEFAULT_TITLE;
     const description = route?.description || DEFAULT_DESCRIPTION;
+    const ogDescription = route?.ogDescription || description;
     const image = toAbsoluteUrl(route?.ogImage || DEFAULT_OG_IMAGE);
     const twitterSite = import.meta.env.VITE_TWITTER_SITE?.trim();
 
     upsertMetaByProperty("og:title", title);
-    upsertMetaByProperty("og:description", description);
+    upsertMetaByProperty("og:description", ogDescription);
     upsertMetaByProperty("og:image", image);
     upsertMetaByProperty("og:type", currentProduct ? "product" : "website");
     upsertMetaByProperty("og:locale", "cs_CZ");
@@ -58,7 +59,7 @@ export function SocialMeta() {
 
     upsertMetaByName("twitter:card", "summary_large_image");
     upsertMetaByName("twitter:title", title);
-    upsertMetaByName("twitter:description", description);
+    upsertMetaByName("twitter:description", ogDescription);
     upsertMetaByName("twitter:image", image);
 
     const twitterSiteTag = document.querySelector<HTMLMetaElement>('meta[name="twitter:site"]');
