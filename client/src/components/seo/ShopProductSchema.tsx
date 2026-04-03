@@ -31,7 +31,7 @@ function removeJsonLd(id: string) {
 
 export function ShopProductSchema() {
   const [location] = useLocation();
-  const { data: products, isFetched } = useProducts();
+  const { data: products, isSuccess } = useProducts();
   const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -52,7 +52,7 @@ export function ShopProductSchema() {
       }));
     } else if (!productId) {
       removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
-    } else if (isFetched) {
+    } else if (isSuccess) {
       removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
     }
 
@@ -123,7 +123,7 @@ export function ShopProductSchema() {
       "@type": "ItemList",
       itemListElement,
     });
-  }, [location, products, isFetched]);
+  }, [location, products, isSuccess]);
 
   return null;
 }
