@@ -24,16 +24,27 @@ function normalizeKey(value: string | null | undefined): string {
     .replace(/\s+/g, " ");
 }
 
+function hasWord(input: string, pattern: RegExp): boolean {
+  return pattern.test(input);
+}
+
 function inferProductType(product: ProductSeoData): string | null {
   const category = normalizeKey(product.category);
   const name = normalizeKey(product.name);
-  const haystack = `${category} ${name}`;
 
-  if (/snapback|5 panel|cap|kšilt|cepic|čepic/.test(haystack)) return "Snapback čepice ZLE";
-  if (/hoodie|mikina/.test(haystack)) return "Mikina ZLE";
-  if (/tee|tričko|triko|shirt/.test(haystack)) return "Tričko ZLE";
-  if (/beanie|kulich|beanie/.test(haystack)) return "Beanie ZLE";
-  if (/crewneck/.test(haystack)) return "Crewneck mikina ZLE";
+  if (hasWord(category, /\b(snapback|cap|hat|cepic|čepic|kšiltovka)\b/)) return "Snapback čepice ZLE";
+  if (hasWord(category, /\b(hoodie|mikina)\b/)) return "Mikina ZLE";
+  if (hasWord(category, /\b(tee|tričko|triko|t shirt|tshirt)\b/)) return "Tričko ZLE";
+  if (hasWord(category, /\b(beanie|kulich)\b/)) return "Beanie ZLE";
+  if (hasWord(category, /\bcrewneck\b/)) return "Crewneck mikina ZLE";
+
+  if (hasWord(name, /\b(snapback|kšiltovka)\b/) || (hasWord(name, /\b(5 panel|5panel)\b/) && hasWord(name, /\b(cepic|čepic|cap)\b/))) {
+    return "Snapback čepice ZLE";
+  }
+  if (hasWord(name, /\b(hoodie|mikina)\b/)) return "Mikina ZLE";
+  if (hasWord(name, /\b(tee|tričko|triko|t shirt|tshirt)\b/)) return "Tričko ZLE";
+  if (hasWord(name, /\b(beanie|kulich)\b/)) return "Beanie ZLE";
+  if (hasWord(name, /\bcrewneck\b/)) return "Crewneck mikina ZLE";
 
   return null;
 }
@@ -94,8 +105,11 @@ export function buildProductOgDescription(product: ProductSeoData): string {
   const title = inferProductType(product) || cleanText(product.name) || "Produkt ZLE";
   const feature = extractFeatureFragments(cleanText(product.description))[0];
   const price = formatPrice(product.price);
+  const safeName = cleanText(product.name);
+  const modelHint = safeName && normalizeKey(safeName) !== normalizeKey(title) ? `Model ${safeName}` : "";
+  const sizes = formatSizes(product.sizes);
 
-  const parts = [title, feature, price].filter(Boolean);
+  const parts = [title, feature || modelHint || sizes, price].filter(Boolean);
   return trimForSnippet(formatSentence(parts), 132);
 }
 
