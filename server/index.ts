@@ -49,8 +49,15 @@ export function log(message: string, source = "express") {
 }
 
 
+function safeJsonLd(payload: unknown): string {
+  return JSON.stringify(payload)
+    .replace(/</g, "\u003c")
+    .replace(/>/g, "\u003e")
+    .replace(/&/g, "\u0026");
+}
+
 function injectJsonLdScript(html: string, id: string, payload: unknown): string {
-  const scriptTag = `<script type="application/ld+json" id="${id}">${JSON.stringify(payload)}</script>`;
+  const scriptTag = `<script type="application/ld+json" id="${id}">${safeJsonLd(payload)}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `  ${scriptTag}
 </head>`);
