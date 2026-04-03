@@ -37,13 +37,13 @@ function upsertMetaByProperty(property: string, content: string) {
 
 export function SocialMeta() {
   const [location] = useLocation();
-  const { data: products, isFetched } = useProducts();
+  const { data: products, isSuccess } = useProducts();
 
   useEffect(() => {
     const productId = location.match(/^\/p\/([^/]+)$/)?.[1];
     const isProductRoute = Boolean(productId);
     const currentProduct = productId ? products?.find((item) => item.id === productId) : undefined;
-    const shouldUseProductOgType = isProductRoute && (Boolean(currentProduct) || !isFetched);
+    const shouldUseProductOgType = isProductRoute && (Boolean(currentProduct) || !isSuccess);
     const route = getRouteMetaWithProduct(location, products);
     const title = route?.title || DEFAULT_TITLE;
     const description = route?.description || DEFAULT_DESCRIPTION;
@@ -70,7 +70,7 @@ export function SocialMeta() {
     } else if (twitterSiteTag) {
       twitterSiteTag.remove();
     }
-  }, [location, products, isFetched]);
+  }, [location, products, isSuccess]);
 
   return null;
 }
