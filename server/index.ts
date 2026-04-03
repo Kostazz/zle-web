@@ -17,6 +17,7 @@ import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 import { injectSeo, injectSeoWithOptions } from "./seo/injectSeo";
 import { storage } from "./storage";
 import { validateRequiredEnv } from "./utils/validateEnv";
+import { buildProductJsonLd, buildProductOgDescription, buildProductSeoDescription, toAbsoluteUrl } from "@shared/productSeo";
 
 validateRequiredEnv();
 
@@ -45,6 +46,24 @@ export function log(message: string, source = "express") {
     hour12: true,
   });
   console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+
+function safeJsonLd(payload: unknown): string {
+  return JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+}
+
+function injectJsonLdScript(html: string, id: string, payload: unknown): string {
+  const scriptTag = `<script type="application/ld+json" id="${id}">${safeJsonLd(payload)}</script>`;
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `  ${scriptTag}
+</head>`);
+  }
+  return `${html}
+${scriptTag}`;
 }
 
 // ----- static images -----
@@ -297,18 +316,27 @@ function serveStaticProd(app: express.Express) {
                   ? `${base}${fallbackImage}`
                   : defaultOgImage;
 
-            return injectSeo(indexHtmlTemplate, canonicalUrl, {
+            const productDescription = buildProductSeoDescription(product);
+            const productOgDescription = buildProductOgDescription(product);
+            const productSchema = buildProductJsonLd(product, {
+              siteUrl: base,
+              imageUrl: productImage,
+            });
+            const seoHtml = injectSeo(indexHtmlTemplate, canonicalUrl, {
               title: productTitle,
-              description: product.description,
+              description: productDescription,
               ogTitle: productTitle,
-              ogDescription: product.description,
-              ogImage: productImage,
+              ogDescription: productOgDescription,
+              ogImage: toAbsoluteUrl(productImage, base),
+              ogType: "product",
               twitterCard: "summary_large_image",
               twitterTitle: productTitle,
-              twitterDescription: product.description,
-              twitterImage: productImage,
+              twitterDescription: productOgDescription,
+              twitterImage: toAbsoluteUrl(productImage, base),
               ogUrl: canonicalUrl,
             });
+
+            return injectJsonLdScript(seoHtml, "zle-product-schema-ssr", productSchema);
           })()
         : injectSeoWithOptions(indexHtmlTemplate, canonicalUrl, { robots: "noindex, nofollow" });
 

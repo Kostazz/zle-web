@@ -1,3 +1,4 @@
+import { buildProductOgDescription, buildProductSeoDescription } from "@shared/productSeo";
 export const DEFAULT_TITLE = "ZLE — Live Raw, Ride Hard";
 export const DEFAULT_DESCRIPTION =
   "ZLE — underground skate/street crew. Live raw, ride hard. No filters, no bullshit.";
@@ -16,14 +17,18 @@ export type RouteMeta = {
   description: string;
   noindex?: boolean;
   ogImage?: string;
+  ogDescription?: string;
   breadcrumb?: BreadcrumbItem[];
 };
 
 type ProductSeoSource = {
   id: string;
   name: string;
-  description: string;
+  description?: string | null;
   image?: string | null;
+  category?: string | null;
+  sizes?: string[];
+  price?: number;
 };
 
 export const ROUTE_META: RouteMeta[] = [
@@ -181,6 +186,7 @@ export function getRouteMetaWithProduct(
       description: "Produkt nebyl nalezen. Prohlédni si aktuální merch v našem shopu.",
       noindex: true,
       ogImage: DEFAULT_OG_IMAGE,
+      ogDescription: "Produkt není dostupný. Podívej se na aktuální nabídku ZLE shopu.",
       breadcrumb: [
         { label: "Home", path: "/" },
         { label: "Shop", path: "/shop" },
@@ -191,8 +197,9 @@ export function getRouteMetaWithProduct(
   return {
     match: PRODUCT_PATH_PATTERN,
     title: `${product.name} | ZLE Shop`,
-    description: product.description,
+    description: buildProductSeoDescription(product),
     ogImage: product.image || DEFAULT_OG_IMAGE,
+    ogDescription: buildProductOgDescription(product),
     breadcrumb: [
       { label: "Home", path: "/" },
       { label: "Shop", path: "/shop" },
@@ -210,22 +217,12 @@ function normalizePathname(pathname: string): string {
   return pathOnly.replace(/\/+$/, "") || "/";
 }
 
-export function getCanonicalPath(
-  pathname: string,
-  products: ProductSeoSource[] | undefined,
-): string {
+export function getCanonicalPath(pathname: string): string {
   const normalizedPath = normalizePathname(pathname);
   const productId = getProductIdFromPath(normalizedPath);
 
   if (productId) {
     return `/p/${productId}`;
-  }
-
-  const routeMeta = getRouteMetaWithProduct(normalizedPath, products);
-  const breadcrumbPath = routeMeta?.breadcrumb?.[routeMeta.breadcrumb.length - 1]?.path;
-
-  if (breadcrumbPath) {
-    return normalizePathname(breadcrumbPath);
   }
 
   return normalizedPath;
