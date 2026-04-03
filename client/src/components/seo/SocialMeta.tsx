@@ -37,11 +37,13 @@ function upsertMetaByProperty(property: string, content: string) {
 
 export function SocialMeta() {
   const [location] = useLocation();
-  const { data: products } = useProducts();
+  const { data: products, isFetched } = useProducts();
 
   useEffect(() => {
     const productId = location.match(/^\/p\/([^/]+)$/)?.[1];
+    const isProductRoute = Boolean(productId);
     const currentProduct = productId ? products?.find((item) => item.id === productId) : undefined;
+    const shouldUseProductOgType = isProductRoute && (Boolean(currentProduct) || !isFetched);
     const route = getRouteMetaWithProduct(location, products);
     const title = route?.title || DEFAULT_TITLE;
     const description = route?.description || DEFAULT_DESCRIPTION;
@@ -52,7 +54,7 @@ export function SocialMeta() {
     upsertMetaByProperty("og:title", title);
     upsertMetaByProperty("og:description", ogDescription);
     upsertMetaByProperty("og:image", image);
-    upsertMetaByProperty("og:type", currentProduct ? "product" : "website");
+    upsertMetaByProperty("og:type", shouldUseProductOgType ? "product" : "website");
     upsertMetaByProperty("og:locale", "cs_CZ");
     upsertMetaByProperty("og:image:width", "1408");
     upsertMetaByProperty("og:image:height", "768");
@@ -68,7 +70,7 @@ export function SocialMeta() {
     } else if (twitterSiteTag) {
       twitterSiteTag.remove();
     }
-  }, [location, products]);
+  }, [location, products, isFetched]);
 
   return null;
 }

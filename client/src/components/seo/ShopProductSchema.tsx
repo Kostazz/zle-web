@@ -45,7 +45,7 @@ function readProductSchemaIdentity(script: HTMLScriptElement | null): ProductSch
 
 export function ShopProductSchema() {
   const [location] = useLocation();
-  const { data: products } = useProducts();
+  const { data: products, isFetched } = useProducts();
   const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -70,7 +70,9 @@ export function ShopProductSchema() {
           imageUrl: image,
         }));
       }
-    } else {
+    } else if (!productId) {
+      removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
+    } else if (isFetched) {
       removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
     }
 
@@ -141,7 +143,7 @@ export function ShopProductSchema() {
       "@type": "ItemList",
       itemListElement,
     });
-  }, [location, products]);
+  }, [location, products, isFetched]);
 
   return null;
 }
