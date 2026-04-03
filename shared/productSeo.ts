@@ -148,9 +148,11 @@ export function buildProductJsonLd(product: ProductSeoData, input: { siteUrl?: s
   }
 
   if (typeof product.stock === "number") {
-    offer.availability = product.stock > 0
-      ? "https://schema.org/InStock"
-      : "https://schema.org/OutOfStock";
+    offer.availability = product.isActive === false
+      ? "https://schema.org/OutOfStock"
+      : product.stock > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock";
   }
 
   return {
