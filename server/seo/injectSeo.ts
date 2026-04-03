@@ -8,6 +8,7 @@ const descriptionRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?description["']?))
 const ogTitleRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:title["']?))[^>]*>/i;
 const ogDescriptionRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:description["']?))[^>]*>/i;
 const ogImageRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:image["']?))[^>]*>/i;
+const ogTypeRegex = /<meta\b(?=[^>]*\bproperty\s*=\s*(?:["']?og:type["']?))[^>]*>/i;
 const twitterCardRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:card["']?))[^>]*>/i;
 const twitterTitleRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:title["']?))[^>]*>/i;
 const twitterDescriptionRegex = /<meta\b(?=[^>]*\bname\s*=\s*(?:["']?twitter:description["']?))[^>]*>/i;
@@ -145,6 +146,7 @@ export type SeoMeta = {
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
+  ogType?: string;
   twitterCard?: string;
   twitterTitle?: string;
   twitterDescription?: string;
@@ -186,6 +188,7 @@ export function injectSeo(html: string, canonicalUrl: string, seoMeta?: SeoMeta)
   const ogTitle = seoMeta?.ogTitle?.trim();
   const ogDescription = seoMeta?.ogDescription?.trim();
   const ogImage = sanitizeAbsoluteUrl(seoMeta?.ogImage || "");
+  const ogType = seoMeta?.ogType?.trim();
   const twitterCard = seoMeta?.twitterCard?.trim();
   const twitterTitle = seoMeta?.twitterTitle?.trim();
   const twitterDescription = seoMeta?.twitterDescription?.trim();
@@ -197,6 +200,7 @@ export function injectSeo(html: string, canonicalUrl: string, seoMeta?: SeoMeta)
     ogTitle ? { regex: ogTitleRegex, tag: `<meta property="og:title" content="${escapeHtmlAttr(ogTitle)}">` } : null,
     ogDescription ? { regex: ogDescriptionRegex, tag: `<meta property="og:description" content="${escapeHtmlAttr(ogDescription)}">` } : null,
     ogImage ? { regex: ogImageRegex, tag: `<meta property="og:image" content="${escapeHtmlAttr(ogImage)}">` } : null,
+    ogType ? { regex: ogTypeRegex, tag: `<meta property="og:type" content="${escapeHtmlAttr(ogType)}">` } : null,
     twitterCard ? { regex: twitterCardRegex, tag: `<meta name="twitter:card" content="${escapeHtmlAttr(twitterCard)}">` } : null,
     twitterTitle ? { regex: twitterTitleRegex, tag: `<meta name="twitter:title" content="${escapeHtmlAttr(twitterTitle)}">` } : null,
     twitterDescription ? { regex: twitterDescriptionRegex, tag: `<meta name="twitter:description" content="${escapeHtmlAttr(twitterDescription)}">` } : null,

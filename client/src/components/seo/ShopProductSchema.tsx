@@ -1,16 +1,15 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useProducts } from "@/hooks/use-products";
-import { getProductImageCandidates } from "@/lib/product-ui";
+import { getOwnedDeclaredProductImages, getProductImageCandidates } from "@/lib/product-ui";
+import { buildProductJsonLd, toAbsoluteUrl } from "@shared/productSeo";
 
 const SHOP_SCHEMA_ID = "zle-shop-itemlist-schema";
 const PRODUCT_SCHEMA_ID = "zle-product-schema";
 const baseUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://zleshop.cz").replace(/\/+$/, "");
 
 function toAbsoluteImageUrl(path: string) {
-  if (/^https?:\/\//i.test(path)) return path;
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${baseUrl}${normalizedPath}`;
+  return toAbsoluteUrl(path, baseUrl);
 }
 
 function upsertJsonLd(id: string, payload: unknown) {
@@ -109,34 +108,13 @@ export function ShopProductSchema() {
       return;
     }
 
-    const productUrl = `${baseUrl}/p/${currentProduct.id}`;
-    const images = Array.from(
-      new Set(getProductImageCandidates(currentProduct).map((image) => toAbsoluteImageUrl(image))),
-    );
+    const declaredImages = getOwnedDeclaredProductImages(currentProduct);
+    const image = declaredImages[0] || currentProduct.image || "/images/brand/hero.png";
 
-    upsertJsonLd(PRODUCT_SCHEMA_ID, {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      name: currentProduct.name,
-      description: currentProduct.description,
-      sku: currentProduct.id,
-      url: productUrl,
-      image: images,
-      brand: {
-        "@type": "Brand",
-        name: "ZLE",
-      },
-      offers: {
-        "@type": "Offer",
-        url: productUrl,
-        priceCurrency: "CZK",
-        price: String(currentProduct.price),
-        availability: currentProduct.isActive && currentProduct.stock > 0
-          ? "https://schema.org/InStock"
-          : "https://schema.org/OutOfStock",
-        itemCondition: "https://schema.org/NewCondition",
-      },
-    });
+    upsertJsonLd(PRODUCT_SCHEMA_ID, buildProductJsonLd(currentProduct, {
+      siteUrl: baseUrl,
+      imageUrl: image,
+    }));
   }, [location, products]);
 
   return null;
