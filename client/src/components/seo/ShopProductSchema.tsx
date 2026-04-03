@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useProducts } from "@/hooks/use-products";
-import { getProductImageCandidates } from "@/lib/product-ui";
-import { toAbsoluteUrl } from "@shared/productSeo";
+import { getOwnedDeclaredProductImages, getProductImageCandidates } from "@/lib/product-ui";
+import { buildProductJsonLd, toAbsoluteUrl } from "@shared/productSeo";
 
 const SHOP_SCHEMA_ID = "zle-shop-itemlist-schema";
 const PRODUCT_SCHEMA_ID = "zle-product-schema";
@@ -37,15 +37,27 @@ export function ShopProductSchema() {
     .slice(0, 10);
 
   useEffect(() => {
-    const isProductRoute = /^\/p\/[^/]+$/.test(location);
+    const productId = location.match(/^\/p\/([^/]+)$/)?.[1];
+    const currentProduct = productId ? products?.find((item) => item.id === productId) : undefined;
 
-    if (!isProductRoute) {
+    // Single schema identity for product detail (SSR-first, SPA fallback).
+    removeJsonLd(PRODUCT_SCHEMA_ID);
+
+    if (currentProduct) {
+      const declaredImages = getOwnedDeclaredProductImages(currentProduct);
+      const image = declaredImages[0] || currentProduct.image || "/images/brand/hero.png";
+      const ssrScript = document.getElementById(SSR_PRODUCT_SCHEMA_ID) as HTMLScriptElement | null;
+      const expectedPathFragment = `/p/${encodeURIComponent(currentProduct.id)}`;
+
+      if (!ssrScript || !ssrScript.text.includes(expectedPathFragment)) {
+        upsertJsonLd(SSR_PRODUCT_SCHEMA_ID, buildProductJsonLd(currentProduct, {
+          siteUrl: baseUrl,
+          imageUrl: image,
+        }));
+      }
+    } else {
       removeJsonLd(SSR_PRODUCT_SCHEMA_ID);
     }
-
-    // Single source of truth for Product JSON-LD is SSR.
-    // Client layer only cleans up any legacy client tag and never re-generates product schema.
-    removeJsonLd(PRODUCT_SCHEMA_ID);
 
     if (location !== "/shop") {
       removeJsonLd(SHOP_SCHEMA_ID);
