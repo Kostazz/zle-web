@@ -18,10 +18,22 @@ type DuplicateScope = 'none' | 'same_product' | 'cross_product';
 type OverflowStatus = 'none' | 'within_limit' | 'overflow';
 
 interface CliOptions {
+  mode: 'scan' | 'apply';
+}
+
+interface ScanCliOptions extends CliOptions {
   mode: 'scan';
   root: string;
   out: string;
   maxLogicalImages: number;
+}
+
+interface ApplyCliOptions extends CliOptions {
+  mode: 'apply';
+  plan: string;
+  backup: string;
+  yes: boolean;
+  dryRun: boolean;
 }
 
 interface FileAuditEntry {
@@ -72,6 +84,30 @@ interface PlanEntry {
   overflowStatus: OverflowStatus;
 }
 
+interface ApplyManifestEntry {
+  sourcePath: string;
+  backupPath: string;
+  relativePath: string;
+  category: Category;
+  action: Action;
+  confidence: Confidence;
+  status: 'moved' | 'simulated';
+  method: 'rename' | 'copy_unlink' | 'dry_run';
+}
+
+interface ApplySkippedEntry {
+  relativePath: string | null;
+  category: string | null;
+  action: string | null;
+  confidence: string | null;
+  reason: string;
+}
+
+interface ApplyFailedEntry {
+  relativePath: string | null;
+  reason: string;
+}
+
 interface AuditReport {
   generatedAt: string;
   root: string;
@@ -98,21 +134,29 @@ interface AuditReport {
 const MANAGED_SLOTS = new Set(['cover', '01', '02', '03', '04', '05']);
 const VALID_EXTENSIONS = new Set(['jpg', 'webp']);
 const RESIDUE_FILENAMES = new Set(['.DS_Store', 'Thumbs.db']);
+const APPLY_ALLOWED_CATEGORIES = new Set<Category>(['non_product_residue', 'exact_duplicate_same_product']);
+const PRODUCT_ASSET_ROOT_RELATIVE = path.join('client', 'public', 'images', 'products');
 
 function fail(message: string): never {
   throw new Error(message);
 }
 
-function parseArgs(argv: string[]): CliOptions {
+function parseArgs(argv: string[]): ScanCliOptions | ApplyCliOptions {
   const [mode, ...rest] = argv;
-  if (mode !== 'scan') {
-    fail(`Unsupported mode: ${mode ?? '(missing)'}. Only 'scan' is supported.`);
+  if (mode === 'scan') {
+    return parseScanArgs(rest);
   }
+  if (mode === 'apply') {
+    return parseApplyArgs(rest);
+  }
+  fail(`Unsupported mode: ${mode ?? '(missing)'}. Supported modes are 'scan' and 'apply'.`);
+}
 
+function parseScanArgs(argv: string[]): ScanCliOptions {
   const args = new Map<string, string>();
-  for (let i = 0; i < rest.length; i += 1) {
-    const key = rest[i];
-    const value = rest[i + 1];
+  for (let i = 0; i < argv.length; i += 1) {
+    const key = argv[i];
+    const value = argv[i + 1];
     if (!key?.startsWith('--')) {
       fail(`Unexpected argument '${key}'. Expected --root, --out, --max-logical-images.`);
     }
@@ -137,10 +181,54 @@ function parseArgs(argv: string[]): CliOptions {
   }
 
   return {
-    mode,
+    mode: 'scan',
     root,
     out,
     maxLogicalImages,
+  };
+}
+
+function parseApplyArgs(argv: string[]): ApplyCliOptions {
+  const args = new Map<string, string>();
+  let yes = false;
+  let dryRun = false;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === '--yes') {
+      yes = true;
+      continue;
+    }
+    if (token === '--dry-run') {
+      dryRun = true;
+      continue;
+    }
+    if (!token?.startsWith('--')) {
+      fail(`Unexpected argument '${token}'. Expected --plan, --backup, --yes, --dry-run.`);
+    }
+    const value = argv[i + 1];
+    if (!value || value.startsWith('--')) {
+      fail(`Missing value for argument '${token}'.`);
+    }
+    args.set(token, value);
+    i += 1;
+  }
+
+  const plan = args.get('--plan');
+  const backup = args.get('--backup');
+
+  if (!plan) fail('Missing required argument --plan <path>.');
+  if (!backup) fail('Missing required argument --backup <path>.');
+  if (!yes) {
+    fail("Apply mode requires explicit confirmation '--yes'. No files were moved.");
+  }
+
+  return {
+    mode: 'apply',
+    plan,
+    backup,
+    yes,
+    dryRun,
   };
 }
 
@@ -543,7 +631,7 @@ async function ensureDirectoryExists(dirPath: string): Promise<void> {
   }
 }
 
-async function buildAuditReport(options: CliOptions): Promise<{ report: AuditReport; plan: PlanEntry[]; outputDir: string }> {
+async function buildAuditReport(options: ScanCliOptions): Promise<{ report: AuditReport; plan: PlanEntry[]; outputDir: string }> {
   const rootResolved = path.resolve(options.root);
   const outResolved = path.resolve(options.out);
   const tmpResolved = path.resolve('tmp');
@@ -748,12 +836,364 @@ async function writeOutputs(outputDir: string, report: AuditReport, plan: PlanEn
   await fs.writeFile(planPath, JSON.stringify(plan, null, 2), 'utf8');
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isSubPath(parentPath: string, childPath: string): boolean {
+  const relative = path.relative(parentPath, childPath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function parseCategory(value: unknown): Category | null {
+  if (typeof value !== 'string') return null;
+  const allowed: Category[] = [
+    'managed_slot_file',
+    'invalid_name',
+    'invalid_extension',
+    'non_product_residue',
+    'overflow_candidate',
+    'exact_duplicate_same_product',
+    'exact_duplicate_cross_product_candidate',
+    'manual_review_required',
+  ];
+  return allowed.includes(value as Category) ? (value as Category) : null;
+}
+
+function parseAction(value: unknown): Action | null {
+  if (value === 'keep' || value === 'review' || value === 'candidate_move_to_backup') {
+    return value;
+  }
+  return null;
+}
+
+function parseConfidence(value: unknown): Confidence | null {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return null;
+}
+
+function isApplyEligiblePlanEntry(entry: PlanEntry): boolean {
+  return (
+    entry.action === 'candidate_move_to_backup' &&
+    entry.confidence === 'high' &&
+    APPLY_ALLOWED_CATEGORIES.has(entry.category)
+  );
+}
+
+async function validateApplyPlanEntry(
+  entry: PlanEntry,
+  sourceBasePath: string,
+  backupBasePath: string,
+): Promise<{ sourcePath: string; backupPath: string }> {
+  if (!entry.relativePath || typeof entry.relativePath !== 'string') {
+    fail('Plan entry is missing required string field relativePath.');
+  }
+
+  const sourcePath = path.resolve(sourceBasePath, entry.relativePath);
+  if (!isSubPath(sourceBasePath, sourcePath)) {
+    fail(`Plan entry '${entry.relativePath}' resolves outside '${PRODUCT_ASSET_ROOT_RELATIVE}'.`);
+  }
+
+  const sourceStat = await fs.stat(sourcePath).catch(() => null);
+  if (!sourceStat || !sourceStat.isFile()) {
+    fail(`Source file does not exist or is not a file: '${sourcePath}'.`);
+  }
+
+  const relativeFromRepo = path.join(PRODUCT_ASSET_ROOT_RELATIVE, entry.relativePath);
+  const backupPath = path.resolve(backupBasePath, relativeFromRepo);
+  const backupExists = await fs.stat(backupPath).then(() => true).catch(() => false);
+  if (backupExists) {
+    fail(`Backup target already exists. Refusing to overwrite: '${backupPath}'.`);
+  }
+
+  return { sourcePath, backupPath };
+}
+
+async function moveToBackup(sourcePath: string, backupPath: string): Promise<'rename' | 'copy_unlink'> {
+  await fs.mkdir(path.dirname(backupPath), { recursive: true });
+
+  try {
+    await fs.rename(sourcePath, backupPath);
+    return 'rename';
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code !== 'EXDEV') {
+      throw error;
+    }
+
+    await fs.copyFile(sourcePath, backupPath);
+    await fs.unlink(sourcePath);
+    return 'copy_unlink';
+  }
+}
+
+async function writeApplyOutputs(
+  outputDir: string,
+  totalPlanEntries: number,
+  eligibleEntries: number,
+  moved: ApplyManifestEntry[],
+  skipped: ApplySkippedEntry[],
+  failed: ApplyFailedEntry[],
+  blockedEntries: number,
+  dryRunSimulatedMoves: number,
+): Promise<void> {
+  const appliedPath = path.join(outputDir, 'applied.json');
+  const skippedPath = path.join(outputDir, 'skipped.json');
+  const failedPath = path.join(outputDir, 'failed.json');
+  const summaryPath = path.join(outputDir, 'summary.md');
+  const summary = [
+    '# Photo Apply Summary',
+    '',
+    `Generated at: ${new Date().toISOString()}`,
+    `- Total plan entries: ${totalPlanEntries}`,
+    `- Eligible apply entries: ${eligibleEntries}`,
+    `- Moved entries: ${moved.length}`,
+    `- Skipped entries: ${skipped.length}`,
+    `- Blocked entries: ${blockedEntries}`,
+    `- Failed entries: ${failed.length}`,
+    `- Dry-run simulated moves: ${dryRunSimulatedMoves}`,
+    '',
+    `Allowed categories: ${Array.from(APPLY_ALLOWED_CATEGORIES).join(', ')}`,
+  ].join('\n');
+
+  await fs.writeFile(appliedPath, JSON.stringify(moved, null, 2), 'utf8');
+  await fs.writeFile(skippedPath, JSON.stringify(skipped, null, 2), 'utf8');
+  await fs.writeFile(failedPath, JSON.stringify(failed, null, 2), 'utf8');
+  await fs.writeFile(summaryPath, `${summary}\n`, 'utf8');
+}
+
+async function runApply(options: ApplyCliOptions): Promise<void> {
+  const planPath = path.resolve(options.plan);
+  const planExists = await fs.stat(planPath).then((stat) => stat.isFile()).catch(() => false);
+  if (!planExists) {
+    fail(`Plan file does not exist: '${options.plan}'.`);
+  }
+
+  const rawPlan = await fs.readFile(planPath, 'utf8');
+  let parsedPlan: unknown;
+  try {
+    parsedPlan = JSON.parse(rawPlan);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    fail(`Invalid JSON in plan '${options.plan}': ${msg}`);
+  }
+  if (!Array.isArray(parsedPlan)) {
+    fail(`Plan '${options.plan}' must be a JSON array.`);
+  }
+
+  const eligiblePlanEntries: PlanEntry[] = [];
+  const skipped: ApplySkippedEntry[] = [];
+  const failed: ApplyFailedEntry[] = [];
+  let blockedEntries = 0;
+  for (const item of parsedPlan) {
+    if (!isObjectRecord(item)) {
+      skipped.push({
+        relativePath: null,
+        category: null,
+        action: null,
+        confidence: null,
+        reason: 'Invalid plan entry object; ignored for apply.',
+      });
+      continue;
+    }
+
+    const action = parseAction(item.action);
+    const confidence = parseConfidence(item.confidence);
+    const category = parseCategory(item.category);
+    const relativePath = typeof item.relativePath === 'string' ? item.relativePath : null;
+    const reason = typeof item.reason === 'string' ? item.reason : '';
+    const productId = typeof item.productId === 'string' ? item.productId : '';
+    const logicalSlot = typeof item.logicalSlot === 'string' ? item.logicalSlot : null;
+    const canonicalTarget = typeof item.canonicalTarget === 'string' ? item.canonicalTarget : null;
+    const hashClusterId = typeof item.hashClusterId === 'string' ? item.hashClusterId : '';
+    const overflowStatus: OverflowStatus =
+      item.overflowStatus === 'none' || item.overflowStatus === 'within_limit' || item.overflowStatus === 'overflow'
+        ? item.overflowStatus
+        : 'none';
+
+    if (!action) {
+      skipped.push({
+        relativePath,
+        category: typeof item.category === 'string' ? item.category : null,
+        action: null,
+        confidence,
+        reason: 'Missing or invalid action; ignored for apply.',
+      });
+      continue;
+    }
+
+    if (action !== 'candidate_move_to_backup') {
+      skipped.push({ relativePath, category, action, confidence, reason: 'Entry action is not candidate_move_to_backup; ignored for apply.' });
+      continue;
+    }
+
+    if (confidence !== 'high') {
+      skipped.push({
+        relativePath,
+        category,
+        action,
+        confidence,
+        reason: `Blocked for apply: confidence is '${confidence ?? 'missing'}', expected 'high'.`,
+      });
+      continue;
+    }
+
+    if (!category) {
+      skipped.push({
+        relativePath,
+        category: null,
+        action,
+        confidence,
+        reason: 'Blocked for apply: missing or invalid category.',
+      });
+      blockedEntries += 1;
+      continue;
+    }
+
+    if (!APPLY_ALLOWED_CATEGORIES.has(category)) {
+      skipped.push({
+        relativePath,
+        category,
+        action,
+        confidence,
+        reason: 'Blocked for apply: category is not allowlisted.',
+      });
+      blockedEntries += 1;
+      continue;
+    }
+
+    if (!relativePath) {
+      fail('Plan entry missing required string field relativePath for eligible apply candidate.');
+    }
+
+    const entry: PlanEntry = {
+      action,
+      reason,
+      confidence,
+      relativePath,
+      productId,
+      category,
+      logicalSlot,
+      canonicalTarget,
+      hashClusterId,
+      overflowStatus,
+    };
+
+    eligiblePlanEntries.push(entry);
+  }
+
+  const sourceBasePath = path.resolve(PRODUCT_ASSET_ROOT_RELATIVE);
+  const sourceBaseExists = await fs.stat(sourceBasePath).then((stat) => stat.isDirectory()).catch(() => false);
+  if (!sourceBaseExists) {
+    fail(`Expected product asset root does not exist: '${PRODUCT_ASSET_ROOT_RELATIVE}'.`);
+  }
+
+  const backupBasePath = path.resolve(options.backup);
+  await ensureDirectoryExists(backupBasePath);
+
+  const timestamp = formatTimestamp(new Date());
+  const applyOutRoot = path.resolve('tmp', 'photo-apply');
+  await ensureDirectoryExists(applyOutRoot);
+  const applyOutputDir = path.join(applyOutRoot, timestamp);
+  await fs.mkdir(applyOutputDir, { recursive: false });
+
+  const prevalidated = await Promise.all(
+    eligiblePlanEntries.map(async (entry) => ({
+      entry,
+      ...(await validateApplyPlanEntry(entry, sourceBasePath, backupBasePath)),
+    })),
+  );
+
+  const moved: ApplyManifestEntry[] = [];
+  const dryRunSimulatedMoves = options.dryRun ? prevalidated.length : 0;
+
+  if (options.dryRun) {
+    for (const candidate of prevalidated) {
+      moved.push({
+        sourcePath: candidate.sourcePath,
+        backupPath: candidate.backupPath,
+        relativePath: candidate.entry.relativePath,
+        category: candidate.entry.category,
+        action: candidate.entry.action,
+        confidence: candidate.entry.confidence,
+        status: 'simulated',
+        method: 'dry_run',
+      });
+    }
+
+    await writeApplyOutputs(
+      applyOutputDir,
+      parsedPlan.length,
+      eligiblePlanEntries.length,
+      moved,
+      skipped,
+      failed,
+      blockedEntries,
+      dryRunSimulatedMoves,
+    );
+    process.stdout.write(`Apply dry-run complete. Outputs written to: ${applyOutputDir}\n`);
+    return;
+  }
+
+  for (const candidate of prevalidated) {
+    try {
+      const method = await moveToBackup(candidate.sourcePath, candidate.backupPath);
+      moved.push({
+        sourcePath: candidate.sourcePath,
+        backupPath: candidate.backupPath,
+        relativePath: candidate.entry.relativePath,
+        category: candidate.entry.category,
+        action: candidate.entry.action,
+        confidence: candidate.entry.confidence,
+        status: 'moved',
+        method,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      failed.push({
+        relativePath: candidate.entry.relativePath,
+        reason: msg,
+      });
+      await writeApplyOutputs(
+        applyOutputDir,
+        parsedPlan.length,
+        eligiblePlanEntries.length,
+        moved,
+        skipped,
+        failed,
+        blockedEntries,
+        0,
+      );
+      fail(`Apply failed while moving '${candidate.entry.relativePath}': ${msg}`);
+    }
+  }
+
+  await writeApplyOutputs(
+    applyOutputDir,
+    parsedPlan.length,
+    eligiblePlanEntries.length,
+    moved,
+    skipped,
+    failed,
+    blockedEntries,
+    0,
+  );
+  process.stdout.write(`Apply complete. Outputs written to: ${applyOutputDir}\n`);
+}
+
 async function main(): Promise<void> {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const { report, plan, outputDir } = await buildAuditReport(options);
-    await writeOutputs(outputDir, report, plan);
-    process.stdout.write(`Audit complete. Outputs written to: ${outputDir}\n`);
+    if (options.mode === 'scan') {
+      const { report, plan, outputDir } = await buildAuditReport(options);
+      await writeOutputs(outputDir, report, plan);
+      process.stdout.write(`Audit complete. Outputs written to: ${outputDir}\n`);
+      return;
+    }
+
+    await runApply(options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`photos-audit failed: ${message}\n`);
