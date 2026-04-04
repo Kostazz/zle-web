@@ -15,6 +15,96 @@ const LOCAL_IMAGE_CANDIDATE_NAMES = [
   "04.webp",
 ] as const;
 
+const LOGICAL_GALLERY_SLOTS = ["cover", "01", "02", "03", "04"] as const;
+
+type LogicalGallerySlot = (typeof LOGICAL_GALLERY_SLOTS)[number];
+
+function getLogicalGallerySlot(imagePath: string): LogicalGallerySlot | null {
+  const normalizedImagePath = normalizeImagePath(imagePath.trim());
+
+  if (!normalizedImagePath || /^https?:\/\//i.test(normalizedImagePath) || normalizedImagePath.startsWith("data:")) {
+    return null;
+  }
+
+  const normalizedLocalPath = normalizeLocalAssetPath(normalizedImagePath);
+  const fileName = normalizedLocalPath.split("/").filter(Boolean).at(-1);
+
+  if (!fileName) {
+    return null;
+  }
+
+  const slotMatch = fileName.match(/^(cover|0[1-4])\.(jpg|webp)$/i);
+
+  if (!slotMatch) {
+    return null;
+  }
+
+  return slotMatch[1].toLowerCase() as LogicalGallerySlot;
+}
+
+function getLocalFallbackCandidatesBySlot(
+  productId: string
+): Array<{ slot: LogicalGallerySlot; candidates: string[] }> {
+  const availableLocalNames = new Set<string>(LOCAL_IMAGE_CANDIDATE_NAMES);
+
+  return LOGICAL_GALLERY_SLOTS.flatMap((slot) => {
+    const jpgName = `${slot}.jpg`;
+    const webpName = `${slot}.webp`;
+    const candidates = [jpgName, webpName]
+      .filter((name) => availableLocalNames.has(name))
+      .map((name) => `/images/products/${productId}/${name}`);
+
+    return candidates.length > 0 ? [{ slot, candidates }] : [];
+  });
+}
+
+function mergeDeclaredAndFallbackCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
+  const declaredCandidates = getOwnedDeclaredProductImages(product);
+  const mergedCandidates: string[] = [];
+  const seenDeclaredPaths = new Set<string>();
+  const seenCandidatePaths = new Set<string>();
+  const coveredSlots = new Set<LogicalGallerySlot>();
+
+  for (const candidate of declaredCandidates) {
+    if (seenDeclaredPaths.has(candidate)) {
+      continue;
+    }
+
+    seenDeclaredPaths.add(candidate);
+    seenCandidatePaths.add(candidate);
+    mergedCandidates.push(candidate);
+
+    const slot = getLogicalGallerySlot(candidate);
+    if (slot) {
+      coveredSlots.add(slot);
+    }
+  }
+
+  for (const { slot, candidates } of getLocalFallbackCandidatesBySlot(product.id)) {
+    if (coveredSlots.has(slot)) {
+      continue;
+    }
+
+    let selectedCandidate: string | undefined;
+
+    for (const candidatePath of candidates) {
+      if (!seenCandidatePaths.has(candidatePath)) {
+        selectedCandidate = candidatePath;
+        break;
+      }
+    }
+
+    if (selectedCandidate) {
+      seenCandidatePaths.add(selectedCandidate);
+      mergedCandidates.push(selectedCandidate);
+    }
+
+    coveredSlots.add(slot);
+  }
+
+  return mergedCandidates;
+}
+
 function normalizeImagePath(path: string): string {
   if (!path) {
     return "";
@@ -86,36 +176,14 @@ export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "ima
 }
 
 export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
-  const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
-    (fileName) => `/images/products/${product.id}/${fileName}`
-  );
-
-  const declaredCandidates = getOwnedDeclaredProductImages(product);
-
-  return Array.from(new Set([...localCandidates, ...declaredCandidates]));
+  return mergeDeclaredAndFallbackCandidates(product);
 }
 
 export function getOwnedProductGalleryImages(
   product: Pick<Product, "id" | "image" | "images">,
   limit = 8
 ): string[] {
-  const localCandidates = LOCAL_IMAGE_CANDIDATE_NAMES.map(
-    (fileName) => `/images/products/${product.id}/${fileName}`
-  );
-  const declaredCandidates = [...getOwnedDeclaredProductImages(product)].sort((a, b) => a.localeCompare(b));
-  const mergedCandidates = [...localCandidates];
-  const seenCandidates = new Set(localCandidates);
-
-  for (const candidate of declaredCandidates) {
-    if (seenCandidates.has(candidate)) {
-      continue;
-    }
-
-    mergedCandidates.push(candidate);
-    seenCandidates.add(candidate);
-  }
-
-  return Array.from(new Set(mergedCandidates)).slice(0, Math.max(1, limit));
+  return mergeDeclaredAndFallbackCandidates(product).slice(0, Math.max(1, limit));
 }
 
 export function getSelectableSizes(product: Pick<Product, "sizes">): string[] {
