@@ -18,7 +18,7 @@ type DuplicateScope = 'none' | 'same_product' | 'cross_product';
 type OverflowStatus = 'none' | 'within_limit' | 'overflow';
 
 interface CliOptions {
-  mode: 'scan' | 'apply';
+  mode: 'scan' | 'apply' | 'migrate-hard-ownership';
 }
 
 interface ScanCliOptions extends CliOptions {
@@ -34,6 +34,15 @@ interface ApplyCliOptions extends CliOptions {
   backup: string;
   yes: boolean;
   dryRun: boolean;
+}
+
+interface MigrateHardOwnershipCliOptions extends CliOptions {
+  mode: 'migrate-hard-ownership';
+  report: string;
+  plan: string;
+  root: string;
+  out: string;
+  yes: boolean;
 }
 
 interface FileAuditEntry {
@@ -131,6 +140,27 @@ interface AuditReport {
   };
 }
 
+interface HardOwnershipMigrationEntry {
+  productId: string;
+  logicalSlot: string;
+  hashClusterId: string;
+  sourceRelativePath: string;
+  targetRelativePath: string | null;
+  sourceSha256: string;
+  sourceExt: string;
+  status: 'copied' | 'skipped' | 'failed';
+  reason: string;
+}
+
+interface MigratePlanEntry {
+  action: Action;
+  category: Category;
+  productId: string;
+  logicalSlot: string | null;
+  relativePath: string;
+  hashClusterId: string;
+}
+
 const MANAGED_SLOTS = new Set(['cover', '01', '02', '03', '04', '05']);
 const VALID_EXTENSIONS = new Set(['jpg', 'webp']);
 const RESIDUE_FILENAMES = new Set(['.DS_Store', 'Thumbs.db']);
@@ -141,7 +171,7 @@ function fail(message: string): never {
   throw new Error(message);
 }
 
-function parseArgs(argv: string[]): ScanCliOptions | ApplyCliOptions {
+function parseArgs(argv: string[]): ScanCliOptions | ApplyCliOptions | MigrateHardOwnershipCliOptions {
   const [mode, ...rest] = argv;
   if (mode === 'scan') {
     return parseScanArgs(rest);
@@ -149,7 +179,10 @@ function parseArgs(argv: string[]): ScanCliOptions | ApplyCliOptions {
   if (mode === 'apply') {
     return parseApplyArgs(rest);
   }
-  fail(`Unsupported mode: ${mode ?? '(missing)'}. Supported modes are 'scan' and 'apply'.`);
+  if (mode === 'migrate-hard-ownership') {
+    return parseMigrateHardOwnershipArgs(rest);
+  }
+  fail(`Unsupported mode: ${mode ?? '(missing)'}. Supported modes are 'scan', 'apply', and 'migrate-hard-ownership'.`);
 }
 
 function parseScanArgs(argv: string[]): ScanCliOptions {
@@ -229,6 +262,51 @@ function parseApplyArgs(argv: string[]): ApplyCliOptions {
     backup,
     yes,
     dryRun,
+  };
+}
+
+function parseMigrateHardOwnershipArgs(argv: string[]): MigrateHardOwnershipCliOptions {
+  const args = new Map<string, string>();
+  let yes = false;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (token === '--yes') {
+      yes = true;
+      continue;
+    }
+
+    if (!token?.startsWith('--')) {
+      fail(`Unexpected argument '${token}'. Expected --report, --plan, --root, --out, --yes.`);
+    }
+
+    const value = argv[i + 1];
+    if (!value || value.startsWith('--')) {
+      fail(`Missing value for argument '${token}'.`);
+    }
+    args.set(token, value);
+    i += 1;
+  }
+
+  const report = args.get('--report');
+  const plan = args.get('--plan');
+  const root = args.get('--root');
+  const out = args.get('--out');
+  if (!report) fail('Missing required argument --report <path>.');
+  if (!plan) fail('Missing required argument --plan <path>.');
+  if (!root) fail('Missing required argument --root <path>.');
+  if (!out) fail('Missing required argument --out <path>.');
+  if (!yes) {
+    fail("migrate-hard-ownership mode requires explicit confirmation '--yes'. No files were copied.");
+  }
+
+  return {
+    mode: 'migrate-hard-ownership',
+    report,
+    plan,
+    root,
+    out,
+    yes,
   };
 }
 
@@ -1183,6 +1261,480 @@ async function runApply(options: ApplyCliOptions): Promise<void> {
   process.stdout.write(`Apply complete. Outputs written to: ${applyOutputDir}\n`);
 }
 
+function parseReportFileEntry(value: unknown): FileAuditEntry | null {
+  if (!isObjectRecord(value)) return null;
+  if (
+    typeof value.productId !== 'string' ||
+    typeof value.relativePath !== 'string' ||
+    typeof value.filename !== 'string' ||
+    typeof value.ext !== 'string' ||
+    typeof value.stem !== 'string' ||
+    typeof value.sizeBytes !== 'number' ||
+    typeof value.sha256 !== 'string' ||
+    typeof value.hashClusterId !== 'string' ||
+    !Array.isArray(value.categories) ||
+    !Array.isArray(value.notes)
+  ) {
+    return null;
+  }
+
+  const duplicateScope: DuplicateScope =
+    value.duplicateScope === 'none' || value.duplicateScope === 'same_product' || value.duplicateScope === 'cross_product'
+      ? value.duplicateScope
+      : 'none';
+  const overflowStatus: OverflowStatus =
+    value.overflowStatus === 'none' || value.overflowStatus === 'within_limit' || value.overflowStatus === 'overflow'
+      ? value.overflowStatus
+      : 'none';
+
+  return {
+    productId: value.productId,
+    relativePath: value.relativePath,
+    filename: value.filename,
+    ext: value.ext,
+    stem: value.stem,
+    sizeBytes: value.sizeBytes,
+    sha256: value.sha256,
+    logicalSlot: typeof value.logicalSlot === 'string' ? value.logicalSlot : null,
+    isManagedSlotFile: Boolean(value.isManagedSlotFile),
+    isCanonicalKeepCandidate: Boolean(value.isCanonicalKeepCandidate),
+    canonicalReason: typeof value.canonicalReason === 'string' ? value.canonicalReason : null,
+    canonicalEligibilityReason: typeof value.canonicalEligibilityReason === 'string' ? value.canonicalEligibilityReason : null,
+    reviewReasonHint: typeof value.reviewReasonHint === 'string' ? value.reviewReasonHint : null,
+    hashClusterId: value.hashClusterId,
+    duplicateScope,
+    overflowStatus,
+    categories: value.categories.filter((item): item is Category => parseCategory(item) !== null),
+    notes: value.notes.filter((item): item is string => typeof item === 'string'),
+  };
+}
+
+function parseReportFileEntryStrict(value: unknown, index: number): FileAuditEntry {
+  const parsed = parseReportFileEntry(value);
+  if (!parsed) {
+    fail(`Invalid report.files[${index}] entry: expected complete FileAuditEntry-compatible object.`);
+  }
+  return parsed;
+}
+
+function parseMigratePlanEntryStrict(value: unknown, index: number): MigratePlanEntry {
+  if (!isObjectRecord(value)) {
+    fail(`Invalid plan[${index}] entry: expected object.`);
+  }
+
+  const action = parseAction(value.action);
+  const category = parseCategory(value.category);
+  const productId = value.productId;
+  const logicalSlot = value.logicalSlot;
+  const relativePath = value.relativePath;
+  const hashClusterId = value.hashClusterId;
+
+  if (!action) fail(`Invalid plan[${index}].action; expected one of keep|review|candidate_move_to_backup.`);
+  if (!category) fail(`Invalid plan[${index}].category; unexpected category value.`);
+  if (typeof productId !== 'string' || productId.length === 0) fail(`Invalid plan[${index}].productId; expected non-empty string.`);
+  if (!(typeof logicalSlot === 'string' || logicalSlot === null)) fail(`Invalid plan[${index}].logicalSlot; expected string|null.`);
+  if (typeof relativePath !== 'string' || relativePath.length === 0) {
+    fail(`Invalid plan[${index}].relativePath; expected non-empty string.`);
+  }
+  if (typeof hashClusterId !== 'string' || hashClusterId.length === 0) {
+    fail(`Invalid plan[${index}].hashClusterId; expected non-empty string.`);
+  }
+
+  return {
+    action,
+    category,
+    productId,
+    logicalSlot,
+    relativePath,
+    hashClusterId,
+  };
+}
+
+function selectPreferredMigrateSource(
+  candidateGroup: MigratePlanEntry[],
+  productId: string,
+  logicalSlot: string,
+): MigratePlanEntry {
+  if (candidateGroup.length === 0) {
+    fail(`Cannot select migrate source: empty candidate group for ${productId}::${logicalSlot}.`);
+  }
+
+  return [...candidateGroup].sort((a, b) => {
+    const aExt = normalizeExt(a.relativePath);
+    const bExt = normalizeExt(b.relativePath);
+    const aManagedTargetMatch = a.relativePath === `${productId}/${logicalSlot}.${aExt}` ? 0 : 1;
+    const bManagedTargetMatch = b.relativePath === `${productId}/${logicalSlot}.${bExt}` ? 0 : 1;
+    if (aManagedTargetMatch !== bManagedTargetMatch) {
+      return aManagedTargetMatch - bManagedTargetMatch;
+    }
+
+    const aExtPriority = aExt === 'jpg' ? 0 : aExt === 'webp' ? 1 : 2;
+    const bExtPriority = bExt === 'jpg' ? 0 : bExt === 'webp' ? 1 : 2;
+    if (aExtPriority !== bExtPriority) {
+      return aExtPriority - bExtPriority;
+    }
+
+    const pathLengthDiff = a.relativePath.length - b.relativePath.length;
+    if (pathLengthDiff !== 0) {
+      return pathLengthDiff;
+    }
+
+    return a.relativePath.localeCompare(b.relativePath);
+  })[0];
+}
+
+function buildMigrateSummaryMarkdown(
+  entries: HardOwnershipMigrationEntry[],
+  reportPath: string,
+  planPath: string,
+  root: string,
+): string {
+  const copied = entries.filter((entry) => entry.status === 'copied').length;
+  const skipped = entries.filter((entry) => entry.status === 'skipped').length;
+  const failed = entries.filter((entry) => entry.status === 'failed').length;
+  const uniqueClustersProcessed = new Set(entries.map((entry) => entry.hashClusterId)).size;
+  const affectedProductsCount = new Set(entries.map((entry) => entry.productId)).size;
+  const affectedLogicalSlotsCount = new Set(entries.map((entry) => `${entry.productId}::${entry.logicalSlot}`)).size;
+
+  return [
+    '# Photo Hard Ownership Migration Summary',
+    '',
+    `Generated at: ${new Date().toISOString()}`,
+    `Report: ${reportPath}`,
+    `Plan: ${planPath}`,
+    `Root: ${root}`,
+    '',
+    `- Total ownership candidates: ${entries.length}`,
+    `- Copied: ${copied}`,
+    `- Skipped: ${skipped}`,
+    `- Failed: ${failed}`,
+    `- Unique hash clusters processed: ${uniqueClustersProcessed}`,
+    `- Affected products count: ${affectedProductsCount}`,
+    `- Affected logical slots count: ${affectedLogicalSlotsCount}`,
+  ].join('\n');
+}
+
+async function writeMigrateOutputs(outputDir: string, manifest: HardOwnershipMigrationEntry[]): Promise<void> {
+  const skipped = manifest.filter((entry) => entry.status === 'skipped');
+  const failed = manifest.filter((entry) => entry.status === 'failed');
+
+  await fs.writeFile(
+    path.join(outputDir, 'ownership-migration.manifest.json'),
+    JSON.stringify(manifest, null, 2),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(outputDir, 'ownership-migration.skipped.json'),
+    JSON.stringify(skipped, null, 2),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(outputDir, 'ownership-migration.failed.json'),
+    JSON.stringify(failed, null, 2),
+    'utf8',
+  );
+}
+
+async function runMigrateHardOwnership(options: MigrateHardOwnershipCliOptions): Promise<void> {
+  const reportPath = path.resolve(options.report);
+  const planPath = path.resolve(options.plan);
+  const rootPath = path.resolve(options.root);
+  const outRoot = path.resolve(options.out);
+  const tmpResolved = path.resolve('tmp');
+
+  if (!outRoot.startsWith(tmpResolved + path.sep) && outRoot !== tmpResolved) {
+    fail(`Output path '${options.out}' must be inside 'tmp/'.`);
+  }
+
+  const [reportRaw, planRaw] = await Promise.all([
+    fs.readFile(reportPath, 'utf8').catch(() => fail(`Report file does not exist or is unreadable: '${options.report}'.`)),
+    fs.readFile(planPath, 'utf8').catch(() => fail(`Plan file does not exist or is unreadable: '${options.plan}'.`)),
+  ]);
+
+  const rootStat = await fs.stat(rootPath).catch(() => null);
+  if (!rootStat || !rootStat.isDirectory()) {
+    fail(`Asset root does not exist or is not a directory: '${options.root}'.`);
+  }
+
+  let parsedReport: unknown;
+  let parsedPlan: unknown;
+  try {
+    parsedReport = JSON.parse(reportRaw);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    fail(`Invalid JSON in report '${options.report}': ${msg}`);
+  }
+  try {
+    parsedPlan = JSON.parse(planRaw);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    fail(`Invalid JSON in plan '${options.plan}': ${msg}`);
+  }
+
+  if (!isObjectRecord(parsedReport) || !Array.isArray(parsedReport.files)) {
+    fail(`Report '${options.report}' is missing 'files' array.`);
+  }
+  if (!Array.isArray(parsedPlan)) {
+    fail(`Plan '${options.plan}' must be a JSON array.`);
+  }
+
+  const reportFiles = parsedReport.files.map((item, index) => parseReportFileEntryStrict(item, index));
+  const reportByRelativePath = new Map<string, FileAuditEntry>();
+  const reportByClusterProductSlot = new Map<string, FileAuditEntry[]>();
+
+  for (const file of reportFiles) {
+    if (reportByRelativePath.has(file.relativePath)) {
+      fail(`Report is inconsistent: duplicate relativePath '${file.relativePath}' detected.`);
+    }
+    reportByRelativePath.set(file.relativePath, file);
+
+    if (!file.logicalSlot) continue;
+    const key = `${file.hashClusterId}::${file.productId}::${file.logicalSlot}`;
+    const group = reportByClusterProductSlot.get(key) ?? [];
+    group.push(file);
+    reportByClusterProductSlot.set(key, group);
+  }
+
+  const parsedPlanEntries = parsedPlan.map((item, index) => parseMigratePlanEntryStrict(item, index));
+  const migrateCandidates = parsedPlanEntries.filter(
+    (entry) => entry.action === 'review' && entry.category === 'exact_duplicate_cross_product_candidate',
+  );
+  for (const entry of migrateCandidates) {
+    if (!entry.logicalSlot) {
+      fail(
+        `Plan is inconsistent for migrate-hard-ownership: cross-product review entry '${entry.relativePath}' is missing logicalSlot.`,
+      );
+    }
+  }
+
+  const clusterIdsByProductSlot = new Map<string, Set<string>>();
+  for (const entry of migrateCandidates) {
+    const logicalSlot = entry.logicalSlot;
+    if (!logicalSlot) {
+      fail(`Plan is inconsistent for migrate-hard-ownership: missing logicalSlot for '${entry.relativePath}'.`);
+    }
+    const slotKey = `${entry.productId}::${logicalSlot}`;
+    const clusters = clusterIdsByProductSlot.get(slotKey) ?? new Set<string>();
+    clusters.add(entry.hashClusterId);
+    clusterIdsByProductSlot.set(slotKey, clusters);
+  }
+  for (const [slotKey, clusters] of Array.from(clusterIdsByProductSlot.entries())) {
+    if (clusters.size > 1) {
+      const [productId, logicalSlot] = slotKey.split('::');
+      fail(
+        `Plan is inconsistent for migrate-hard-ownership: multiple hash clusters for product slot '${productId}::${logicalSlot}': ${Array.from(clusters).sort().join(', ')}.`,
+      );
+    }
+  }
+
+  const candidatesByClusterProductSlot = new Map<string, MigratePlanEntry[]>();
+  for (const entry of migrateCandidates) {
+    const key = `${entry.hashClusterId}::${entry.productId}::${entry.logicalSlot}`;
+    const group = candidatesByClusterProductSlot.get(key) ?? [];
+    group.push(entry);
+    candidatesByClusterProductSlot.set(key, group);
+  }
+
+  await ensureDirectoryExists(outRoot);
+  const outputDir = path.join(outRoot, formatTimestamp(new Date()));
+  await fs.mkdir(outputDir, { recursive: false });
+
+  const migrationEntries: HardOwnershipMigrationEntry[] = [];
+  const reservedTargetPaths = new Map<string, string>();
+
+  for (const [key, candidateGroup] of Array.from(candidatesByClusterProductSlot.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    const [hashClusterId, productId, logicalSlot] = key.split('::');
+    if (!hashClusterId || !productId || !logicalSlot) {
+      fail(`Internal migration key parse failure for '${key}'.`);
+    }
+
+    const sourcePlanEntry = selectPreferredMigrateSource(candidateGroup, productId, logicalSlot);
+    if (!sourcePlanEntry) {
+      fail(`No source plan entry available for migration key '${key}'.`);
+    }
+
+    const sourceReportEntry = reportByRelativePath.get(sourcePlanEntry.relativePath);
+    if (!sourceReportEntry) {
+      fail(
+        `Plan/report mismatch: source '${sourcePlanEntry.relativePath}' for key '${key}' is missing in report.files.`,
+      );
+    }
+    if (
+      sourceReportEntry.productId !== productId ||
+      sourceReportEntry.logicalSlot !== logicalSlot ||
+      sourceReportEntry.hashClusterId !== hashClusterId
+    ) {
+      fail(
+        `Plan/report mismatch for '${sourcePlanEntry.relativePath}': expected ${key}, got ${sourceReportEntry.hashClusterId}::${sourceReportEntry.productId}::${sourceReportEntry.logicalSlot ?? 'null'}.`,
+      );
+    }
+
+    const clusterProductSlotReportGroup = reportByClusterProductSlot.get(key) ?? [];
+    if (clusterProductSlotReportGroup.length === 0) {
+      fail(`Report is inconsistent: no report files for migration key '${key}'.`);
+    }
+
+    const targetRelativePath = `${productId}/${logicalSlot}.${sourceReportEntry.ext}`;
+    const existingReservation = reservedTargetPaths.get(targetRelativePath);
+    if (existingReservation && existingReservation !== key) {
+      fail(
+        `Duplicate target reservation conflict: target '${targetRelativePath}' reserved by both '${existingReservation}' and '${key}'.`,
+      );
+    }
+    reservedTargetPaths.set(targetRelativePath, key);
+
+    const sourcePath = path.resolve(rootPath, sourceReportEntry.relativePath);
+    const targetPath = path.resolve(rootPath, targetRelativePath);
+
+    if (!isSubPath(rootPath, sourcePath) || !isSubPath(rootPath, targetPath)) {
+      fail(`Ownership migration path resolution escaped configured root '${options.root}'.`);
+    }
+
+    const reportOwnedCandidates = clusterProductSlotReportGroup.filter(
+      (entry) => entry.isManagedSlotFile && entry.filename.toLowerCase() === `${logicalSlot}.${entry.ext}`,
+    );
+    let existingOwnedPath: string | null = null;
+    for (const owned of reportOwnedCandidates) {
+      const ownedPath = path.resolve(rootPath, owned.relativePath);
+      if (!isSubPath(rootPath, ownedPath)) {
+        fail(`Owned candidate path escaped configured root: '${owned.relativePath}'.`);
+      }
+      const exists = await fs.stat(ownedPath).then((stat) => stat.isFile()).catch(() => false);
+      if (exists) {
+        existingOwnedPath = owned.relativePath;
+        break;
+      }
+    }
+
+    if (existingOwnedPath) {
+      migrationEntries.push({
+        productId,
+        logicalSlot,
+        hashClusterId,
+        sourceRelativePath: sourceReportEntry.relativePath,
+        targetRelativePath: existingOwnedPath,
+        sourceSha256: sourceReportEntry.sha256,
+        sourceExt: sourceReportEntry.ext,
+        status: 'skipped',
+        reason: 'Managed slot owned file already exists on filesystem; no copy created.',
+      });
+      continue;
+    }
+
+    if (!VALID_EXTENSIONS.has(sourceReportEntry.ext)) {
+      migrationEntries.push({
+        productId,
+        logicalSlot,
+        hashClusterId,
+        sourceRelativePath: sourceReportEntry.relativePath,
+        targetRelativePath: null,
+        sourceSha256: sourceReportEntry.sha256,
+        sourceExt: sourceReportEntry.ext,
+        status: 'skipped',
+        reason: `Source extension '${sourceReportEntry.ext}' is not allowed for managed ownership copy.`,
+      });
+      continue;
+    }
+
+    const sourceStat = await fs.stat(sourcePath).catch(() => null);
+    if (!sourceStat || !sourceStat.isFile()) {
+      migrationEntries.push({
+        productId,
+        logicalSlot,
+        hashClusterId,
+        sourceRelativePath: sourceReportEntry.relativePath,
+        targetRelativePath,
+        sourceSha256: sourceReportEntry.sha256,
+        sourceExt: sourceReportEntry.ext,
+        status: 'failed',
+        reason: 'Selected source file does not exist at migration time.',
+      });
+      continue;
+    }
+
+    if (sourceReportEntry.relativePath === targetRelativePath) {
+      migrationEntries.push({
+        productId,
+        logicalSlot,
+        hashClusterId,
+        sourceRelativePath: sourceReportEntry.relativePath,
+        targetRelativePath,
+        sourceSha256: sourceReportEntry.sha256,
+        sourceExt: sourceReportEntry.ext,
+        status: 'skipped',
+        reason: 'Source already equals deterministic target path; no copy created.',
+      });
+      continue;
+    }
+
+    const targetExists = await fs.stat(targetPath).then(() => true).catch(() => false);
+    if (targetExists) {
+      migrationEntries.push({
+        productId,
+        logicalSlot,
+        hashClusterId,
+        sourceRelativePath: sourceReportEntry.relativePath,
+        targetRelativePath,
+        sourceSha256: sourceReportEntry.sha256,
+        sourceExt: sourceReportEntry.ext,
+        status: 'skipped',
+        reason: 'Target managed slot path already exists; refusing to overwrite.',
+      });
+      continue;
+    }
+
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath, fs.constants.COPYFILE_EXCL).then(
+      () => {
+        migrationEntries.push({
+          productId,
+          logicalSlot,
+          hashClusterId,
+          sourceRelativePath: sourceReportEntry.relativePath,
+          targetRelativePath,
+          sourceSha256: sourceReportEntry.sha256,
+          sourceExt: sourceReportEntry.ext,
+          status: 'copied',
+          reason: 'Created deterministic managed-slot owned copy from cluster-scoped review source.',
+        });
+      },
+      (error: unknown) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        migrationEntries.push({
+          productId,
+          logicalSlot,
+          hashClusterId,
+          sourceRelativePath: sourceReportEntry.relativePath,
+          targetRelativePath,
+          sourceSha256: sourceReportEntry.sha256,
+          sourceExt: sourceReportEntry.ext,
+          status: 'failed',
+          reason: msg,
+        });
+      },
+    );
+  }
+
+  await writeMigrateOutputs(outputDir, migrationEntries);
+  await fs.writeFile(
+    path.join(outputDir, 'summary.md'),
+    `${buildMigrateSummaryMarkdown(migrationEntries, options.report, options.plan, options.root)}\n`,
+    'utf8',
+  );
+
+  const failedCount = migrationEntries.filter((entry) => entry.status === 'failed').length;
+  if (failedCount > 0) {
+    process.stderr.write(
+      `Hard ownership migration finished with failures (${failedCount}). Outputs written to: ${outputDir}\n`,
+    );
+    fail(`migrate-hard-ownership is incomplete: ${failedCount} failed entries detected.`);
+  }
+
+  process.stdout.write(`Hard ownership migration complete. Outputs written to: ${outputDir}\n`);
+}
+
 async function main(): Promise<void> {
   try {
     const options = parseArgs(process.argv.slice(2));
@@ -1192,8 +1744,11 @@ async function main(): Promise<void> {
       process.stdout.write(`Audit complete. Outputs written to: ${outputDir}\n`);
       return;
     }
-
-    await runApply(options);
+    if (options.mode === 'apply') {
+      await runApply(options);
+      return;
+    }
+    await runMigrateHardOwnership(options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`photos-audit failed: ${message}\n`);
