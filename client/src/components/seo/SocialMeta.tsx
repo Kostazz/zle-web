@@ -60,23 +60,21 @@ export function SocialMeta() {
     const title = isProductRoute
       ? currentProduct
         ? buildProductMetaTitle(currentProduct)
-        : ""
+        : route?.title || DEFAULT_TITLE
       : route?.title || DEFAULT_TITLE;
     const description = isProductRoute
       ? currentProduct
         ? buildProductMetaDescription(currentProduct)
-        : ""
+        : route?.description || DEFAULT_DESCRIPTION
       : route?.description || DEFAULT_DESCRIPTION;
     const ogDescription = isProductRoute ? description : route?.ogDescription || description;
     const image = toAbsoluteUrl(route?.ogImage || DEFAULT_OG_IMAGE);
     const twitterSite = import.meta.env.VITE_TWITTER_SITE?.trim();
 
-    if (title && ogDescription) {
-      upsertMetaByProperty("og:title", title);
-      upsertMetaByProperty("og:description", ogDescription);
-      upsertMetaByName("twitter:title", title);
-      upsertMetaByName("twitter:description", ogDescription);
-    }
+    upsertMetaByProperty("og:title", title);
+    upsertMetaByProperty("og:description", ogDescription);
+    upsertMetaByName("twitter:title", title);
+    upsertMetaByName("twitter:description", ogDescription);
     upsertMetaByProperty("og:image", image);
     upsertMetaByProperty("og:type", shouldUseProductOgType ? "product" : "website");
     upsertMetaByProperty("og:locale", "cs_CZ");

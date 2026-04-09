@@ -35,18 +35,16 @@ export function SeoManager() {
     const title = isProductRoute
       ? currentProduct
         ? buildProductMetaTitle(currentProduct)
-        : ""
+        : route?.title || DEFAULT_TITLE
       : route?.title || DEFAULT_TITLE;
     const description = isProductRoute
       ? currentProduct
         ? buildProductMetaDescription(currentProduct)
-        : ""
+        : route?.description || DEFAULT_DESCRIPTION
       : route?.description || DEFAULT_DESCRIPTION;
 
-    if (title && description) {
-      document.title = title;
-      setMeta("description", description);
-    }
+    document.title = title;
+    setMeta("description", description);
 
     let robotsTag = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
     if (route?.noindex) {
