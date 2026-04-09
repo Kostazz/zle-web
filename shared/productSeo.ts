@@ -29,26 +29,12 @@ function extractFeatureFragments(text: string): string[] {
     .map((part) => part.replace(/[,;:]$/, ""));
 }
 
-function formatSizes(sizes?: string[] | null): string {
-  if (!Array.isArray(sizes) || sizes.length === 0) return "";
-
-  const normalized = Array.from(new Set(sizes.map((size) => cleanText(size)).filter(Boolean))).slice(0, 4);
-  if (normalized.length <= 1) return "";
-
-  return `Velikosti ${normalized.join("-")}`;
-}
-
 function formatPrice(price?: number | null): string {
   if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
     return "";
   }
 
   return `${Math.round(price)} Kč`;
-}
-
-function formatPriceForTitle(price?: number | null): string {
-  const formatted = formatPrice(price);
-  return formatted || "cena neuvedena";
 }
 
 function formatSentence(parts: string[]): string {
@@ -71,7 +57,8 @@ function buildFailClosedDescription(product: ProductSeoData): string {
 
 export function buildProductMetaTitle(product: ProductSeoData): string {
   const safeName = cleanText(product.name) || "Produkt ZLE";
-  return `${safeName} — ${formatPriceForTitle(product.price)}`;
+  const price = formatPrice(product.price);
+  return price ? `${safeName} — ${price}` : safeName;
 }
 
 export function buildProductMetaDescription(product: ProductSeoData, maxLength = 158): string {
