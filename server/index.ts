@@ -80,7 +80,7 @@ const productAssetsResolverMode = process.env.PRODUCT_ASSETS_RESOLVER_MODE === "
 // - alternate deploys that materialize public/images/products at repo root
 // NOTE: altLiveProductsRoot is intentionally kept until deploy strategy is fully unified.
 if (productAssetsResolverMode === "v3-versioned-assets") {
-  app.get("/images/products/:productId/:fileName", async (req, res) => {
+  app.get("/images/products/:productId/:fileName", apiLimiter, async (req, res) => {
     try {
       const resolved = await resolveProductAssetAbsolutePath(
         String(req.params.productId ?? ""),
