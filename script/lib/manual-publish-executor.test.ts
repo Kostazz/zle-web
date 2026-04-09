@@ -181,6 +181,64 @@ test("manual publish swaps staged outputs into the live root", async () => {
   }
 });
 
+test("clean-room publish fails closed when target already exists and is non-empty", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-clean-room-non-empty-"));
+  const runId = uniqueRunId("publish");
+  const cleanRoomRunId = uniqueRunId("clean-room");
+  try {
+    const { gateRunId, reportDir } = await writeFixture(root, runId);
+    const cleanRoomRoot = path.join(process.cwd(), "tmp", "remigration", "live-targets", cleanRoomRunId, "products");
+    await fs.promises.mkdir(cleanRoomRoot, { recursive: true });
+    await fs.promises.writeFile(path.join(cleanRoomRoot, "stale.txt"), "stale", "utf8");
+
+    await assert.rejects(() => runManualPublishExecutor({
+      runId,
+      gateRunId,
+      cleanRoomRunId,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot: path.join(root, "tmp", "agent-staging"),
+      reportDir,
+      tempRoot: path.join(root, "tmp"),
+    }), /Refusing clean-room publish into non-empty target/);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+    await fs.promises.rm(path.join(process.cwd(), "tmp", "remigration", "live-targets", cleanRoomRunId), { recursive: true, force: true });
+  }
+});
+
+test("clean-room publish succeeds for an empty allowlisted target", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-clean-room-empty-"));
+  const runId = uniqueRunId("publish");
+  const cleanRoomRunId = uniqueRunId("clean-room");
+  try {
+    const { gateRunId, reportDir } = await writeFixture(root, runId);
+    const cleanRoomRoot = path.join(process.cwd(), "tmp", "remigration", "live-targets", cleanRoomRunId, "products");
+    await fs.promises.mkdir(cleanRoomRoot, { recursive: true });
+    const defaultLiveProbe = path.join(path.resolve("client", "public", "images", "products"), `probe-${cleanRoomRunId}.txt`);
+    const defaultLiveExistedBefore = fs.existsSync(defaultLiveProbe);
+
+    const result = await runManualPublishExecutor({
+      runId,
+      gateRunId,
+      cleanRoomRunId,
+      allowExistingEmptyCleanRoomTarget: true,
+      gateDir: path.join(root, "tmp", "publish-gates"),
+      stagingManifestDir: path.join(root, "tmp", "agent-manifests"),
+      stagingRoot: path.join(root, "tmp", "agent-staging"),
+      reportDir,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    assert.equal(result.report.summary.published, 1);
+    assert.equal(fs.existsSync(path.join(cleanRoomRoot, "prod-1", "cover.jpg")), true);
+    assert.equal(fs.existsSync(defaultLiveProbe), defaultLiveExistedBefore);
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+    await fs.promises.rm(path.join(process.cwd(), "tmp", "remigration", "live-targets", cleanRoomRunId), { recursive: true, force: true });
+  }
+});
+
 test("stale manual publish lock is safely recovered and cleaned up", async () => {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "manual-publish-stale-lock-"));
   const runId = uniqueRunId("publish");
