@@ -8,6 +8,8 @@ type CliArgs = {
   gateRunId?: string;
   reportDir: string;
   validateOnly: boolean;
+  cleanRoomRunId?: string;
+  allowExistingEmptyCleanRoomTarget: boolean;
 };
 
 const ALLOWED_REPORT_ROOT = path.resolve("tmp", "publish-reports");
@@ -22,6 +24,7 @@ function parseArgs(argv: string[]): CliArgs {
     runId: "",
     reportDir: path.join("tmp", "publish-reports"),
     validateOnly: false,
+    allowExistingEmptyCleanRoomTarget: false,
   };
 
   for (let index = 0; index < argv.length; index++) {
@@ -42,6 +45,13 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--validate-only":
         args.validateOnly = true;
+        break;
+      case "--clean-room-run-id":
+        args.cleanRoomRunId = next ?? "";
+        index++;
+        break;
+      case "--allow-existing-empty-clean-room-target":
+        args.allowExistingEmptyCleanRoomTarget = true;
         break;
       default:
         throw new Error(`Unknown argument: ${token}`);
@@ -154,6 +164,8 @@ async function main(): Promise<void> {
     console.log(`run ${result.report.runId}`);
     console.log(`gate_run ${result.report.gateRunId}`);
     console.log(`mode ${args.validateOnly ? "validate-only" : "publish"}`);
+    console.log(`target_mode ${args.cleanRoomRunId ? "clean-room" : "default-live-root"}`);
+    if (args.cleanRoomRunId) console.log(`clean_room_run ${args.cleanRoomRunId}`);
     console.log(`ready ${result.report.summary.readyForPublish}`);
     console.log(`published ${result.report.summary.published}`);
     console.log(`failed ${result.report.summary.failed}`);

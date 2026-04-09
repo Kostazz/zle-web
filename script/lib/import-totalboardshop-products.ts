@@ -57,6 +57,8 @@ const publishReportSchema = z.object({
   debug: z.object({
     hadPartialResults: z.boolean(),
     errorStage: z.enum(["validation", "execution"]),
+    publishMode: z.enum(["default-live-root", "clean-room-target"]).optional(),
+    cleanRoomRunId: z.string().min(1).optional(),
   }).optional(),
 }).strict();
 
@@ -291,6 +293,7 @@ export function mapPublishedItemToProduct(source: SourceProductRecord, liveTarge
 }
 
 export async function runImportTotalboardshopProducts(input: ImportTotalboardshopProductsInput): Promise<ImportResult> {
+  if (!input.runId?.trim()) throw new Error("Missing runId");
   const logger = input.logger ?? console;
   const reportRoot = path.resolve(input.reportRoot ?? DEFAULT_PUBLISH_REPORT_ROOT);
   const sourceRoot = path.resolve(input.sourceRoot ?? DEFAULT_SOURCE_DATASET_ROOT);

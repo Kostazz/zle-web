@@ -79,7 +79,31 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
   - Executes strict manual publish from a validated publish gate manifest plus staged artifacts only.
   - Fails closed on malformed artifacts, missing staged outputs, collisions, unsafe paths, or writes outside the managed live root / `tmp/publish-reports`.
   - Supports `--validate-only` planning without live writes.
+  - Supports clean-room publish targets under `tmp/remigration/live-targets/<cleanRoomRunId>/products` via `--clean-room-run-id`.
+  - Clean-room mode fails closed on non-empty targets and never writes into `client/public/images/products`.
   - On fail-closed validation errors, the CLI still emits fail-closed report artifacts in `tmp/publish-reports/`.
+- `script/verify-clean-room-product-assets-root.ts`
+  - Verifies a clean-room target (`tmp/remigration/live-targets/<runId>/products`) before any cutover.
+  - Writes machine-readable + markdown reports into `tmp/remigration/reports/`.
+- `script/switch-product-assets-root.ts`
+  - Performs root-level cutover from clean-room target to live root with rename-based switch and backup in `tmp/remigration/backups/<backupId>/`.
+  - Adds global switch lock (`tmp/remigration/.switch-lock`), in-progress marker (`tmp/remigration/.switch-in-progress`), unified readiness preflight, post-switch sanity check, and automatic rollback attempt.
+  - Writes runtime signal `client/public/.assets-version.json` after successful v2 switch.
+- `script/verify-product-assets-root.ts`
+  - Post-switch validation for `client/public/images/products`.
+  - Fails closed on empty roots, missing cover files, malformed product directories, missing/malformed `client/public/.assets-version.json`, and non-empty fallback root `public/images/products` (unless explicitly bypassed).
+- `script/remigrate-totalboardshop-clean-room.ts`
+  - Small explicit orchestration wrapper for validate publish → clean-room publish → clean-room verify → switch → post-switch verify.
+  - Adds resumable state (`tmp/remigration/runs/<runId>.state.json`) and skips already-completed steps.
+  - Runs retention only after full success.
+- `script/lib/remigration-retention.ts`
+  - Retention for `tmp/remigration/live-targets`, `tmp/remigration/backups`, `tmp/remigration/runs`, and `client/public/images/product-versions`.
+- `script/promote-clean-room-to-product-version.ts`
+  - v3 promotion path from clean-room run to immutable version root `client/public/images/product-versions/<versionId>/`.
+- `script/activate-product-assets-version.ts`
+  - v3 pointer activation via `client/public/.active-product-assets.json`.
+- `script/verify-product-assets-version-root.ts` / `script/verify-active-product-assets.ts`
+  - v3 verification for version roots and active pointer validity.
 - Existing ingest agent (`npm run photos:ingest`) remains available for the older generic ingest path without behavioral change.
 - `script/decision-agent.ts` + `script/lib/decision-agent.ts`
   - Deterministic policy engine returning `AUTO_APPROVE`, `REVIEW`, or `REJECT`.
@@ -110,6 +134,13 @@ A product is included only if detail-page metadata confirms trusted ZLE brand va
 - Publish gate summary: `tmp/publish-gates/<runId>.summary.md`
 - Manual publish report: `tmp/publish-reports/<runId>.publish.json`
 - Manual publish summary: `tmp/publish-reports/<runId>.summary.md`
+- Clean-room verify reports: `tmp/remigration/reports/*-verify-clean-room.{json,md}`
+- Root switch reports: `tmp/remigration/reports/*-switch.{json,md}`
+- Post-switch verify reports: `tmp/remigration/reports/*-verify.{json,md}`
+- v2 run state: `tmp/remigration/runs/<runId>.state.json`
+- v2 runtime signal: `client/public/.assets-version.json`
+- v3 active pointer: `client/public/.active-product-assets.json`
+- v3 immutable roots: `client/public/images/product-versions/<versionId>/...`
 - Ingest report: `tmp/agent-reports/<runId>.json`
 - Ingest manifest: `tmp/agent-manifests/<runId>.run.json`
 - Decision: `tmp/agent-decisions/<runId>.decision.json`
@@ -128,6 +159,15 @@ npm run photos:publish-gate -- --run-id <runId> --validate-only
 npm run photos:publish-gate -- --run-id <runId>
 npm run photos:publish-reviewed -- --run-id <runId> --validate-only
 npm run photos:publish-reviewed -- --run-id <runId>
+npm run photos:publish-reviewed -- --run-id <runId> --clean-room-run-id <cleanRoomRunId>
+npm run photos:verify-clean-room-assets-root -- --run-id <cleanRoomRunId>
+npm run photos:switch-assets-root -- --run-id <cleanRoomRunId> --backup-id <backupId>
+npm run photos:verify-assets-root -- --run-label <runId>
+npm run photos:remigrate-clean-room -- --run-id <runId> --clean-room-run-id <cleanRoomRunId> --step full
+npm run photos:promote-clean-room-version -- --run-id <cleanRoomRunId> --version-id <versionId>
+npm run photos:verify-version-root -- --version-id <versionId>
+npm run photos:activate-assets-version -- --version-id <versionId> --source-run-id <runId>
+npm run photos:verify-active-assets
 npm run photos:ingest -- --input tmp/source-datasets/<runId>/images --staged --source-type manual --run-id <runId>
 npm run photos:decision -- --run-id <runId>
 npm run pipeline:totalboardshop -- --staged-only
@@ -178,7 +218,14 @@ The explicit manual publish executor is the next and only live-writing layer. It
 - writes live assets only inside `client/public/images/products`,
 - writes execution reports only to `tmp/publish-reports`,
 - supports `npm run photos:publish-reviewed -- --run-id <runId> --validate-only` for full planning validation without live writes.
+- supports clean-room publishes with `npm run photos:publish-reviewed -- --run-id <runId> --clean-room-run-id <cleanRoomRunId>` into `tmp/remigration/live-targets/<cleanRoomRunId>/products`.
+- in clean-room mode, non-empty targets fail closed and default live root is untouched.
 - on fail-closed validation errors, the CLI still writes a failure report + summary under `tmp/publish-reports`.
+
+## v2 vs v3 delivery model
+- **v2 root-switch**: clean-room publish + root rename cutover + rollback; strongest for strict cutover, small non-atomic window mitigated by lock/marker/preflight/sanity checks.
+- **v3 versioned assets**: immutable version roots + active pointer manifest; no live-root rename, pointer activation enables faster rollback by re-pointing version.
+- Public storefront URLs remain unchanged (`/images/products/<productId>/<file>`). v3 resolves these URLs through active version pointer in server resolver mode.
 
 ## Non-goal Reminder
 This pipeline does **not** include style rewriting, LLM copy adaptation, frontend publishing changes, DB writes, blockchain, or non-ZLE catalog crawling.

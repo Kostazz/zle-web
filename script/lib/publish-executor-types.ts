@@ -24,6 +24,8 @@ export type PublishExecutionSummary = {
 export type PublishExecutionDebug = {
   hadPartialResults: boolean;
   errorStage: "validation" | "execution";
+  publishMode?: "default-live-root" | "clean-room-target";
+  cleanRoomRunId?: string;
 };
 
 export type PublishExecutionReport = {

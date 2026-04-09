@@ -12,6 +12,8 @@ export type ManualPublishExecutorInput = {
   gateRunId?: string;
   reportDir?: string;
   validateOnly?: boolean;
+  cleanRoomRunId?: string;
+  allowExistingEmptyCleanRoomTarget?: boolean;
   gateDir?: string;
   stagingManifestDir?: string;
   stagingRoot?: string;
@@ -39,6 +41,7 @@ const DEFAULT_STAGING_MANIFEST_ROOT = path.resolve("tmp", "agent-manifests");
 const DEFAULT_STAGING_ROOT = path.resolve("tmp", "agent-staging");
 const DEFAULT_REPORT_ROOT = path.resolve("tmp", "publish-reports");
 const DEFAULT_LIVE_ROOT = path.resolve("client", "public", "images", "products");
+const DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT = path.resolve("tmp", "remigration", "live-targets");
 const DEFAULT_TEMP_ROOT = path.resolve("tmp");
 const MANAGED_PUBLISH_FILE_RE = /^(?:cover|\d{2})\.(?:jpg|webp)$/;
 const PUBLISH_TEMP_DIR_PREFIX = ".manual-publish-temp-";
@@ -186,6 +189,15 @@ function assertInsideAllowedRoot(targetPath: string, allowedRoot: string, label:
   return resolved;
 }
 
+function parseRunIdSegment(rawValue: string, label: string): string {
+  const trimmed = rawValue.trim();
+  if (!trimmed) throw new Error(`Missing ${label}`);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,120}$/.test(trimmed)) {
+    throw new Error(`Invalid ${label}: ${rawValue}`);
+  }
+  return trimmed;
+}
+
 async function ensureWritableDir(targetDir: string, rootDir: string): Promise<void> {
   const normalizedTarget = assertInsideAllowedRoot(targetDir, rootDir, "directory");
   await fs.promises.mkdir(normalizedTarget, { recursive: true });
@@ -202,6 +214,38 @@ async function safeWriteText(targetPath: string, value: string, rootDir: string)
   const normalizedTarget = assertInsideAllowedRoot(targetPath, rootDir, "file write");
   await ensureWritableDir(path.dirname(normalizedTarget), rootDir);
   await fs.promises.writeFile(normalizedTarget, value, "utf8");
+}
+
+async function isDirectoryEmpty(targetDir: string): Promise<boolean> {
+  const entries = await fs.promises.readdir(targetDir);
+  return entries.length === 0;
+}
+
+async function resolveLiveRoot(input: ManualPublishExecutorInput): Promise<{ liveRoot: string; mode: "default-live-root" | "clean-room-target"; cleanRoomRunId?: string }> {
+  const cleanRoomRunId = input.cleanRoomRunId?.trim();
+  if (!cleanRoomRunId) {
+    const liveRoot = path.resolve(input.liveRoot ?? DEFAULT_LIVE_ROOT);
+    return { liveRoot, mode: "default-live-root" };
+  }
+
+  const normalizedRunId = parseRunIdSegment(cleanRoomRunId, "clean-room run id");
+  const cleanRoomProductsRoot = path.join(DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT, normalizedRunId, "products");
+  const liveRoot = assertInsideAllowedRoot(cleanRoomProductsRoot, DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT, "clean-room live target");
+  await assertNoSymlinkInPathChain(DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT, DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT);
+
+  if (fs.existsSync(liveRoot)) {
+    const stat = await fs.promises.lstat(liveRoot);
+    if (!stat.isDirectory()) throw new Error(`Clean-room target exists but is not a directory: ${liveRoot}`);
+    if (!(await isDirectoryEmpty(liveRoot))) {
+      throw new Error(`Refusing clean-room publish into non-empty target: ${toPortablePath(path.relative(process.cwd(), liveRoot))}`);
+    }
+    if (!input.allowExistingEmptyCleanRoomTarget) {
+      throw new Error(`Clean-room target already exists and requires explicit --allow-existing-empty-clean-room-target: ${toPortablePath(path.relative(process.cwd(), liveRoot))}`);
+    }
+  }
+
+  await ensureWritableDir(liveRoot, DEFAULT_CLEAN_ROOM_LIVE_TARGETS_ROOT);
+  return { liveRoot, mode: "clean-room-target", cleanRoomRunId: normalizedRunId };
 }
 
 function readJsonFile(targetPath: string, label: string): unknown {
@@ -353,6 +397,9 @@ function renderSummaryMarkdown(report: PublishExecutionReport, validateOnly: boo
     "- Report writes are restricted to tmp/publish-reports.",
     "- Missing staged outputs, path traversal, collisions, malformed JSON, or shape errors fail closed.",
   ];
+  if (report.debug?.publishMode === "clean-room-target") {
+    lines.push("- Clean-room mode publishes only into tmp/remigration/live-targets/<runId>/products and never touches live root.");
+  }
 
   if (report.items.length > 0) {
     lines.push("", "## Item Outcomes");
@@ -694,8 +741,14 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
   if (gateManifest.runId !== gateRunId) throw new Error(`run id mismatch in publish gate manifest: expected ${gateRunId}, received ${gateManifest.runId}`);
   if (stagingReport.runId !== input.runId) throw new Error(`run id mismatch in staging report: expected ${input.runId}, received ${stagingReport.runId}`);
 
-  const units = planPublishUnits(input, gateManifest, stagingReport);
-  const executedItems = await executePublishUnitsSequentially(units, input, gateRunId, input.validateOnly === true);
+  const resolvedLiveTarget = await resolveLiveRoot(input);
+  const executionInput: ManualPublishExecutorInput = {
+    ...input,
+    liveRoot: resolvedLiveTarget.liveRoot,
+  };
+
+  const units = planPublishUnits(executionInput, gateManifest, stagingReport);
+  const executedItems = await executePublishUnitsSequentially(units, executionInput, gateRunId, input.validateOnly === true);
   const skippedItems: PublishExecutionItem[] = gateManifest.items
     .filter((item) => !(item.releaseDecision === "ready_for_publish" && item.eligibilityStatus === "eligible"))
     .sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey))
@@ -734,6 +787,8 @@ export async function runManualPublishExecutor(input: ManualPublishExecutorInput
     debug: {
       hadPartialResults: items.length > 0,
       errorStage: "execution",
+      publishMode: resolvedLiveTarget.mode,
+      cleanRoomRunId: resolvedLiveTarget.cleanRoomRunId,
     },
   };
   const summaryMarkdown = renderSummaryMarkdown(report, input.validateOnly === true);

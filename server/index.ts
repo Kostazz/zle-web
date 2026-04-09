@@ -18,6 +18,7 @@ import { injectSeo, injectSeoWithOptions } from "./seo/injectSeo";
 import { storage } from "./storage";
 import { validateRequiredEnv } from "./utils/validateEnv";
 import { buildProductJsonLd, buildProductOgDescription, buildProductSeoDescription, toAbsoluteUrl } from "@shared/productSeo";
+import { resolveProductAssetAbsolutePath, shouldBypassGenericImagesStatic } from "./utils/productAssetsResolver";
 
 validateRequiredEnv();
 
@@ -70,15 +71,39 @@ ${scriptTag}`;
 const liveImagesRoot = path.join(PROJECT_ROOT, "client", "public", "images");
 const liveProductsRoot = path.join(PROJECT_ROOT, "client", "public", "images", "products");
 const altLiveProductsRoot = path.join(PROJECT_ROOT, "public", "images", "products");
-
-app.use("/images", express.static(liveImagesRoot));
+const productAssetsResolverMode = process.env.PRODUCT_ASSETS_RESOLVER_MODE === "v3-versioned-assets"
+  ? "v3-versioned-assets"
+  : "v2-root-switch";
 
 // Compatibility mounts for product-image roots:
 // - primary assets in client/public/images/products/<product-id>/...
 // - alternate deploys that materialize public/images/products at repo root
 // NOTE: altLiveProductsRoot is intentionally kept until deploy strategy is fully unified.
-app.use("/images/products", express.static(liveProductsRoot));
-app.use("/images/products", express.static(altLiveProductsRoot));
+if (productAssetsResolverMode === "v3-versioned-assets") {
+  app.get("/images/products/:productId/:fileName", apiLimiter, async (req, res) => {
+    try {
+      const resolved = await resolveProductAssetAbsolutePath(
+        String(req.params.productId ?? ""),
+        String(req.params.fileName ?? ""),
+        "v3-versioned-assets",
+      );
+      if (!resolved) {
+        return res.status(404).type("text/plain; charset=utf-8").send("Not Found");
+      }
+      return res.sendFile(resolved);
+    } catch {
+      return res.status(404).type("text/plain; charset=utf-8").send("Not Found");
+    }
+  });
+  app.use("/images", (req, res, next) => {
+    if (shouldBypassGenericImagesStatic(req.path, "v3-versioned-assets")) return next();
+    return express.static(liveImagesRoot)(req, res, next);
+  });
+} else {
+  app.use("/images", express.static(liveImagesRoot));
+  app.use("/images/products", express.static(liveProductsRoot));
+  app.use("/images/products", express.static(altLiveProductsRoot));
+}
 
 // IMPORTANT:
 // Missing image/static asset requests must NOT fall through to SPA index.html.
