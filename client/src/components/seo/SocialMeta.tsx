@@ -7,7 +7,11 @@ import {
   DEFAULT_TITLE,
   getRouteMetaWithProduct,
 } from "@/components/seo/seoConfig";
-import { toAbsoluteUrl as toAbsoluteSeoUrl } from "@shared/productSeo";
+import {
+  buildProductMetaDescription,
+  buildProductMetaTitle,
+  toAbsoluteUrl as toAbsoluteSeoUrl,
+} from "@shared/productSeo";
 
 const baseUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://zleshop.cz").replace(/\/+$/, "");
 
@@ -40,19 +44,37 @@ export function SocialMeta() {
   const { data: products, isSuccess } = useProducts();
 
   useEffect(() => {
-    const productId = location.match(/^\/p\/([^/]+)$/)?.[1];
+    const encodedProductId = location.match(/^\/p\/([^/]+)$/)?.[1];
+    const productId = (() => {
+      if (!encodedProductId) return null;
+      try {
+        return decodeURIComponent(encodedProductId);
+      } catch {
+        return encodedProductId;
+      }
+    })();
     const isProductRoute = Boolean(productId);
     const currentProduct = productId ? products?.find((item) => item.id === productId) : undefined;
     const shouldUseProductOgType = isProductRoute && (Boolean(currentProduct) || !isSuccess);
     const route = getRouteMetaWithProduct(location, products);
-    const title = route?.title || DEFAULT_TITLE;
-    const description = route?.description || DEFAULT_DESCRIPTION;
-    const ogDescription = route?.ogDescription || description;
+    const title = isProductRoute
+      ? currentProduct
+        ? buildProductMetaTitle(currentProduct)
+        : route?.title || DEFAULT_TITLE
+      : route?.title || DEFAULT_TITLE;
+    const description = isProductRoute
+      ? currentProduct
+        ? buildProductMetaDescription(currentProduct)
+        : route?.description || DEFAULT_DESCRIPTION
+      : route?.description || DEFAULT_DESCRIPTION;
+    const ogDescription = isProductRoute ? description : route?.ogDescription || description;
     const image = toAbsoluteUrl(route?.ogImage || DEFAULT_OG_IMAGE);
     const twitterSite = import.meta.env.VITE_TWITTER_SITE?.trim();
 
     upsertMetaByProperty("og:title", title);
     upsertMetaByProperty("og:description", ogDescription);
+    upsertMetaByName("twitter:title", title);
+    upsertMetaByName("twitter:description", ogDescription);
     upsertMetaByProperty("og:image", image);
     upsertMetaByProperty("og:type", shouldUseProductOgType ? "product" : "website");
     upsertMetaByProperty("og:locale", "cs_CZ");
@@ -60,8 +82,6 @@ export function SocialMeta() {
     upsertMetaByProperty("og:image:height", "768");
 
     upsertMetaByName("twitter:card", "summary_large_image");
-    upsertMetaByName("twitter:title", title);
-    upsertMetaByName("twitter:description", ogDescription);
     upsertMetaByName("twitter:image", image);
 
     const twitterSiteTag = document.querySelector<HTMLMetaElement>('meta[name="twitter:site"]');

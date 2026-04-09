@@ -17,38 +17,6 @@ function cleanText(value: string | null | undefined): string {
   return (value || "").trim();
 }
 
-function normalizeKey(value: string | null | undefined): string {
-  return cleanText(value)
-    .toLowerCase()
-    .replace(/[\-_]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function hasWord(input: string, pattern: RegExp): boolean {
-  return pattern.test(input);
-}
-
-function inferProductType(product: ProductSeoData): string | null {
-  const category = normalizeKey(product.category);
-  const name = normalizeKey(product.name);
-
-  if (hasWord(category, /\b(snapback|cap|hat|cepic|čepic|kšiltovka)\b/)) return "Snapback čepice ZLE";
-  if (hasWord(category, /\b(hoodie|mikina)\b/)) return "Mikina ZLE";
-  if (hasWord(category, /\b(tee|tričko|triko|t shirt|tshirt)\b/)) return "Tričko ZLE";
-  if (hasWord(category, /\b(beanie|kulich)\b/)) return "Beanie ZLE";
-  if (hasWord(category, /\bcrewneck\b/)) return "Crewneck mikina ZLE";
-
-  if (hasWord(name, /\b(snapback|kšiltovka)\b/) || (hasWord(name, /\b(5 panel|5panel)\b/) && hasWord(name, /\b(cepic|čepic|cap)\b/))) {
-    return "Snapback čepice ZLE";
-  }
-  if (hasWord(name, /\b(hoodie|mikina)\b/)) return "Mikina ZLE";
-  if (hasWord(name, /\b(tee|tričko|triko|t shirt|tshirt)\b/)) return "Tričko ZLE";
-  if (hasWord(name, /\b(beanie|kulich)\b/)) return "Beanie ZLE";
-  if (hasWord(name, /\bcrewneck\b/)) return "Crewneck mikina ZLE";
-
-  return null;
-}
-
 function extractFeatureFragments(text: string): string[] {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) return [];
@@ -59,15 +27,6 @@ function extractFeatureFragments(text: string): string[] {
     .filter((part) => part.length >= 8)
     .slice(0, 2)
     .map((part) => part.replace(/[,;:]$/, ""));
-}
-
-function formatSizes(sizes?: string[] | null): string {
-  if (!Array.isArray(sizes) || sizes.length === 0) return "";
-
-  const normalized = Array.from(new Set(sizes.map((size) => cleanText(size)).filter(Boolean))).slice(0, 4);
-  if (normalized.length <= 1) return "";
-
-  return `Velikosti ${normalized.join("-")}`;
 }
 
 function formatPrice(price?: number | null): string {
@@ -90,27 +49,43 @@ function trimForSnippet(text: string, maxLength: number): string {
   return `${safe}…`;
 }
 
-export function buildProductSeoDescription(product: ProductSeoData): string {
-  const title = inferProductType(product) || cleanText(product.name) || "Produkt ZLE";
-  const featureParts = extractFeatureFragments(cleanText(product.description));
-  const sizes = formatSizes(product.sizes);
+function buildFailClosedDescription(product: ProductSeoData): string {
+  const safeName = cleanText(product.name) || "Produkt ZLE";
   const price = formatPrice(product.price);
+  return price ? `${safeName}. ${price}.` : `${safeName}.`;
+}
 
-  const core = [title, ...featureParts.slice(0, 2), sizes, price].filter(Boolean);
-  const built = formatSentence(core);
-  return trimForSnippet(built, 158);
+export function buildProductMetaTitle(product: ProductSeoData): string {
+  const safeName = cleanText(product.name) || "Produkt ZLE";
+  const price = formatPrice(product.price);
+  return price ? `${safeName} — ${price}` : safeName;
+}
+
+export function buildProductMetaDescription(product: ProductSeoData, maxLength = 158): string {
+  const safeName = cleanText(product.name) || "Produkt ZLE";
+  const price = formatPrice(product.price);
+  const category = cleanText(product.category);
+  const feature = extractFeatureFragments(cleanText(product.description))[0] || "";
+
+  const parts = [safeName];
+
+  if (feature) parts.push(feature);
+  if (category) parts.push(category);
+  if (price) parts.push(price);
+
+  if (!feature && !category) {
+    return trimForSnippet(buildFailClosedDescription(product), maxLength);
+  }
+
+  return trimForSnippet(formatSentence(parts), maxLength);
+}
+
+export function buildProductSeoDescription(product: ProductSeoData): string {
+  return buildProductMetaDescription(product, 158);
 }
 
 export function buildProductOgDescription(product: ProductSeoData): string {
-  const title = inferProductType(product) || cleanText(product.name) || "Produkt ZLE";
-  const feature = extractFeatureFragments(cleanText(product.description))[0];
-  const price = formatPrice(product.price);
-  const safeName = cleanText(product.name);
-  const modelHint = safeName && normalizeKey(safeName) !== normalizeKey(title) ? `Model ${safeName}` : "";
-  const sizes = formatSizes(product.sizes);
-
-  const parts = [title, feature || modelHint || sizes, price].filter(Boolean);
-  return trimForSnippet(formatSentence(parts), 132);
+  return buildProductMetaDescription(product, 132);
 }
 
 export function getProductCanonicalPath(productId: string): string {
@@ -133,7 +108,7 @@ export function toAbsoluteUrl(pathOrUrl: string, siteUrl?: string): string {
 export function buildProductJsonLd(product: ProductSeoData, input: { siteUrl?: string; imageUrl?: string }) {
   const canonicalPath = getProductCanonicalPath(product.id);
   const url = toAbsoluteUrl(canonicalPath, input.siteUrl);
-  const description = buildProductSeoDescription(product);
+  const description = buildProductMetaDescription(product, 220);
   const image = toAbsoluteUrl(input.imageUrl || product.image || DEFAULT_OG_IMAGE, input.siteUrl);
 
   const offer: Record<string, string> = {
