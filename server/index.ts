@@ -17,7 +17,12 @@ import { startAbandonedOrderSweeper } from "./jobs/abandonedSweeper";
 import { injectSeo, injectSeoWithOptions } from "./seo/injectSeo";
 import { storage } from "./storage";
 import { validateRequiredEnv } from "./utils/validateEnv";
-import { buildProductJsonLd, buildProductOgDescription, buildProductSeoDescription, toAbsoluteUrl } from "@shared/productSeo";
+import {
+  buildProductJsonLd,
+  buildProductMetaDescription,
+  buildProductMetaTitle,
+  toAbsoluteUrl,
+} from "@shared/productSeo";
 import { resolveProductAssetAbsolutePath, shouldBypassGenericImagesStatic } from "./utils/productAssetsResolver";
 
 validateRequiredEnv();
@@ -328,7 +333,7 @@ function serveStaticProd(app: express.Express) {
       ? injectSeo(indexHtmlTemplate, canonicalUrl)
       : productExists && product
         ? (() => {
-            const productTitle = `${product.name} | ZLE Shop`;
+            const productTitle = buildProductMetaTitle(product);
             const coverPath = `/images/products/${product.id}/cover.jpg`;
             const hasCoverImage = fs.existsSync(path.join(liveProductsRoot, product.id, "cover.jpg"))
               || fs.existsSync(path.join(altLiveProductsRoot, product.id, "cover.jpg"));
@@ -341,8 +346,7 @@ function serveStaticProd(app: express.Express) {
                   ? `${base}${fallbackImage}`
                   : defaultOgImage;
 
-            const productDescription = buildProductSeoDescription(product);
-            const productOgDescription = buildProductOgDescription(product);
+            const productDescription = buildProductMetaDescription(product, 158);
             const productSchema = buildProductJsonLd(product, {
               siteUrl: base,
               imageUrl: productImage,
@@ -351,12 +355,12 @@ function serveStaticProd(app: express.Express) {
               title: productTitle,
               description: productDescription,
               ogTitle: productTitle,
-              ogDescription: productOgDescription,
+              ogDescription: productDescription,
               ogImage: toAbsoluteUrl(productImage, base),
               ogType: "product",
               twitterCard: "summary_large_image",
               twitterTitle: productTitle,
-              twitterDescription: productOgDescription,
+              twitterDescription: productDescription,
               twitterImage: toAbsoluteUrl(productImage, base),
               ogUrl: canonicalUrl,
             });
