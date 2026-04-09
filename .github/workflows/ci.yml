@@ -9,6 +9,8 @@ on:
 jobs:
   build-and-security:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     permissions:
       contents: read
     steps:
