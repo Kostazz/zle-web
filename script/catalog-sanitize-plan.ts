@@ -186,6 +186,10 @@ function hasKnownNotPublishedStatus(item: PublishReportItem): boolean {
   return false;
 }
 
+function getEffectiveTargetProductId(item: PublishReportItem): string | null {
+  return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId) ?? readProductIdLike(item.liveTargetKey);
+}
+
 function inferTargetSets(report: NormalizedPublishReport): {
   targetProductIds: Set<string>;
   targetKeys: Set<string>;
@@ -205,25 +209,25 @@ function inferTargetSets(report: NormalizedPublishReport): {
   for (const item of report.items) {
     totalItems += 1;
     const approvedId = readProductIdLike(item.approvedLocalProductId);
-    const targetId = readProductIdLike(item.targetProductId);
     const targetKey = readProductIdLike(item.liveTargetKey);
+    const explicitTargetId = readProductIdLike(item.targetProductId);
 
     const published = isPublishedItem(item);
     const knownNotPublished = hasKnownNotPublishedStatus(item);
     const unknownPublishState = !published && !knownNotPublished;
     if (unknownPublishState) unknownStatusItems += 1;
 
-    if (approvedId && published) {
-      targetProductIds.add(approvedId);
-      touchedProductIds.add(approvedId);
+    const effectiveTargetProductId = published ? getEffectiveTargetProductId(item) : null;
+    if (published && effectiveTargetProductId) {
+      targetProductIds.add(effectiveTargetProductId);
+      touchedProductIds.add(effectiveTargetProductId);
+      if (!approvedId && !explicitTargetId && targetKey) {
+        auditNotes.push(`Published item with missing explicit target product id uses liveTargetKey '${targetKey}' as effective target product id.`);
+      }
     } else if (approvedId && knownNotPublished) {
       auditNotes.push(`Approved item '${approvedId}' was not published and is excluded from targetProductIds.`);
     } else if (approvedId && unknownPublishState) {
       auditNotes.push(`Unable to determine publish status for item '${approvedId}' — excluded from target (fail-closed).`);
-    }
-    if (targetId && published) {
-      targetProductIds.add(targetId);
-      touchedProductIds.add(targetId);
     }
     if (targetKey) targetKeys.add(targetKey);
   }
@@ -327,8 +331,9 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   const ambiguousKeys = new Set<string>();
 
   for (const item of publishReport.items) {
+    if (!isPublishedItem(item)) continue;
     const key = readProductIdLike(item.liveTargetKey);
-    const targetProductId = readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId);
+    const targetProductId = getEffectiveTargetProductId(item);
     if (!key || !targetProductId) continue;
 
     if (targetByKey.has(key) && targetByKey.get(key) !== targetProductId) {
