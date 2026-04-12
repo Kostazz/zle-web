@@ -68,7 +68,7 @@ function buildSnapshotProduct(product: { id: string; image: string; images: stri
   }
 
   const ownedUniqueSorted = Array.from(new Set(ownedCandidates)).sort((a, b) => a.localeCompare(b));
-  const firstOwned = ownedUniqueSorted[0];
+  const firstOwned = primaryOwned ?? ownedUniqueSorted[0];
 
   const snapshot: SnapshotProduct = {
     id,
