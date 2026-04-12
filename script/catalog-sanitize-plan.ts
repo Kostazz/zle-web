@@ -17,6 +17,13 @@ type PublishReportLike = {
   targetAssetDirs?: string[];
 };
 
+type NormalizedPublishReport = {
+  runId?: string;
+  items: PublishReportItem[];
+  targetProductIds: string[];
+  targetAssetDirs: string[];
+};
+
 type LiveProductRecord = {
   id: string;
   keys: string[];
@@ -135,7 +142,7 @@ function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
   return records;
 }
 
-function validatePublishReportShape(payload: unknown): PublishReportLike {
+function validatePublishReportShape(payload: unknown): NormalizedPublishReport {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Malformed publish report: expected object");
   }
@@ -151,7 +158,12 @@ function validatePublishReportShape(payload: unknown): PublishReportLike {
     throw new Error("Malformed publish report: 'targetAssetDirs' must be an array when provided");
   }
 
-  return report as PublishReportLike;
+  return {
+    runId: typeof report.runId === "string" ? report.runId : undefined,
+    items: (report.items as PublishReportItem[] | undefined) ?? [],
+    targetProductIds: (report.targetProductIds as string[] | undefined) ?? [],
+    targetAssetDirs: (report.targetAssetDirs as string[] | undefined) ?? [],
+  };
 }
 
 function isPublishedItem(item: PublishReportItem): boolean {
@@ -174,7 +186,7 @@ function hasKnownNotPublishedStatus(item: PublishReportItem): boolean {
   return false;
 }
 
-function inferTargetSets(report: PublishReportLike): {
+function inferTargetSets(report: NormalizedPublishReport): {
   targetProductIds: Set<string>;
   targetKeys: Set<string>;
   touchedProductIds: Set<string>;
@@ -190,7 +202,7 @@ function inferTargetSets(report: PublishReportLike): {
   for (const id of readStringList(report.targetProductIds)) targetProductIds.add(id);
   for (const dir of readStringList(report.targetAssetDirs)) targetKeys.add(dir);
 
-  for (const item of Array.isArray(report.items) ? report.items : []) {
+  for (const item of report.items) {
     totalItems += 1;
     const approvedId = readProductIdLike(item.approvedLocalProductId);
     const targetId = readProductIdLike(item.targetProductId);
@@ -306,7 +318,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   const targetByKey = new Map<string, string>();
   const ambiguousKeys = new Set<string>();
 
-  for (const item of Array.isArray(publishReport.items) ? publishReport.items : []) {
+  for (const item of publishReport.items) {
     const key = readProductIdLike(item.liveTargetKey);
     const targetProductId = readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId);
     if (!key || !targetProductId) continue;
@@ -399,10 +411,10 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
     notes.push("No explicit replace mappings inferred from publish report liveTargetKey/product-id pairs.");
   }
 
-  if (Array.isArray(publishReport.items) && publishReport.items.length === 0) {
+  if (publishReport.items.length === 0) {
     notes.push("Publish report items are empty: update/replace signals may be incomplete.");
   }
-  if (Array.isArray(publishReport.items) && publishReport.items.length < targetProductIds.size) {
+  if (publishReport.items.length < targetProductIds.size) {
     notes.push("Publish report items count is lower than target product ids count; update detection may be incomplete.");
     notes.push("Update detection depends on publishReport.items completeness.");
   }
