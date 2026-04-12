@@ -54,6 +54,28 @@ function parseRunId(argv: string[]): string {
   return runId;
 }
 
+function validateRunId(runId: string): string {
+  const trimmed = runId.trim();
+  if (!trimmed) throw new Error("Invalid runId: empty value is not allowed.");
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+    throw new Error(`Invalid runId '${runId}': path separators and '..' are not allowed.`);
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+    throw new Error(`Invalid runId '${runId}': only [A-Za-z0-9._-] is allowed.`);
+  }
+  return trimmed;
+}
+
+function assertPathInsideRoot(rootPath: string, targetPath: string, label: string): string {
+  const resolvedRoot = path.resolve(rootPath);
+  const resolvedTarget = path.resolve(targetPath);
+  const relative = path.relative(resolvedRoot, resolvedTarget);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Unsafe ${label} path: ${targetPath} resolves outside ${rootPath}`);
+  }
+  return resolvedTarget;
+}
+
 async function readLines(filePath: string): Promise<string[]> {
   const raw = await fs.promises.readFile(filePath, "utf8");
   return raw
@@ -79,7 +101,11 @@ function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
     ? payload
     : payload && typeof payload === "object" && Array.isArray((payload as { products?: unknown[] }).products)
       ? (payload as { products: unknown[] }).products
-      : [];
+      : null;
+
+  if (!asArray) {
+    throw new Error("Unrecognized live products payload shape");
+  }
 
   const records: LiveProductRecord[] = [];
   for (const entry of asArray) {
@@ -107,6 +133,25 @@ function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
   }
 
   return records;
+}
+
+function validatePublishReportShape(payload: unknown): PublishReportLike {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Malformed publish report: expected object");
+  }
+
+  const report = payload as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(report, "items") && !Array.isArray(report.items)) {
+    throw new Error("Malformed publish report: 'items' must be an array when provided");
+  }
+  if (Object.prototype.hasOwnProperty.call(report, "targetProductIds") && !Array.isArray(report.targetProductIds)) {
+    throw new Error("Malformed publish report: 'targetProductIds' must be an array when provided");
+  }
+  if (Object.prototype.hasOwnProperty.call(report, "targetAssetDirs") && !Array.isArray(report.targetAssetDirs)) {
+    throw new Error("Malformed publish report: 'targetAssetDirs' must be an array when provided");
+  }
+
+  return report as PublishReportLike;
 }
 
 function isPublishedItem(item: PublishReportItem): boolean {
@@ -219,11 +264,12 @@ function buildSummary(plan: PlanReport): string {
 }
 
 export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath: string; summaryPath: string; plan: PlanReport }> {
+  const safeRunId = validateRunId(runId);
   const sanitizeRoot = path.join("tmp", "catalog-sanitize");
-  const liveProductsPath = path.join(sanitizeRoot, `live-products.${runId}.json`);
-  const liveProductIdsPath = path.join(sanitizeRoot, `live-product-ids.${runId}.txt`);
-  const liveAssetDirsPath = path.join(sanitizeRoot, `live-asset-dirs.${runId}.txt`);
-  const targetPublishReportPath = path.join("tmp", "publish-reports", `${runId}.publish.json`);
+  const liveProductsPath = path.join(sanitizeRoot, `live-products.${safeRunId}.json`);
+  const liveProductIdsPath = path.join(sanitizeRoot, `live-product-ids.${safeRunId}.txt`);
+  const liveAssetDirsPath = path.join(sanitizeRoot, `live-asset-dirs.${safeRunId}.txt`);
+  const targetPublishReportPath = path.join("tmp", "publish-reports", `${safeRunId}.publish.json`);
 
   if (!fs.existsSync(targetPublishReportPath)) {
     throw new Error(`Missing required target publish report: ${targetPublishReportPath}`);
@@ -237,7 +283,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   ]);
 
   const liveProductsJson = JSON.parse(liveProductsRaw) as unknown;
-  const publishReport = JSON.parse(publishReportRaw) as PublishReportLike;
+  const publishReport = validatePublishReportShape(JSON.parse(publishReportRaw) as unknown);
 
   const liveProducts = inferLiveProductsFromJson(liveProductsJson);
   const liveProductIdSet = new Set(liveProductIds);
@@ -365,7 +411,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   }
 
   const plan: PlanReport = {
-    runId,
+    runId: safeRunId,
     generatedAt: new Date().toISOString(),
     liveProductsCount: liveProductIds.length,
     liveAssetDirsCount: liveAssetDirs.length,
@@ -383,8 +429,10 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   };
 
   await fs.promises.mkdir(sanitizeRoot, { recursive: true });
-  const planPath = path.join(sanitizeRoot, `${runId}.plan.json`);
-  const summaryPath = path.join(sanitizeRoot, `${runId}.summary.md`);
+  const planPath = path.join(sanitizeRoot, `${safeRunId}.plan.json`);
+  const summaryPath = path.join(sanitizeRoot, `${safeRunId}.summary.md`);
+  assertPathInsideRoot(sanitizeRoot, planPath, "plan output");
+  assertPathInsideRoot(sanitizeRoot, summaryPath, "summary output");
   await fs.promises.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await fs.promises.writeFile(summaryPath, buildSummary(plan), "utf8");
 
@@ -393,7 +441,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
 
 async function main(): Promise<void> {
   try {
-    const runId = parseRunId(process.argv.slice(2));
+    const runId = validateRunId(parseRunId(process.argv.slice(2)));
     const result = await runCatalogSanitizePlan(runId);
     console.log(`runId ${result.plan.runId}`);
     console.log(`plan ${result.planPath}`);
