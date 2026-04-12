@@ -252,15 +252,21 @@ function inferTargetSets(report: NormalizedPublishReport): {
   targetProductIds: Set<string>;
   targetKeys: Set<string>;
   touchedProductIds: Set<string>;
+  declaredTargetAssetDirs: Set<string>;
   auditNotes: string[];
 } {
   const targetProductIds = new Set<string>();
   const targetKeys = new Set<string>();
   const touchedProductIds = new Set<string>();
+  const declaredTargetAssetDirs = new Set<string>();
   const auditNotes: string[] = [];
 
   for (const id of readStringList(report.targetProductIds)) {
     targetProductIds.add(id);
+  }
+
+  for (const dir of readStringList(report.targetAssetDirs)) {
+    declaredTargetAssetDirs.add(dir);
   }
 
   for (const item of report.publishedItems) {
@@ -279,7 +285,7 @@ function inferTargetSets(report: NormalizedPublishReport): {
     if (targetKey) targetKeys.add(targetKey);
   }
 
-  return { targetProductIds, targetKeys, touchedProductIds, auditNotes };
+  return { targetProductIds, targetKeys, touchedProductIds, declaredTargetAssetDirs, auditNotes };
 }
 
 function buildSummary(plan: PlanReport): string {
@@ -373,7 +379,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
     throw new Error(`Live product metadata mismatch: ${liveProductsWithNoKeys.length} records have no usable asset key signal: ${preview}`);
   }
 
-  const { targetProductIds, targetKeys, touchedProductIds, auditNotes } = inferTargetSets(publishReport);
+  const { targetProductIds, targetKeys, touchedProductIds, declaredTargetAssetDirs, auditNotes } = inferTargetSets(publishReport);
 
   const replace: ReplacementPlan[] = [];
   const conflicts: string[] = [];
@@ -474,7 +480,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
 
   const orphanAssetDirs: string[] = [];
   for (const dir of liveAssetDirs) {
-    if (!liveKeysOwnedByProducts.has(dir) && !targetKeys.has(dir) && !targetProductIds.has(dir) && !liveProductIdSet.has(dir)) {
+    if (!liveKeysOwnedByProducts.has(dir) && !targetKeys.has(dir) && !targetProductIds.has(dir) && !liveProductIdSet.has(dir) && !declaredTargetAssetDirs.has(dir)) {
       orphanAssetDirs.push(dir);
     }
   }
