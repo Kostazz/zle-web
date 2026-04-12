@@ -76,6 +76,7 @@ function validateRunId(runId: string): string {
 }
 
 async function assertPathInsideRoot(rootPath: string, targetPath: string, label: string): Promise<string> {
+  await fs.promises.mkdir(rootPath, { recursive: true });
   const canonicalRoot = await fs.promises.realpath(rootPath);
   const resolvedTarget = path.resolve(targetPath);
   const targetParent = path.dirname(resolvedTarget);
@@ -220,7 +221,7 @@ function validatePublishReportShape(payload: unknown): NormalizedPublishReport {
 }
 
 function getEffectiveTargetProductId(item: PublishReportItem): string | null {
-  return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId) ?? readProductIdLike(item.liveTargetKey);
+  return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId);
 }
 
 function classifyPublishItem(item: PublishReportItem): "published" | "not_published" {
@@ -257,6 +258,10 @@ function inferTargetSets(report: NormalizedPublishReport): {
   const targetKeys = new Set<string>();
   const touchedProductIds = new Set<string>();
   const auditNotes: string[] = [];
+
+  for (const id of readStringList(report.targetProductIds)) {
+    targetProductIds.add(id);
+  }
 
   for (const item of report.publishedItems) {
     const approvedId = readProductIdLike(item.approvedLocalProductId);
