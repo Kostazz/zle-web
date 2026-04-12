@@ -103,6 +103,16 @@ function readStringList(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function extractProductAssetKeyFromPathOrUrl(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const match = normalized.match(/(?:^|https?:\/\/[^/]+)\/images\/products\/([^/?#]+)\//i);
+  if (!match) return null;
+  const key = match[1]?.trim();
+  if (!key) return null;
+  return key;
+}
+
 function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
   const asArray = Array.isArray(payload)
     ? payload
@@ -135,6 +145,31 @@ function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
     add(obj.assetDir);
     for (const key of readStringList(obj.assetDirs)) keys.add(key);
     for (const key of readStringList(obj.assetDirectories)) keys.add(key);
+
+    const image = readProductIdLike(obj.image);
+    if (image) {
+      const extracted = extractProductAssetKeyFromPathOrUrl(image);
+      if (extracted) keys.add(extracted);
+    }
+
+    if (Array.isArray(obj.images)) {
+      for (const imageItem of obj.images) {
+        if (typeof imageItem === "string") {
+          const extracted = extractProductAssetKeyFromPathOrUrl(imageItem);
+          if (extracted) keys.add(extracted);
+          continue;
+        }
+        if (!imageItem || typeof imageItem !== "object") continue;
+        const imageObj = imageItem as Record<string, unknown>;
+        const candidates = [imageObj.url, imageObj.src, imageObj.path, imageObj.image];
+        for (const candidate of candidates) {
+          const candidateValue = readProductIdLike(candidate);
+          if (!candidateValue) continue;
+          const extracted = extractProductAssetKeyFromPathOrUrl(candidateValue);
+          if (extracted) keys.add(extracted);
+        }
+      }
+    }
 
     records.push({ id, keys: Array.from(keys) });
   }
@@ -300,6 +335,12 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
 
   const liveProductsJson = JSON.parse(liveProductsRaw) as unknown;
   const publishReport = validatePublishReportShape(JSON.parse(publishReportRaw) as unknown);
+  if (!publishReport.runId) {
+    throw new Error("Publish report runId is missing");
+  }
+  if (publishReport.runId !== safeRunId) {
+    throw new Error(`Publish report runId mismatch: expected '${safeRunId}', got '${publishReport.runId}'`);
+  }
 
   const liveProducts = inferLiveProductsFromJson(liveProductsJson);
   const liveProductIdSet = new Set(liveProductIds);
