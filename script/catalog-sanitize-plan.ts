@@ -22,6 +22,8 @@ type NormalizedPublishReport = {
   items: PublishReportItem[];
   targetProductIds: string[];
   targetAssetDirs: string[];
+  publishedItems: PublishReportItem[];
+  notPublishedItems: PublishReportItem[];
 };
 
 type LiveProductRecord = {
@@ -73,13 +75,24 @@ function validateRunId(runId: string): string {
   return trimmed;
 }
 
-function assertPathInsideRoot(rootPath: string, targetPath: string, label: string): string {
-  const resolvedRoot = path.resolve(rootPath);
+async function assertPathInsideRoot(rootPath: string, targetPath: string, label: string): Promise<string> {
+  const canonicalRoot = await fs.promises.realpath(rootPath);
   const resolvedTarget = path.resolve(targetPath);
-  const relative = path.relative(resolvedRoot, resolvedTarget);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  const targetParent = path.dirname(resolvedTarget);
+  const canonicalParent = await fs.promises.realpath(targetParent);
+  const relativeParent = path.relative(canonicalRoot, canonicalParent);
+  if (relativeParent.startsWith("..") || path.isAbsolute(relativeParent)) {
     throw new Error(`Unsafe ${label} path: ${targetPath} resolves outside ${rootPath}`);
   }
+
+  if (fs.existsSync(resolvedTarget)) {
+    const canonicalTarget = await fs.promises.realpath(resolvedTarget);
+    const relativeTarget = path.relative(canonicalRoot, canonicalTarget);
+    if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget)) {
+      throw new Error(`Unsafe ${label} path: ${targetPath} resolves outside ${rootPath}`);
+    }
+  }
+
   return resolvedTarget;
 }
 
@@ -193,36 +206,45 @@ function validatePublishReportShape(payload: unknown): NormalizedPublishReport {
     throw new Error("Malformed publish report: 'targetAssetDirs' must be an array when provided");
   }
 
+  const items = (report.items as PublishReportItem[] | undefined) ?? [];
+  const { publishedItems, notPublishedItems } = classifyPublishItems(items);
+
   return {
     runId: typeof report.runId === "string" ? report.runId : undefined,
-    items: (report.items as PublishReportItem[] | undefined) ?? [],
+    items,
     targetProductIds: (report.targetProductIds as string[] | undefined) ?? [],
     targetAssetDirs: (report.targetAssetDirs as string[] | undefined) ?? [],
+    publishedItems,
+    notPublishedItems,
   };
-}
-
-function isPublishedItem(item: PublishReportItem): boolean {
-  if (item.published === true) return true;
-  if (typeof item.status === "string") {
-    const normalized = item.status.trim().toLowerCase();
-    if (normalized === "published" || normalized === "success") return true;
-  }
-  return false;
-}
-
-function hasKnownNotPublishedStatus(item: PublishReportItem): boolean {
-  if (item.published === false) return true;
-  if (typeof item.status === "string") {
-    const normalized = item.status.trim().toLowerCase();
-    if (normalized === "failed" || normalized === "skipped" || normalized === "error" || normalized === "pending" || normalized === "draft") {
-      return true;
-    }
-  }
-  return false;
 }
 
 function getEffectiveTargetProductId(item: PublishReportItem): string | null {
   return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId) ?? readProductIdLike(item.liveTargetKey);
+}
+
+function classifyPublishItem(item: PublishReportItem): "published" | "not_published" {
+  if (item.published === true) return "published";
+  if (item.published === false) return "not_published";
+  if (typeof item.status === "string") {
+    const normalized = item.status.trim().toLowerCase();
+    if (normalized === "published" || normalized === "success") return "published";
+    if (normalized === "failed" || normalized === "skipped" || normalized === "error" || normalized === "pending" || normalized === "draft") return "not_published";
+  }
+  throw new Error(
+    `Unknown publish state for item with liveTargetKey '${String(item.liveTargetKey ?? "")}' and approvedLocalProductId '${String(item.approvedLocalProductId ?? "")}'`,
+  );
+}
+
+function classifyPublishItems(items: PublishReportItem[]): { publishedItems: PublishReportItem[]; notPublishedItems: PublishReportItem[] } {
+  const publishedItems: PublishReportItem[] = [];
+  const notPublishedItems: PublishReportItem[] = [];
+  for (const item of items) {
+    const classification = classifyPublishItem(item);
+    if (classification === "published") publishedItems.push(item);
+    else notPublishedItems.push(item);
+  }
+  return { publishedItems, notPublishedItems };
 }
 
 function inferTargetSets(report: NormalizedPublishReport): {
@@ -235,40 +257,21 @@ function inferTargetSets(report: NormalizedPublishReport): {
   const targetKeys = new Set<string>();
   const touchedProductIds = new Set<string>();
   const auditNotes: string[] = [];
-  let unknownStatusItems = 0;
-  let totalItems = 0;
 
-  for (const id of readStringList(report.targetProductIds)) targetProductIds.add(id);
-  for (const dir of readStringList(report.targetAssetDirs)) targetKeys.add(dir);
-
-  for (const item of report.items) {
-    totalItems += 1;
+  for (const item of report.publishedItems) {
     const approvedId = readProductIdLike(item.approvedLocalProductId);
     const targetKey = readProductIdLike(item.liveTargetKey);
     const explicitTargetId = readProductIdLike(item.targetProductId);
 
-    const published = isPublishedItem(item);
-    const knownNotPublished = hasKnownNotPublishedStatus(item);
-    const unknownPublishState = !published && !knownNotPublished;
-    if (unknownPublishState) unknownStatusItems += 1;
-
-    const effectiveTargetProductId = published ? getEffectiveTargetProductId(item) : null;
-    if (published && effectiveTargetProductId) {
+    const effectiveTargetProductId = getEffectiveTargetProductId(item);
+    if (effectiveTargetProductId) {
       targetProductIds.add(effectiveTargetProductId);
       touchedProductIds.add(effectiveTargetProductId);
       if (!approvedId && !explicitTargetId && targetKey) {
         auditNotes.push(`Published item with missing explicit target product id uses liveTargetKey '${targetKey}' as effective target product id.`);
       }
-    } else if (approvedId && knownNotPublished) {
-      auditNotes.push(`Approved item '${approvedId}' was not published and is excluded from targetProductIds.`);
-    } else if (approvedId && unknownPublishState) {
-      auditNotes.push(`Unable to determine publish status for item '${approvedId}' — excluded from target (fail-closed).`);
     }
     if (targetKey) targetKeys.add(targetKey);
-  }
-
-  if (totalItems > 0 && unknownStatusItems / totalItems > 0.3) {
-    auditNotes.push("Publish status detection may be unreliable — unknown item status structure.");
   }
 
   return { targetProductIds, targetKeys, touchedProductIds, auditNotes };
@@ -356,6 +359,14 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
       `Live product metadata mismatch: ${missingLiveMetadataIds.length} ids from live-product-ids are missing in live-products payload: ${preview}`,
     );
   }
+  const liveProductsWithNoKeys = liveProductIds.filter((liveProductId) => {
+    const liveRecord = liveProductById.get(liveProductId);
+    return !!liveRecord && liveRecord.keys.length < 1;
+  });
+  if (liveProductsWithNoKeys.length > 0) {
+    const preview = liveProductsWithNoKeys.slice(0, 10).join(", ");
+    throw new Error(`Live product metadata mismatch: ${liveProductsWithNoKeys.length} records have no usable asset key signal: ${preview}`);
+  }
 
   const { targetProductIds, targetKeys, touchedProductIds, auditNotes } = inferTargetSets(publishReport);
 
@@ -371,8 +382,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   const targetByKey = new Map<string, string>();
   const ambiguousKeys = new Set<string>();
 
-  for (const item of publishReport.items) {
-    if (!isPublishedItem(item)) continue;
+  for (const item of publishReport.publishedItems) {
     const key = readProductIdLike(item.liveTargetKey);
     const targetProductId = getEffectiveTargetProductId(item);
     if (!key || !targetProductId) continue;
@@ -500,8 +510,8 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
   await fs.promises.mkdir(sanitizeRoot, { recursive: true });
   const planPath = path.join(sanitizeRoot, `${safeRunId}.plan.json`);
   const summaryPath = path.join(sanitizeRoot, `${safeRunId}.summary.md`);
-  assertPathInsideRoot(sanitizeRoot, planPath, "plan output");
-  assertPathInsideRoot(sanitizeRoot, summaryPath, "summary output");
+  await assertPathInsideRoot(sanitizeRoot, planPath, "plan output");
+  await assertPathInsideRoot(sanitizeRoot, summaryPath, "summary output");
   await fs.promises.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await fs.promises.writeFile(summaryPath, buildSummary(plan), "utf8");
 
