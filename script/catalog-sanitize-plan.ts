@@ -6,6 +6,8 @@ type PublishReportItem = {
   approvedLocalProductId?: string | null;
   liveTargetKey?: string | null;
   targetProductId?: string | null;
+  status?: string | null;
+  published?: boolean | null;
 };
 
 type PublishReportLike = {
@@ -107,31 +109,73 @@ function inferLiveProductsFromJson(payload: unknown): LiveProductRecord[] {
   return records;
 }
 
-function inferTargetSets(report: PublishReportLike): { targetProductIds: Set<string>; targetKeys: Set<string>; touchedProductIds: Set<string> } {
+function isPublishedItem(item: PublishReportItem): boolean {
+  if (item.published === true) return true;
+  if (typeof item.status === "string") {
+    const normalized = item.status.trim().toLowerCase();
+    if (normalized === "published" || normalized === "success") return true;
+  }
+  return false;
+}
+
+function hasKnownNotPublishedStatus(item: PublishReportItem): boolean {
+  if (item.published === false) return true;
+  if (typeof item.status === "string") {
+    const normalized = item.status.trim().toLowerCase();
+    if (normalized === "failed" || normalized === "skipped" || normalized === "error" || normalized === "pending" || normalized === "draft") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function inferTargetSets(report: PublishReportLike): {
+  targetProductIds: Set<string>;
+  targetKeys: Set<string>;
+  touchedProductIds: Set<string>;
+  auditNotes: string[];
+} {
   const targetProductIds = new Set<string>();
   const targetKeys = new Set<string>();
   const touchedProductIds = new Set<string>();
+  const auditNotes: string[] = [];
+  let unknownStatusItems = 0;
+  let totalItems = 0;
 
   for (const id of readStringList(report.targetProductIds)) targetProductIds.add(id);
   for (const dir of readStringList(report.targetAssetDirs)) targetKeys.add(dir);
 
   for (const item of Array.isArray(report.items) ? report.items : []) {
+    totalItems += 1;
     const approvedId = readProductIdLike(item.approvedLocalProductId);
     const targetId = readProductIdLike(item.targetProductId);
     const targetKey = readProductIdLike(item.liveTargetKey);
 
-    if (approvedId) {
+    const published = isPublishedItem(item);
+    const knownNotPublished = hasKnownNotPublishedStatus(item);
+    const unknownPublishState = !published && !knownNotPublished;
+    if (unknownPublishState) unknownStatusItems += 1;
+
+    if (approvedId && published) {
       targetProductIds.add(approvedId);
       touchedProductIds.add(approvedId);
+    } else if (approvedId && knownNotPublished) {
+      auditNotes.push(`Approved item '${approvedId}' was not published and is excluded from targetProductIds.`);
+    } else if (approvedId && unknownPublishState) {
+      auditNotes.push(`Unable to determine publish status for item '${approvedId}' — excluded from target (fail-closed).`);
     }
-    if (targetId) {
+    if (targetId && published) {
       targetProductIds.add(targetId);
       touchedProductIds.add(targetId);
     }
     if (targetKey) targetKeys.add(targetKey);
   }
 
-  return { targetProductIds, targetKeys, touchedProductIds };
+  if (totalItems > 0 && unknownStatusItems / totalItems > 0.3) {
+    auditNotes.push("Publish status detection may be unreliable — unknown item status structure.");
+  }
+
+  return { targetProductIds, targetKeys, touchedProductIds, auditNotes };
 }
 
 function buildSummary(plan: PlanReport): string {
@@ -202,11 +246,12 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
     if (!liveProductById.has(product.id)) liveProductById.set(product.id, product);
   }
 
-  const { targetProductIds, targetKeys, touchedProductIds } = inferTargetSets(publishReport);
+  const { targetProductIds, targetKeys, touchedProductIds, auditNotes } = inferTargetSets(publishReport);
 
   const replace: ReplacementPlan[] = [];
   const conflicts: string[] = [];
   const notes: string[] = [];
+  notes.push(...auditNotes);
   const keep: string[] = [];
   const update: string[] = [];
   const retire: string[] = [];
