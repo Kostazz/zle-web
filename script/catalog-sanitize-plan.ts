@@ -304,6 +304,14 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
     if (!liveProductById.has(product.id)) liveProductById.set(product.id, product);
   }
 
+  const missingLiveMetadataIds = liveProductIds.filter((liveProductId) => !liveProductById.has(liveProductId));
+  if (missingLiveMetadataIds.length > 0) {
+    const preview = missingLiveMetadataIds.slice(0, 10).join(", ");
+    throw new Error(
+      `Live product metadata mismatch: ${missingLiveMetadataIds.length} ids from live-product-ids are missing in live-products payload: ${preview}`,
+    );
+  }
+
   const { targetProductIds, targetKeys, touchedProductIds, auditNotes } = inferTargetSets(publishReport);
 
   const replace: ReplacementPlan[] = [];
@@ -341,7 +349,10 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
     }
 
     const liveRecord = liveProductById.get(liveProductId);
-    const keys = liveRecord?.keys ?? [];
+    if (!liveRecord) {
+      throw new Error(`Live product metadata mismatch: missing live-products record for '${liveProductId}'`);
+    }
+    const keys = liveRecord.keys;
 
     const hasAmbiguousKey = keys.some((key) => ambiguousKeys.has(key));
     if (hasAmbiguousKey) {
