@@ -224,6 +224,10 @@ function getEffectiveTargetProductId(item: PublishReportItem): string | null {
   return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId);
 }
 
+function getEffectivePublishedLiveProductId(item: PublishReportItem): string | null {
+  return readProductIdLike(item.approvedLocalProductId) ?? readProductIdLike(item.targetProductId) ?? readProductIdLike(item.liveTargetKey);
+}
+
 function classifyPublishItem(item: PublishReportItem): "published" | "not_published" {
   if (item.published === true) return "published";
   if (item.published === false) return "not_published";
@@ -274,12 +278,12 @@ function inferTargetSets(report: NormalizedPublishReport): {
     const targetKey = readProductIdLike(item.liveTargetKey);
     const explicitTargetId = readProductIdLike(item.targetProductId);
 
-    const effectiveTargetProductId = getEffectiveTargetProductId(item);
-    if (effectiveTargetProductId) {
-      targetProductIds.add(effectiveTargetProductId);
-      touchedProductIds.add(effectiveTargetProductId);
+    const effectivePublishedLiveProductId = getEffectivePublishedLiveProductId(item);
+    if (effectivePublishedLiveProductId) {
+      targetProductIds.add(effectivePublishedLiveProductId);
+      touchedProductIds.add(effectivePublishedLiveProductId);
       if (!approvedId && !explicitTargetId && targetKey) {
-        auditNotes.push(`Published item with missing explicit target product id uses liveTargetKey '${targetKey}' as effective target product id.`);
+        auditNotes.push(`Published item with missing explicit target product id uses liveTargetKey '${targetKey}' as resulting published live product id.`);
       }
     }
     if (targetKey) targetKeys.add(targetKey);
@@ -395,7 +399,7 @@ export async function runCatalogSanitizePlan(runId: string): Promise<{ planPath:
 
   for (const item of publishReport.publishedItems) {
     const key = readProductIdLike(item.liveTargetKey);
-    const targetProductId = getEffectiveTargetProductId(item);
+    const targetProductId = getEffectivePublishedLiveProductId(item);
     if (!key || !targetProductId) continue;
 
     if (targetByKey.has(key) && targetByKey.get(key) !== targetProductId) {
