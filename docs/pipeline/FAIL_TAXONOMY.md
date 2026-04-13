@@ -54,7 +54,8 @@ Detection:
 - Upstream `curate` pro stejný `runId` skončil bez failure, ale review artifact nebyl vytvořen.
 
 Stop rule:
-- Pipeline musí zastavit (fail-closed), dokud review manifest nevznikne pro stejný `runId`.
+- Pokud je explicitně zadán `--review-run-id`, pipeline musí zastavit (fail-closed), dokud review manifest nevznikne pro stejný `runId`.
+- Pokud `--review-run-id` není explicitní a všechny curated položky mají `requiresHumanReview=false`, pipeline může pokračovat přes auto-approved bridge.
 
 Actionable next step:
 Zkontrolovat review-queue output a ověřit, že review artifact byl vygenerován a uložen do tmp/ pro stejný runId.
@@ -66,8 +67,8 @@ Důvod:
 Review manifest existuje, ale neodpovídá očekávané struktuře (chybějící pole, špatné typy, nevalidní payload).
 
 Detection:
-- `tmp/review-decisions/<runId>.review.json` existuje, ale chybí klíče (např. `runId`, `items`, `decisionSummary`).
-- Manifest obsahuje `"status": "failed"` nebo `"failureCode": "invalid_schema"`.
+- `tmp/review-decisions/<runId>.review.json` existuje, ale chybí klíče `runId`, `createdAt`, `sourceRunId` nebo `decisions`.
+- V `decisions[]` chybí povinná pole `sourceProductKey` / `decision` / `resolutionType` nebo mají nevalidní hodnoty.
 
 Stop rule:
 - Pipeline musí zastavit; pokračování je povoleno až po validním schema pass.
@@ -82,7 +83,7 @@ Důvod:
 Review queue je prázdná, ale zbytek flow implikuje, že položky měly být předány do review.
 
 Detection:
-- `tmp/review-decisions/<runId>.review.json` má `items: []`, ale `curate` output pro stejný `runId` obsahuje kandidáty.
+- `tmp/review-decisions/<runId>.review.json` má `decisions: []`, ale `curate` output pro stejný `runId` obsahuje review-eligible kandidáty.
 - Review queue report indikuje `accepted > 0`, zatímco review decision set je prázdný.
 
 Stop rule:
@@ -200,8 +201,8 @@ Důvod:
 Gate manifest má nevalidní schéma nebo chybí klíčové rozhodovací pole.
 
 Detection:
-- `tmp/publish-gates/<runId>.publish-gate.json` chybí pole `status`, `runId` nebo `decision`.
-- Manifest obsahuje `"status": "failed"` a `"failureCode": "invalid_gate_schema"`.
+- `tmp/publish-gates/<runId>.publish-gate.json` chybí povinné top-level pole `runId`, `sourceRunId`, `reviewRunId`, `stagingRunId`, `createdAt`, `summary` nebo `items`.
+- V `items[]` chybí `releaseDecision` nebo `eligibilityStatus`, případně hodnoty nejsou v povoleném enumu.
 
 Stop rule:
 - Pipeline musí zastavit; pokračování je povoleno až po validním gate schema pass.
@@ -251,8 +252,8 @@ Důvod:
 Run v režimu validate-only selhal na validačních pravidlech před samotným publish.
 
 Detection:
-- Publish report obsahuje `mode: "validate-only"` a `"status": "failed"`.
-- Report vrací konkrétní `failureCode` validační chyby místo publikovaného výsledku.
+- `tmp/publish-reports/<runId>.publish.json` má v `debug.errorStage` hodnotu `validation`.
+- `summary.failed > 0` a v `items[]` existují položky se `status: "failed"` a validačními `reasonCodes`.
 
 Stop rule:
 - Pipeline musí zastavit publish část; pokračovat lze pouze po opravě validačních chyb a novém běhu.
