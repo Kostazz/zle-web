@@ -233,26 +233,16 @@ async function main(): Promise<void> {
     const reviewPath = defaultReviewPath(args);
     const hasReviewManifest = fs.existsSync(reviewPath);
 
-    let result;
-    if (hasReviewManifest) {
-      result = await runApprovedStagingExecutor(args);
-    } else {
+    if (!hasReviewManifest) {
       const curation = readCurationReport(args);
-      if (!shouldUseAutoApprovedBridge(curation)) {
-        result = await runApprovedStagingExecutor(args);
-      } else {
-        const tempReviewDir = await fs.promises.mkdtemp(path.join(path.resolve("tmp"), "auto-review-decisions-"));
-        const reviewRunId = args.reviewRunId ?? args.runId;
-        const tempReviewPath = path.join(tempReviewDir, `${reviewRunId}.review.json`);
+      if (shouldUseAutoApprovedBridge(curation)) {
         const manifest = buildAutoApprovedManifest(args, curation);
-        try {
-          await fs.promises.writeFile(tempReviewPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-          result = await runApprovedStagingExecutor({ ...args, reviewDir: tempReviewDir });
-        } finally {
-          await fs.promises.rm(tempReviewDir, { recursive: true, force: true });
-        }
+        await fs.promises.mkdir(path.dirname(reviewPath), { recursive: true });
+        await fs.promises.writeFile(reviewPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
       }
     }
+
+    const result = await runApprovedStagingExecutor(args);
 
     console.log(`run ${result.report.runId}`);
     console.log(`review_run ${result.report.reviewRunId}`);
