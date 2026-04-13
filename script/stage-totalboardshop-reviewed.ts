@@ -5,6 +5,7 @@ import { runApprovedStagingExecutor } from "./lib/staging-review-executor.ts";
 type CliArgs = {
   runId: string;
   reviewRunId?: string;
+  reviewRunIdExplicit: boolean;
   outputDir: string;
   manifestDir: string;
   limit?: number;
@@ -32,6 +33,36 @@ type StagingFailureArtifact = {
   };
 };
 
+type CurationItem = {
+  sourceProductKey: string;
+  sourceUrl: string;
+  title: string;
+  curationDecision: "ACCEPT_CANDIDATE" | "REVIEW_REQUIRED" | "REJECTED";
+  requiresHumanReview: boolean;
+  proposedLocalProductId: string | null;
+};
+
+type CurationReport = {
+  runId: string;
+  sourceRunId: string;
+  items: CurationItem[];
+};
+
+type ReviewDecisionEntry = {
+  sourceProductKey: string;
+  decision: "approved";
+  resolutionType: "map_to_existing" | "new_candidate";
+  approvedLocalProductId?: string;
+  operatorNotes?: string;
+};
+
+type ReviewDecisionManifest = {
+  runId: string;
+  createdAt: string;
+  sourceRunId: string;
+  decisions: ReviewDecisionEntry[];
+};
+
 function parsePositiveInt(value: string | undefined, flag: string): number {
   if (!value) throw new Error(`${flag} requires a value`);
   const parsed = Number.parseInt(value, 10);
@@ -42,6 +73,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     runId: "",
+    reviewRunIdExplicit: false,
     outputDir: path.join("tmp", "agent-staging"),
     manifestDir: path.join("tmp", "agent-manifests"),
     validateOnly: false,
@@ -57,6 +89,7 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--review-run-id":
         args.reviewRunId = next ?? "";
+        args.reviewRunIdExplicit = true;
         i++;
         break;
       case "--output-dir":
@@ -101,6 +134,48 @@ function classifyFailure(message: string): string {
   if (/outside tmp\/agent-staging/i.test(message)) return "staging_path_rejected";
   if (/Unknown argument|Missing --run-id|positive integer/i.test(message)) return "cli_usage_error";
   return "staging_failed_closed";
+}
+
+function defaultReviewPath(args: CliArgs): string {
+  const reviewRunId = args.reviewRunId ?? args.runId;
+  return path.join("tmp", "review-decisions", `${reviewRunId}.review.json`);
+}
+
+function readCurationReport(args: CliArgs): CurationReport {
+  const curationPath = path.join("tmp", "curation", `${args.runId}.curation.json`);
+  try {
+    return JSON.parse(fs.readFileSync(curationPath, "utf8")) as CurationReport;
+  } catch (error) {
+    throw new Error(`Invalid curation report JSON: ${curationPath} (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
+
+function shouldUseAutoApprovedBridge(report: CurationReport): boolean {
+  return report.items.every((item) => !item.requiresHumanReview);
+}
+
+function buildAutoApprovedManifest(args: CliArgs, report: CurationReport): ReviewDecisionManifest {
+  const reviewRunId = args.reviewRunId ?? args.runId;
+  const decisions = report.items
+    .filter((item) => item.curationDecision === "ACCEPT_CANDIDATE" && !item.requiresHumanReview)
+    .map<ReviewDecisionEntry>((item) => {
+      const mappedId = item.proposedLocalProductId ?? undefined;
+      return {
+        sourceProductKey: item.sourceProductKey,
+        decision: "approved",
+        resolutionType: mappedId ? "map_to_existing" : "new_candidate",
+        approvedLocalProductId: mappedId,
+        operatorNotes: "auto-approved: curation ACCEPT_CANDIDATE with requiresHumanReview=false",
+      };
+    })
+    .sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey));
+
+  return {
+    runId: reviewRunId,
+    createdAt: new Date().toISOString(),
+    sourceRunId: report.sourceRunId,
+    decisions,
+  };
 }
 
 async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ reportPath: string; summaryPath: string }> {
@@ -158,7 +233,20 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   try {
+    const reviewPath = defaultReviewPath(args);
+    const hasReviewManifest = fs.existsSync(reviewPath);
+
+    if (!hasReviewManifest && !args.reviewRunIdExplicit) {
+      const curation = readCurationReport(args);
+      if (shouldUseAutoApprovedBridge(curation)) {
+        const manifest = buildAutoApprovedManifest(args, curation);
+        await fs.promises.mkdir(path.dirname(reviewPath), { recursive: true });
+        await fs.promises.writeFile(reviewPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+      }
+    }
+
     const result = await runApprovedStagingExecutor(args);
+
     console.log(`run ${result.report.runId}`);
     console.log(`review_run ${result.report.reviewRunId}`);
     console.log(`mode ${args.validateOnly ? "validate-only" : "stage-reviewed"}`);
