@@ -32,6 +32,36 @@ type StagingFailureArtifact = {
   };
 };
 
+type CurationItem = {
+  sourceProductKey: string;
+  sourceUrl: string;
+  title: string;
+  curationDecision: "ACCEPT_CANDIDATE" | "REVIEW_REQUIRED" | "REJECTED";
+  requiresHumanReview: boolean;
+  proposedLocalProductId: string | null;
+};
+
+type CurationReport = {
+  runId: string;
+  sourceRunId: string;
+  items: CurationItem[];
+};
+
+type ReviewDecisionEntry = {
+  sourceProductKey: string;
+  decision: "approved";
+  resolutionType: "map_to_existing" | "new_candidate";
+  approvedLocalProductId?: string;
+  operatorNotes?: string;
+};
+
+type ReviewDecisionManifest = {
+  runId: string;
+  createdAt: string;
+  sourceRunId: string;
+  decisions: ReviewDecisionEntry[];
+};
+
 function parsePositiveInt(value: string | undefined, flag: string): number {
   if (!value) throw new Error(`${flag} requires a value`);
   const parsed = Number.parseInt(value, 10);
@@ -103,6 +133,48 @@ function classifyFailure(message: string): string {
   return "staging_failed_closed";
 }
 
+function defaultReviewPath(args: CliArgs): string {
+  const reviewRunId = args.reviewRunId ?? args.runId;
+  return path.join("tmp", "review-decisions", `${reviewRunId}.review.json`);
+}
+
+function readCurationReport(args: CliArgs): CurationReport {
+  const curationPath = path.join("tmp", "curation", `${args.runId}.curation.json`);
+  try {
+    return JSON.parse(fs.readFileSync(curationPath, "utf8")) as CurationReport;
+  } catch (error) {
+    throw new Error(`Invalid curation report JSON: ${curationPath} (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
+
+function shouldUseAutoApprovedBridge(report: CurationReport): boolean {
+  return report.items.every((item) => !item.requiresHumanReview);
+}
+
+function buildAutoApprovedManifest(args: CliArgs, report: CurationReport): ReviewDecisionManifest {
+  const reviewRunId = args.reviewRunId ?? args.runId;
+  const decisions = report.items
+    .filter((item) => item.curationDecision === "ACCEPT_CANDIDATE" && !item.requiresHumanReview)
+    .map<ReviewDecisionEntry>((item) => {
+      const mappedId = item.proposedLocalProductId ?? undefined;
+      return {
+        sourceProductKey: item.sourceProductKey,
+        decision: "approved",
+        resolutionType: mappedId ? "map_to_existing" : "new_candidate",
+        approvedLocalProductId: mappedId,
+        operatorNotes: "auto-approved: curation ACCEPT_CANDIDATE with requiresHumanReview=false",
+      };
+    })
+    .sort((a, b) => a.sourceProductKey.localeCompare(b.sourceProductKey));
+
+  return {
+    runId: reviewRunId,
+    createdAt: new Date().toISOString(),
+    sourceRunId: report.sourceRunId,
+    decisions,
+  };
+}
+
 async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ reportPath: string; summaryPath: string }> {
   const manifestDir = validateManifestDir(args.manifestDir);
   await fs.promises.mkdir(manifestDir, { recursive: true });
@@ -158,7 +230,30 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   try {
-    const result = await runApprovedStagingExecutor(args);
+    const reviewPath = defaultReviewPath(args);
+    const hasReviewManifest = fs.existsSync(reviewPath);
+
+    let result;
+    if (hasReviewManifest) {
+      result = await runApprovedStagingExecutor(args);
+    } else {
+      const curation = readCurationReport(args);
+      if (!shouldUseAutoApprovedBridge(curation)) {
+        result = await runApprovedStagingExecutor(args);
+      } else {
+        const tempReviewDir = await fs.promises.mkdtemp(path.join(path.resolve("tmp"), "auto-review-decisions-"));
+        const reviewRunId = args.reviewRunId ?? args.runId;
+        const tempReviewPath = path.join(tempReviewDir, `${reviewRunId}.review.json`);
+        const manifest = buildAutoApprovedManifest(args, curation);
+        try {
+          await fs.promises.writeFile(tempReviewPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+          result = await runApprovedStagingExecutor({ ...args, reviewDir: tempReviewDir });
+        } finally {
+          await fs.promises.rm(tempReviewDir, { recursive: true, force: true });
+        }
+      }
+    }
+
     console.log(`run ${result.report.runId}`);
     console.log(`review_run ${result.report.reviewRunId}`);
     console.log(`mode ${args.validateOnly ? "validate-only" : "stage-reviewed"}`);
