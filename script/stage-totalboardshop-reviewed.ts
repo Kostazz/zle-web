@@ -5,6 +5,7 @@ import { runApprovedStagingExecutor } from "./lib/staging-review-executor.ts";
 type CliArgs = {
   runId: string;
   reviewRunId?: string;
+  reviewRunIdExplicit: boolean;
   outputDir: string;
   manifestDir: string;
   limit?: number;
@@ -72,6 +73,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     runId: "",
+    reviewRunIdExplicit: false,
     outputDir: path.join("tmp", "agent-staging"),
     manifestDir: path.join("tmp", "agent-manifests"),
     validateOnly: false,
@@ -87,6 +89,7 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--review-run-id":
         args.reviewRunId = next ?? "";
+        args.reviewRunIdExplicit = true;
         i++;
         break;
       case "--output-dir":
@@ -233,7 +236,7 @@ async function main(): Promise<void> {
     const reviewPath = defaultReviewPath(args);
     const hasReviewManifest = fs.existsSync(reviewPath);
 
-    if (!hasReviewManifest) {
+    if (!hasReviewManifest && !args.reviewRunIdExplicit) {
       const curation = readCurationReport(args);
       if (shouldUseAutoApprovedBridge(curation)) {
         const manifest = buildAutoApprovedManifest(args, curation);
