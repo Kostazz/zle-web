@@ -135,14 +135,14 @@ Stage neobdržel žádné schválené položky a nic nestageoval; může jít o 
 
 Detection:
 - Stage metrics hlásí `approved: 0` a `staged: 0`.
-- Curation report pro stejný `runId` ukazuje `summary.acceptedCandidates > 0`.
+- Review decisions obsahují alespoň jednu položku s `decision: "approved"`.
 
 Stop rule:
-- Pokud `summary.acceptedCandidates = 0`, může pokračovat jako explicitní no-op.
-- Pokud `summary.acceptedCandidates > 0` a `approved/staged = 0`, pipeline musí zastavit (orchestration bug).
+- Pokud existuje `approved` položka a `approved/staged = 0`, pipeline musí zastavit (orchestration bug).
+- Pokud žádná položka není `approved`, jde o legitimní no-op a pipeline může pokračovat.
 
 Actionable next step:
-Ověřit, zda `summary.acceptedCandidates` a `approved` vstupy skutečně měly být > 0; pokud ano, vyšetřit review rozhodování a mapování stavů.
+Ověřit, zda review decisions obsahují `approved` položky; pokud ano a stage hlásí `approved/staged = 0`, vyšetřit review rozhodování a mapování stavů.
 
 ### S3 — Missing upstream artifact
 
@@ -219,11 +219,11 @@ Staged set je prázdný a není jasné, zda jde o očekávaný no-op nebo selhá
 
 Detection:
 - Gate input ukazuje prázdné staged `items: []`.
-- Upstream curation report současně hlásí `summary.acceptedCandidates > 0`, ale staged set je 0.
+- Review decisions obsahují alespoň jednu položku s `decision: "approved"`.
 
 Stop rule:
-- Pokud upstream potvrzuje legitimní no-op (`summary.acceptedCandidates = 0`), může pokračovat jako no-op.
-- Pokud `summary.acceptedCandidates > 0` a staged set je prázdný, pipeline musí zastavit.
+- Pokud existují `approved` položky a staged set je prázdný, pipeline musí zastavit.
+- Pokud žádné `approved` položky neexistují, jde o legitimní no-op.
 
 Actionable next step:
 Aplikovat explicitní pravidlo no-op/fail pro daný pipeline režim a výsledek zaznamenat do gate manifestu.
