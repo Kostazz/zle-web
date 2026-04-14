@@ -134,12 +134,12 @@ Důvod:
 Stage neobdržel žádné schválené položky a nic nestageoval; může jít o no-op nebo chybný tok.
 
 Detection:
-- Stage metrics hlásí `approved: 0` a `staged: 0`.
-- Review decisions obsahují alespoň jednu položku s `decision: "approved"`.
+- Stage summary/metrics hlásí `totalApprovedItems: 0` (`approved: 0`) a `stagedItems: 0` (`staged: 0`).
+- Review manifest (`tmp/review-decisions/<reviewRunId>.review.json`) má nenulový `approved` count v `decisions[]`.
 
 Stop rule:
-- Pokud existuje `approved` položka a `approved/staged = 0`, pipeline musí zastavit (orchestration bug).
-- Pokud žádná položka není `approved`, jde o legitimní no-op a pipeline může pokračovat.
+- Pokud je review `approved` count > 0 a stage summary současně hlásí `totalApprovedItems: 0` + `stagedItems: 0`, pipeline musí zastavit (orchestration bug).
+- Pokud review `approved` count není > 0, jde o legitimní no-op a pipeline může pokračovat.
 
 Actionable next step:
 Ověřit, zda review decisions obsahují `approved` položky; pokud ano a stage hlásí `approved/staged = 0`, vyšetřit review rozhodování a mapování stavů.
@@ -151,11 +151,12 @@ Důvod:
 Stage krok nemá dostupný upstream artifact (typicky review output) pro aktuální runId.
 
 Detection:
-- Chybí `tmp/review-decisions/<runId>.review.json` před spuštěním stage.
+- Při explicitním `--review-run-id` chybí `tmp/review-decisions/<reviewRunId>.review.json`.
+- Bez explicitního `--review-run-id` chybí výchozí `tmp/review-decisions/<runId>.review.json`.
 - Stage log obsahuje `missing upstream artifact` nebo ekvivalentní chybu načtení.
 
 Stop rule:
-- Pokud je explicitně zadán `--review-run-id`, pipeline musí zastavit; bez review artifactu není fallback.
+- Pokud je explicitně zadán `--review-run-id`, pipeline musí zastavit; kontrolovaný artifact je vždy přes explicitní `reviewRunId`.
 - Pokud `--review-run-id` není explicitní a všechny curated položky mají `requiresHumanReview=false`, může proběhnout auto-approved bridge.
 
 Actionable next step:
