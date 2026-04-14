@@ -50,15 +50,16 @@ Důvod:
 Review krok očekává review manifest, ale artifact neexistuje.
 
 Detection:
-- Chybí soubor `tmp/review-decisions/<runId>.review.json`.
+- Při explicitním `--review-run-id` chybí `tmp/review-decisions/<reviewRunId>.review.json`.
+- Bez explicitního `--review-run-id` chybí výchozí `tmp/review-decisions/<runId>.review.json`.
 - Upstream `curate` pro stejný `runId` skončil bez failure, ale review artifact nebyl vytvořen.
 
 Stop rule:
-- Pokud je explicitně zadán `--review-run-id`, pipeline musí zastavit (fail-closed), dokud review manifest nevznikne pro stejný `runId`.
+- Pokud je explicitně zadán `--review-run-id`, pipeline musí zastavit (fail-closed), dokud nevznikne `tmp/review-decisions/<reviewRunId>.review.json`.
 - Pokud `--review-run-id` není explicitní a všechny curated položky mají `requiresHumanReview=false`, pipeline může pokračovat přes auto-approved bridge.
 
 Actionable next step:
-Zkontrolovat review-queue output a ověřit, že review artifact byl vygenerován a uložen do tmp/ pro stejný runId.
+Zkontrolovat review-queue output a ověřit, že review artifact byl vygenerován pod správným `reviewRunId` (explicitním nebo implicitním).
 
 ### R2 — Review manifest shape mismatch
 
@@ -288,7 +289,7 @@ Důvod:
 Sanitize potřebuje live snapshot, který není dostupný pro aktuální run.
 
 Detection:
-- Chybí `tmp/catalog-sanitize/live-products.<runId>.json`.
+- Chybí některý z required sanitize snapshot artifacts: `tmp/catalog-sanitize/live-products.<runId>.json`, `tmp/catalog-sanitize/live-product-ids.<runId>.txt`, `tmp/catalog-sanitize/live-asset-dirs.<runId>.txt`.
 - Sanitize log vrací chybu typu `missing live snapshot`.
 
 Stop rule:
