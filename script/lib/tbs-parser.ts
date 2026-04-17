@@ -106,30 +106,164 @@ function isAllowedProductImageUrl(imageUrl: URL): boolean {
   return pathname.includes(PRODUCT_IMAGE_PREFERRED_PATH_MARKER);
 }
 
-function extractImageUrls(html: string, pageUrl: URL): string[] {
-  const urls: string[] = [];
-  const patterns = [
-    /<img[^>]+(?:src|data-large_image|data-src)=["']([^"']+)["'][^>]*>/gi,
-    /<a[^>]+href=["']([^"']+\.(?:jpg|jpeg|png|webp))(?:\?[^"']*)?["'][^>]*>/gi,
-  ];
+const PRIMARY_GALLERY_CLASS_MARKERS = ["woocommerce-product-gallery", "woocommerce-product-gallery__wrapper"] as const;
+const SECONDARY_GALLERY_CLASS_MARKERS = ["product-gallery", "product-images", "images-wrapper"] as const;
+const MAX_PRIMARY_GALLERY_IMAGES = 4;
 
-  for (const pattern of patterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(html)) !== null) {
-      const candidate = match[1]?.trim();
-      if (!candidate) continue;
+function parseClassNamesFromTag(openingTag: string): string[] {
+  const classMatch = openingTag.match(/\bclass=["']([^"']+)["']/i)?.[1];
+  if (!classMatch) return [];
+  return classMatch
+    .split(/\s+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function extractBalancedTagBlock(html: string, tagStartIndex: number): string | null {
+  const openingSlice = html.slice(tagStartIndex);
+  const openingMatch = /^<([a-z0-9-]+)\b[^>]*>/i.exec(openingSlice);
+  if (!openingMatch) return null;
+
+  const openingTag = openingMatch[0];
+  const tagName = openingMatch[1];
+  const openingTagEnd = tagStartIndex + openingTag.length;
+
+  if (/\/>$/.test(openingTag)) {
+    return openingTag;
+  }
+
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "gi");
+  tagPattern.lastIndex = openingTagEnd;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    const tag = match[0];
+    const isClosing = tag.startsWith("</");
+    const isSelfClosing = /\/>$/.test(tag);
+    if (isClosing) {
+      depth -= 1;
+    } else if (!isSelfClosing) {
+      depth += 1;
+    }
+    if (depth === 0) {
+      return html.slice(tagStartIndex, tagPattern.lastIndex);
+    }
+  }
+
+  return null;
+}
+
+function collectGalleryBlocks(html: string, classMarkers: readonly string[], requireProductSignal: boolean): string[] {
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+
+  for (const openingTagMatch of Array.from(html.matchAll(/<([a-z0-9-]+)\b[^>]*>/gi))) {
+    const openingTag = openingTagMatch[0];
+    const classNames = parseClassNamesFromTag(openingTag);
+    if (classNames.length < 1) continue;
+
+    const hasMarker = classMarkers.some((marker) => classNames.some((className) => className.includes(marker)));
+    if (!hasMarker) continue;
+
+    if (requireProductSignal) {
+      const hasProductSignal = classNames.some((className) => className.includes("product") || className.includes("woocommerce"));
+      if (!hasProductSignal) continue;
+    }
+
+    const startIndex = openingTagMatch.index;
+    if (startIndex === undefined) continue;
+    const block = extractBalancedTagBlock(html, startIndex);
+    if (!block) continue;
+    if (seen.has(block)) continue;
+    seen.add(block);
+    blocks.push(block);
+  }
+
+  return blocks;
+}
+
+function extractAttributeValue(tag: string, attributeName: string): string | null {
+  const match = new RegExp(`\\b${attributeName}=["']([^"']+)["']`, "i").exec(tag);
+  return match?.[1]?.trim() || null;
+}
+
+function isGalleryThumbnailVariant(imageUrl: URL): boolean {
+  const pathname = imageUrl.pathname.toLowerCase();
+  if (pathname.includes("-300x300")) return true;
+  const resizedMatch = pathname.match(/-(\d{2,4})x(\d{2,4})(?=\.[a-z0-9]+$)/i);
+  if (!resizedMatch) return false;
+  const width = Number.parseInt(resizedMatch[1], 10);
+  const height = Number.parseInt(resizedMatch[2], 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+  return width <= 400 && height <= 400;
+}
+
+function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; failure?: ParseFailure } {
+  const primaryBlocks = collectGalleryBlocks(html, PRIMARY_GALLERY_CLASS_MARKERS, false);
+  const secondaryBlocks = primaryBlocks.length > 0 ? [] : collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
+  const candidateBlocks = primaryBlocks.length > 0 ? [primaryBlocks[0]] : secondaryBlocks.length === 1 ? [secondaryBlocks[0]] : [];
+  if (candidateBlocks.length < 1) {
+    return {
+      imageUrls: [],
+      failure: {
+        code: "missing_product_gallery",
+        reason: "Missing trusted product gallery container",
+      },
+    };
+  }
+
+  const primaryUrls: string[] = [];
+  const secondaryUrls: string[] = [];
+  const block = candidateBlocks[0];
+  for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
+    const imgTag = imgTagMatch[0];
+    const largeImageCandidate = extractAttributeValue(imgTag, "data-large_image");
+    if (largeImageCandidate) {
       try {
-        const resolvedUrl = new URL(candidate, pageUrl);
-        if (!isAllowedProductImageUrl(resolvedUrl)) continue;
-        const resolved = resolvedUrl.toString();
-        if (!urls.includes(resolved)) urls.push(resolved);
+        const resolvedUrl = new URL(largeImageCandidate, pageUrl);
+        if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+          const resolved = resolvedUrl.toString();
+          if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
+        }
       } catch {
         continue;
       }
     }
   }
 
-  return urls;
+  for (const anchorMatch of Array.from(block.matchAll(/<a\b[^>]*>/gi))) {
+    const candidate = extractAttributeValue(anchorMatch[0], "href");
+    if (!candidate) continue;
+    try {
+      const resolvedUrl = new URL(candidate, pageUrl);
+      if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+      if (isGalleryThumbnailVariant(resolvedUrl)) continue;
+      const resolved = resolvedUrl.toString();
+      if (!secondaryUrls.includes(resolved)) secondaryUrls.push(resolved);
+    } catch {
+      continue;
+    }
+  }
+
+  const urls =
+    primaryUrls.length > 0
+      ? primaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+      : secondaryUrls.length > 0
+        ? secondaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+        : [];
+
+  if (urls.length < 1) {
+    return {
+      imageUrls: [],
+      failure: {
+        code: "missing_valid_gallery_images",
+        reason: "Trusted product gallery found, but no valid gallery images after filtering",
+      },
+    };
+  }
+
+  return { imageUrls: urls };
 }
 
 function extractOptions(html: string): { options: string[]; present: boolean } {
@@ -266,7 +400,10 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
     sizesSet.add(token.toUpperCase());
   }
 
-  const imageUrls = extractImageUrls(html, pageUrl);
+  const imageExtraction = extractImageUrls(html, pageUrl);
+  if (imageExtraction.failure) {
+    return { failure: imageExtraction.failure };
+  }
 
   return {
     product: {
@@ -284,7 +421,7 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
       sizes: Array.from(sizesSet),
       descriptionRaw,
       additionalInfoRaw,
-      imageUrls,
+      imageUrls: imageExtraction.imageUrls,
       structured: deriveStructured(title),
     },
   };
