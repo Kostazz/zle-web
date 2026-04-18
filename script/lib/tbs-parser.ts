@@ -168,15 +168,15 @@ function collectGalleryBlocks(html: string, classMarkers: readonly string[], req
     const hasMarker = classMarkers.some((marker) => classNames.some((className) => className.includes(marker)));
     if (!hasMarker) continue;
 
-    if (requireProductSignal) {
-      const hasProductSignal = classNames.some((className) => className.includes("product") || className.includes("woocommerce"));
-      if (!hasProductSignal) continue;
-    }
-
     const startIndex = openingTagMatch.index;
     if (startIndex === undefined) continue;
     const block = extractBalancedTagBlock(html, startIndex);
     if (!block) continue;
+    if (requireProductSignal) {
+      const hasProductSignalInClassNames = classNames.some((className) => className.includes("product") || className.includes("woocommerce"));
+      const hasProductSignalInBlock = /product_title|entry-title|značka:|kategorie:/i.test(block);
+      if (!hasProductSignalInClassNames && !hasProductSignalInBlock) continue;
+    }
     if (seen.has(block)) continue;
     seen.add(block);
     blocks.push(block);
@@ -265,7 +265,7 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
             if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
           }
         } catch {
-          continue;
+          // Keep evaluating data-src/src fallback for this same <img> tag.
         }
       }
 

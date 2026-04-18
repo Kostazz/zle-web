@@ -353,10 +353,11 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     }
 
     if (downloadedImages.length < 1) {
+      const imageFailure = parsed.product.imageExtractionFailure;
       crawlLog.skippedProducts.push({
         sourceUrl,
-        reasonCode: "missing_images",
-        detail: "No allowlisted image successfully downloaded",
+        reasonCode: imageFailure?.code ?? "missing_images",
+        detail: imageFailure?.reason ?? "No allowlisted image successfully downloaded",
       });
       continue;
     }
