@@ -233,11 +233,113 @@ function isGalleryThumbnailVariant(imageUrl: URL): boolean {
 }
 
 function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; failure?: ParseFailure } {
+  function evaluateBlockTier(blocks: string[]): { bestScore: number; bestPreferredUrls: string[]; bestReturnedUrls: string[] } {
+    let bestScore = 0;
+    let bestPreferredUrls: string[] = [];
+    let bestReturnedUrls: string[] = [];
+
+    for (const block of blocks) {
+      const primaryUrls: string[] = [];
+      const secondaryUrls: string[] = [];
+      const fallbackImgUrls: string[] = [];
+      for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
+        const imgTag = imgTagMatch[0];
+        let hasValidPrimaryForImg = false;
+        const largeImageCandidate = extractAttributeValue(imgTag, "data-large_image");
+        if (largeImageCandidate) {
+          try {
+            const resolvedUrl = new URL(largeImageCandidate, pageUrl);
+            if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+              const resolved = resolvedUrl.toString();
+              if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
+              hasValidPrimaryForImg = true;
+            }
+          } catch {
+            // Keep evaluating data-src/src fallback for this same <img> tag.
+          }
+        }
+
+        if (!hasValidPrimaryForImg) {
+          const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
+          if (fallbackCandidate) {
+            try {
+              const resolvedUrl = new URL(fallbackCandidate, pageUrl);
+              if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+                const resolved = resolvedUrl.toString();
+                if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+
+      for (const anchorMatch of Array.from(block.matchAll(/<a\b[^>]*>/gi))) {
+        const candidate = extractAttributeValue(anchorMatch[0], "href");
+        if (!candidate) continue;
+        try {
+          const resolvedUrl = new URL(candidate, pageUrl);
+          if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+          if (isGalleryThumbnailVariant(resolvedUrl)) continue;
+          const resolved = resolvedUrl.toString();
+          if (!secondaryUrls.includes(resolved)) secondaryUrls.push(resolved);
+        } catch {
+          continue;
+        }
+      }
+
+      const usesPrimary = primaryUrls.length > 0;
+      const usesSecondary = !usesPrimary && secondaryUrls.length > 0;
+      const usesFallback = !usesPrimary && !usesSecondary && fallbackImgUrls.length > 0;
+
+      const preferredUrls = usesPrimary
+        ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+        : usesSecondary
+          ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+          : usesFallback
+            ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+            : [];
+
+      const orderedReturnedCandidates = [...primaryUrls, ...secondaryUrls, ...fallbackImgUrls];
+      const returnedUrls: string[] = [];
+      for (const imageUrl of orderedReturnedCandidates) {
+        if (returnedUrls.includes(imageUrl)) continue;
+        returnedUrls.push(imageUrl);
+        if (returnedUrls.length >= INTERNAL_GALLERY_URL_SANITY_CAP) break;
+      }
+
+      const score = usesPrimary ? 3 : usesSecondary ? 2 : usesFallback ? 1 : 0;
+      if (score > bestScore || (score === bestScore && preferredUrls.length > bestPreferredUrls.length)) {
+        bestScore = score;
+        bestPreferredUrls = preferredUrls;
+        bestReturnedUrls = returnedUrls;
+      }
+    }
+
+    return { bestScore, bestPreferredUrls, bestReturnedUrls };
+  }
+
   const primaryBlocks = collectGalleryBlocks(html, PRIMARY_GALLERY_CLASS_MARKERS, false);
-  const secondaryBlocks = primaryBlocks.length > 0 ? [] : collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
-  const narrowFallbackBlocks = primaryBlocks.length > 0 || secondaryBlocks.length > 0 ? [] : collectNarrowProductRootBlocks(html);
-  const candidateBlocks = primaryBlocks.length > 0 ? primaryBlocks : secondaryBlocks.length > 0 ? secondaryBlocks : narrowFallbackBlocks;
-  if (candidateBlocks.length < 1) {
+  const primaryTier = evaluateBlockTier(primaryBlocks);
+  if (primaryTier.bestScore > 0) {
+    return { imageUrls: primaryTier.bestReturnedUrls };
+  }
+
+  const secondaryBlocks = collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
+  const secondaryTier = evaluateBlockTier(secondaryBlocks);
+  if (secondaryTier.bestScore > 0) {
+    return { imageUrls: secondaryTier.bestReturnedUrls };
+  }
+
+  const narrowFallbackBlocks = collectNarrowProductRootBlocks(html);
+  const narrowTier = evaluateBlockTier(narrowFallbackBlocks);
+  if (narrowTier.bestScore > 0) {
+    return { imageUrls: narrowTier.bestReturnedUrls };
+  }
+
+  const hasAnyCandidateBlocks = primaryBlocks.length > 0 || secondaryBlocks.length > 0 || narrowFallbackBlocks.length > 0;
+  if (!hasAnyCandidateBlocks) {
     return {
       imageUrls: [],
       failure: {
@@ -245,83 +347,6 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
         reason: "Missing trusted product gallery container",
       },
     };
-  }
-
-  let bestScore = 0;
-  let bestUrls: string[] = [];
-
-  for (const block of candidateBlocks) {
-    const primaryUrls: string[] = [];
-    const secondaryUrls: string[] = [];
-    const fallbackImgUrls: string[] = [];
-    for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
-      const imgTag = imgTagMatch[0];
-      let hasValidPrimaryForImg = false;
-      const largeImageCandidate = extractAttributeValue(imgTag, "data-large_image");
-      if (largeImageCandidate) {
-        try {
-          const resolvedUrl = new URL(largeImageCandidate, pageUrl);
-          if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
-            const resolved = resolvedUrl.toString();
-            if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
-            hasValidPrimaryForImg = true;
-          }
-        } catch {
-          // Keep evaluating data-src/src fallback for this same <img> tag.
-        }
-      }
-
-      if (!hasValidPrimaryForImg) {
-        const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
-        if (fallbackCandidate) {
-          try {
-            const resolvedUrl = new URL(fallbackCandidate, pageUrl);
-            if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
-              const resolved = resolvedUrl.toString();
-              if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
-            }
-          } catch {
-            continue;
-          }
-        }
-      }
-    }
-
-    for (const anchorMatch of Array.from(block.matchAll(/<a\b[^>]*>/gi))) {
-      const candidate = extractAttributeValue(anchorMatch[0], "href");
-      if (!candidate) continue;
-      try {
-        const resolvedUrl = new URL(candidate, pageUrl);
-        if (!isAllowedProductImageUrl(resolvedUrl)) continue;
-        if (isGalleryThumbnailVariant(resolvedUrl)) continue;
-        const resolved = resolvedUrl.toString();
-        if (!secondaryUrls.includes(resolved)) secondaryUrls.push(resolved);
-      } catch {
-        continue;
-      }
-    }
-
-    const usesPrimary = primaryUrls.length > 0;
-    const usesSecondary = !usesPrimary && secondaryUrls.length > 0;
-    const usesFallback = !usesPrimary && !usesSecondary && fallbackImgUrls.length > 0;
-
-    const urls = usesPrimary
-      ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-      : usesSecondary
-        ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-        : usesFallback
-          ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-          : [];
-
-    const score = usesPrimary ? 3 : usesSecondary ? 2 : usesFallback ? 1 : 0;
-    if (score > bestScore || (score === bestScore && urls.length > bestUrls.length)) {
-      bestScore = score;
-      bestUrls = urls;
-    }
-  }
-
-  if (bestScore > 0) {
-    return { imageUrls: bestUrls };
   }
 
   return {
