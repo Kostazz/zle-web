@@ -260,14 +260,18 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
         }
 
         if (!hasValidPrimaryForImg) {
-          const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
-          if (fallbackCandidate) {
+          const dataSrcCandidate = extractAttributeValue(imgTag, "data-src");
+          const srcCandidate = /\ssrc=["']([^"']+)["']/i.exec(imgTag)?.[1]?.trim() || null;
+          const fallbackCandidates = [dataSrcCandidate, srcCandidate];
+          for (const fallbackCandidate of fallbackCandidates) {
+            if (!fallbackCandidate) continue;
             try {
               const resolvedUrl = new URL(fallbackCandidate, pageUrl);
-              if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
-                const resolved = resolvedUrl.toString();
-                if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
-              }
+              if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+              if (isGalleryThumbnailVariant(resolvedUrl)) continue;
+              const resolved = resolvedUrl.toString();
+              if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
+              break;
             } catch {
               continue;
             }
