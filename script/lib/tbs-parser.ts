@@ -256,6 +256,7 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
     const fallbackImgUrls: string[] = [];
     for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
       const imgTag = imgTagMatch[0];
+      let hasValidPrimaryForImg = false;
       const largeImageCandidate = extractAttributeValue(imgTag, "data-large_image");
       if (largeImageCandidate) {
         try {
@@ -263,22 +264,25 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
           if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
             const resolved = resolvedUrl.toString();
             if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
+            hasValidPrimaryForImg = true;
           }
         } catch {
           // Keep evaluating data-src/src fallback for this same <img> tag.
         }
       }
 
-      const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
-      if (fallbackCandidate) {
-        try {
-          const resolvedUrl = new URL(fallbackCandidate, pageUrl);
-          if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
-            const resolved = resolvedUrl.toString();
-            if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
+      if (!hasValidPrimaryForImg) {
+        const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
+        if (fallbackCandidate) {
+          try {
+            const resolvedUrl = new URL(fallbackCandidate, pageUrl);
+            if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+              const resolved = resolvedUrl.toString();
+              if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
+            }
+          } catch {
+            continue;
           }
-        } catch {
-          continue;
         }
       }
     }
