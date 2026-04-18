@@ -213,6 +213,9 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
     };
   }
 
+  let bestScore = 0;
+  let bestUrls: string[] = [];
+
   for (const block of candidateBlocks) {
     const primaryUrls: string[] = [];
     const secondaryUrls: string[] = [];
@@ -268,10 +271,18 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
           : fallbackImgUrls.length > 0
             ? fallbackImgUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
             : [];
-    if (urls.length > 0) {
-      return { imageUrls: urls };
+
+    const score = primaryUrls.length > 0 ? 3 : secondaryUrls.length > 0 ? 2 : fallbackImgUrls.length > 0 ? 1 : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestUrls = urls;
     }
   }
+
+  if (bestScore > 0) {
+    return { imageUrls: bestUrls };
+  }
+
   return {
     imageUrls: [],
     failure: {
