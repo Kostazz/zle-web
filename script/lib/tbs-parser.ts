@@ -215,6 +215,7 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
 
   const primaryUrls: string[] = [];
   const secondaryUrls: string[] = [];
+  const fallbackImgUrls: string[] = [];
   const block = candidateBlocks[0];
   for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
     const imgTag = imgTagMatch[0];
@@ -225,6 +226,19 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
         if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
           const resolved = resolvedUrl.toString();
           if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const fallbackCandidate = extractAttributeValue(imgTag, "data-src") ?? extractAttributeValue(imgTag, "src");
+    if (fallbackCandidate) {
+      try {
+        const resolvedUrl = new URL(fallbackCandidate, pageUrl);
+        if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+          const resolved = resolvedUrl.toString();
+          if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
         }
       } catch {
         continue;
@@ -251,7 +265,9 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
       ? primaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
       : secondaryUrls.length > 0
         ? secondaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
-        : [];
+        : fallbackImgUrls.length > 0
+          ? fallbackImgUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+          : [];
 
   if (urls.length < 1) {
     return {
