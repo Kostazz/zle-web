@@ -16,6 +16,7 @@ export type ParsedProductPage = {
   descriptionRaw: string;
   additionalInfoRaw: string;
   imageUrls: string[];
+  imageExtractionFailure: ParseFailure | null;
   structured: {
     productType: string | null;
     audience: string | null;
@@ -97,6 +98,7 @@ const PRODUCT_IMAGE_EXCLUDED_PATH_MARKERS = [
   "/instagram.svg",
 ] as const;
 const PRODUCT_IMAGE_PREFERRED_PATH_MARKER = "/wp-content/uploads/";
+const INTERNAL_GALLERY_URL_SANITY_CAP = 16;
 
 function isAllowedProductImageUrl(imageUrl: URL): boolean {
   const pathname = imageUrl.pathname.toLowerCase();
@@ -106,30 +108,258 @@ function isAllowedProductImageUrl(imageUrl: URL): boolean {
   return pathname.includes(PRODUCT_IMAGE_PREFERRED_PATH_MARKER);
 }
 
-function extractImageUrls(html: string, pageUrl: URL): string[] {
-  const urls: string[] = [];
-  const patterns = [
-    /<img[^>]+(?:src|data-large_image|data-src)=["']([^"']+)["'][^>]*>/gi,
-    /<a[^>]+href=["']([^"']+\.(?:jpg|jpeg|png|webp))(?:\?[^"']*)?["'][^>]*>/gi,
-  ];
+const PRIMARY_GALLERY_CLASS_MARKERS = ["woocommerce-product-gallery", "woocommerce-product-gallery__wrapper"] as const;
+const SECONDARY_GALLERY_CLASS_MARKERS = ["product-gallery", "product-images", "images-wrapper"] as const;
+const NARROW_PRODUCT_ROOT_CLASS_MARKERS = ["single-product", "type-product", "product-detail", "product-type-simple"] as const;
 
-  for (const pattern of patterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(html)) !== null) {
-      const candidate = match[1]?.trim();
-      if (!candidate) continue;
-      try {
-        const resolvedUrl = new URL(candidate, pageUrl);
-        if (!isAllowedProductImageUrl(resolvedUrl)) continue;
-        const resolved = resolvedUrl.toString();
-        if (!urls.includes(resolved)) urls.push(resolved);
-      } catch {
-        continue;
-      }
+function parseClassNamesFromTag(openingTag: string): string[] {
+  const classMatch = openingTag.match(/\bclass=["']([^"']+)["']/i)?.[1];
+  if (!classMatch) return [];
+  return classMatch
+    .split(/\s+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function extractBalancedTagBlock(html: string, tagStartIndex: number): string | null {
+  const openingSlice = html.slice(tagStartIndex);
+  const openingMatch = /^<([a-z0-9-]+)\b[^>]*>/i.exec(openingSlice);
+  if (!openingMatch) return null;
+
+  const openingTag = openingMatch[0];
+  const tagName = openingMatch[1];
+  const openingTagEnd = tagStartIndex + openingTag.length;
+
+  if (/\/>$/.test(openingTag)) {
+    return openingTag;
+  }
+
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "gi");
+  tagPattern.lastIndex = openingTagEnd;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    const tag = match[0];
+    const isClosing = tag.startsWith("</");
+    const isSelfClosing = /\/>$/.test(tag);
+    if (isClosing) {
+      depth -= 1;
+    } else if (!isSelfClosing) {
+      depth += 1;
+    }
+    if (depth === 0) {
+      return html.slice(tagStartIndex, tagPattern.lastIndex);
     }
   }
 
-  return urls;
+  return null;
+}
+
+function collectGalleryBlocks(html: string, classMarkers: readonly string[], requireProductSignal: boolean): string[] {
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+
+  for (const openingTagMatch of Array.from(html.matchAll(/<([a-z0-9-]+)\b[^>]*>/gi))) {
+    const openingTag = openingTagMatch[0];
+    const classNames = parseClassNamesFromTag(openingTag);
+    if (classNames.length < 1) continue;
+
+    const hasMarker = classMarkers.some((marker) => classNames.some((className) => className.includes(marker)));
+    if (!hasMarker) continue;
+
+    const startIndex = openingTagMatch.index;
+    if (startIndex === undefined) continue;
+    const block = extractBalancedTagBlock(html, startIndex);
+    if (!block) continue;
+    if (requireProductSignal) {
+      const hasProductSignalInClassNames = classNames.some((className) => className.includes("product") || className.includes("woocommerce"));
+      const hasProductSignalInBlock = /product_title|entry-title|značka:|kategorie:/i.test(block);
+      if (!hasProductSignalInClassNames && !hasProductSignalInBlock) continue;
+    }
+    if (seen.has(block)) continue;
+    seen.add(block);
+    blocks.push(block);
+  }
+
+  return blocks;
+}
+
+function collectNarrowProductRootBlocks(html: string): string[] {
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+  const allowedTags = new Set(["main", "article", "section", "div"]);
+
+  for (const openingTagMatch of Array.from(html.matchAll(/<([a-z0-9-]+)\b[^>]*>/gi))) {
+    const openingTag = openingTagMatch[0];
+    const tagName = openingTagMatch[1]?.toLowerCase();
+    if (!tagName || !allowedTags.has(tagName)) continue;
+    const classNames = parseClassNamesFromTag(openingTag);
+    if (classNames.length < 1) continue;
+
+    const hasNarrowRootMarker = NARROW_PRODUCT_ROOT_CLASS_MARKERS.some((marker) =>
+      classNames.some((className) => className.includes(marker)),
+    );
+    if (!hasNarrowRootMarker) continue;
+
+    const startIndex = openingTagMatch.index;
+    if (startIndex === undefined) continue;
+    const block = extractBalancedTagBlock(html, startIndex);
+    if (!block) continue;
+    const hasProductTitleSignal = /product_title|entry-title/i.test(block);
+    if (!hasProductTitleSignal) continue;
+    if (seen.has(block)) continue;
+    seen.add(block);
+    blocks.push(block);
+  }
+
+  return blocks;
+}
+
+function extractAttributeValue(tag: string, attributeName: string): string | null {
+  const match = new RegExp(`\\b${attributeName}=["']([^"']+)["']`, "i").exec(tag);
+  return match?.[1]?.trim() || null;
+}
+
+function isGalleryThumbnailVariant(imageUrl: URL): boolean {
+  const pathname = imageUrl.pathname.toLowerCase();
+  if (pathname.includes("-300x300")) return true;
+  const resizedMatch = pathname.match(/-(\d{2,4})x(\d{2,4})(?=\.[a-z0-9]+$)/i);
+  if (!resizedMatch) return false;
+  const width = Number.parseInt(resizedMatch[1], 10);
+  const height = Number.parseInt(resizedMatch[2], 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+  return width <= 400 && height <= 400;
+}
+
+function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; failure?: ParseFailure } {
+  function evaluateBlockTier(blocks: string[]): { bestScore: number; bestPreferredUrls: string[]; bestReturnedUrls: string[] } {
+    let bestScore = 0;
+    let bestPreferredUrls: string[] = [];
+    let bestReturnedUrls: string[] = [];
+
+    for (const block of blocks) {
+      const primaryUrls: string[] = [];
+      const secondaryUrls: string[] = [];
+      const fallbackImgUrls: string[] = [];
+      for (const imgTagMatch of Array.from(block.matchAll(/<img\b[^>]*>/gi))) {
+        const imgTag = imgTagMatch[0];
+        let hasValidPrimaryForImg = false;
+        const largeImageCandidate = extractAttributeValue(imgTag, "data-large_image");
+        if (largeImageCandidate) {
+          try {
+            const resolvedUrl = new URL(largeImageCandidate, pageUrl);
+            if (isAllowedProductImageUrl(resolvedUrl) && !isGalleryThumbnailVariant(resolvedUrl)) {
+              const resolved = resolvedUrl.toString();
+              if (!primaryUrls.includes(resolved)) primaryUrls.push(resolved);
+              hasValidPrimaryForImg = true;
+            }
+          } catch {
+            // Keep evaluating data-src/src fallback for this same <img> tag.
+          }
+        }
+
+        if (!hasValidPrimaryForImg) {
+          const dataSrcCandidate = extractAttributeValue(imgTag, "data-src");
+          const srcCandidate = /\ssrc=["']([^"']+)["']/i.exec(imgTag)?.[1]?.trim() || null;
+          const fallbackCandidates = [dataSrcCandidate, srcCandidate];
+          for (const fallbackCandidate of fallbackCandidates) {
+            if (!fallbackCandidate) continue;
+            try {
+              const resolvedUrl = new URL(fallbackCandidate, pageUrl);
+              if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+              if (isGalleryThumbnailVariant(resolvedUrl)) continue;
+              const resolved = resolvedUrl.toString();
+              if (!fallbackImgUrls.includes(resolved)) fallbackImgUrls.push(resolved);
+              break;
+            } catch {
+              continue;
+            }
+          }
+        }
+      }
+
+      for (const anchorMatch of Array.from(block.matchAll(/<a\b[^>]*>/gi))) {
+        const candidate = extractAttributeValue(anchorMatch[0], "href");
+        if (!candidate) continue;
+        try {
+          const resolvedUrl = new URL(candidate, pageUrl);
+          if (!isAllowedProductImageUrl(resolvedUrl)) continue;
+          if (isGalleryThumbnailVariant(resolvedUrl)) continue;
+          const resolved = resolvedUrl.toString();
+          if (!secondaryUrls.includes(resolved)) secondaryUrls.push(resolved);
+        } catch {
+          continue;
+        }
+      }
+
+      const usesPrimary = primaryUrls.length > 0;
+      const usesSecondary = !usesPrimary && secondaryUrls.length > 0;
+      const usesFallback = !usesPrimary && !usesSecondary && fallbackImgUrls.length > 0;
+
+      const preferredUrls = usesPrimary
+        ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+        : usesSecondary
+          ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+          : usesFallback
+            ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+            : [];
+
+      const orderedReturnedCandidates = [...primaryUrls, ...secondaryUrls, ...fallbackImgUrls];
+      const returnedUrls: string[] = [];
+      for (const imageUrl of orderedReturnedCandidates) {
+        if (returnedUrls.includes(imageUrl)) continue;
+        returnedUrls.push(imageUrl);
+        if (returnedUrls.length >= INTERNAL_GALLERY_URL_SANITY_CAP) break;
+      }
+
+      const score = usesPrimary ? 3 : usesSecondary ? 2 : usesFallback ? 1 : 0;
+      if (score > bestScore || (score === bestScore && preferredUrls.length > bestPreferredUrls.length)) {
+        bestScore = score;
+        bestPreferredUrls = preferredUrls;
+        bestReturnedUrls = returnedUrls;
+      }
+    }
+
+    return { bestScore, bestPreferredUrls, bestReturnedUrls };
+  }
+
+  const primaryBlocks = collectGalleryBlocks(html, PRIMARY_GALLERY_CLASS_MARKERS, false);
+  const primaryTier = evaluateBlockTier(primaryBlocks);
+  if (primaryTier.bestScore > 0) {
+    return { imageUrls: primaryTier.bestReturnedUrls };
+  }
+
+  const secondaryBlocks = collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
+  const secondaryTier = evaluateBlockTier(secondaryBlocks);
+  if (secondaryTier.bestScore > 0) {
+    return { imageUrls: secondaryTier.bestReturnedUrls };
+  }
+
+  const narrowFallbackBlocks = collectNarrowProductRootBlocks(html);
+  const narrowTier = evaluateBlockTier(narrowFallbackBlocks);
+  if (narrowTier.bestScore > 0) {
+    return { imageUrls: narrowTier.bestReturnedUrls };
+  }
+
+  const hasAnyCandidateBlocks = primaryBlocks.length > 0 || secondaryBlocks.length > 0 || narrowFallbackBlocks.length > 0;
+  if (!hasAnyCandidateBlocks) {
+    return {
+      imageUrls: [],
+      failure: {
+        code: "missing_product_gallery",
+        reason: "Missing trusted product gallery container",
+      },
+    };
+  }
+
+  return {
+    imageUrls: [],
+    failure: {
+      code: "missing_valid_gallery_images",
+      reason: "Trusted product gallery found, but no valid gallery images after filtering",
+    },
+  };
 }
 
 function extractOptions(html: string): { options: string[]; present: boolean } {
@@ -266,7 +496,7 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
     sizesSet.add(token.toUpperCase());
   }
 
-  const imageUrls = extractImageUrls(html, pageUrl);
+  const imageExtraction = extractImageUrls(html, pageUrl);
 
   return {
     product: {
@@ -284,7 +514,8 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
       sizes: Array.from(sizesSet),
       descriptionRaw,
       additionalInfoRaw,
-      imageUrls,
+      imageUrls: imageExtraction.imageUrls,
+      imageExtractionFailure: imageExtraction.failure ?? null,
       structured: deriveStructured(title),
     },
   };
