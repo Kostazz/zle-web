@@ -16,6 +16,7 @@ export type ParsedProductPage = {
   descriptionRaw: string;
   additionalInfoRaw: string;
   imageUrls: string[];
+  imageExtractionFailure: ParseFailure | null;
   structured: {
     productType: string | null;
     audience: string | null;
@@ -460,9 +461,6 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
   }
 
   const imageExtraction = extractImageUrls(html, pageUrl);
-  if (imageExtraction.failure) {
-    return { failure: imageExtraction.failure };
-  }
 
   return {
     product: {
@@ -481,6 +479,7 @@ export function parseTbsProductPage(sourceUrl: string, html: string): { product?
       descriptionRaw,
       additionalInfoRaw,
       imageUrls: imageExtraction.imageUrls,
+      imageExtractionFailure: imageExtraction.failure ?? null,
       structured: deriveStructured(title),
     },
   };
