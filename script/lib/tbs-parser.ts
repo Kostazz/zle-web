@@ -202,7 +202,7 @@ function isGalleryThumbnailVariant(imageUrl: URL): boolean {
 function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; failure?: ParseFailure } {
   const primaryBlocks = collectGalleryBlocks(html, PRIMARY_GALLERY_CLASS_MARKERS, false);
   const secondaryBlocks = primaryBlocks.length > 0 ? [] : collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
-  const candidateBlocks = primaryBlocks.length > 0 ? [primaryBlocks[0]] : secondaryBlocks.length === 1 ? [secondaryBlocks[0]] : [];
+  const candidateBlocks = primaryBlocks.length > 0 ? [primaryBlocks[0]] : secondaryBlocks.length > 0 ? [secondaryBlocks[0]] : [];
   if (candidateBlocks.length < 1) {
     return {
       imageUrls: [],
