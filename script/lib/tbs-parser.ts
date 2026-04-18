@@ -301,16 +301,19 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
       }
     }
 
-    const urls =
-      primaryUrls.length > 0
-        ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-        : secondaryUrls.length > 0
-          ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-          : fallbackImgUrls.length > 0
-            ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
-            : [];
+    const usesPrimary = primaryUrls.length > 0;
+    const usesSecondary = !usesPrimary && secondaryUrls.length > 0;
+    const usesFallback = !usesPrimary && !usesSecondary && fallbackImgUrls.length > 0;
 
-    const score = primaryUrls.length > 0 ? 3 : secondaryUrls.length > 0 ? 2 : fallbackImgUrls.length > 0 ? 1 : 0;
+    const urls = usesPrimary
+      ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+      : usesSecondary
+        ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+        : usesFallback
+          ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
+          : [];
+
+    const score = usesPrimary ? 3 : usesSecondary ? 2 : usesFallback ? 1 : 0;
     if (score > bestScore || (score === bestScore && urls.length > bestUrls.length)) {
       bestScore = score;
       bestUrls = urls;
