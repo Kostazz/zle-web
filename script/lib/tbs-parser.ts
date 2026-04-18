@@ -97,6 +97,7 @@ const PRODUCT_IMAGE_EXCLUDED_PATH_MARKERS = [
   "/instagram.svg",
 ] as const;
 const PRODUCT_IMAGE_PREFERRED_PATH_MARKER = "/wp-content/uploads/";
+const INTERNAL_GALLERY_URL_SANITY_CAP = 16;
 
 function isAllowedProductImageUrl(imageUrl: URL): boolean {
   const pathname = imageUrl.pathname.toLowerCase();
@@ -108,7 +109,7 @@ function isAllowedProductImageUrl(imageUrl: URL): boolean {
 
 const PRIMARY_GALLERY_CLASS_MARKERS = ["woocommerce-product-gallery", "woocommerce-product-gallery__wrapper"] as const;
 const SECONDARY_GALLERY_CLASS_MARKERS = ["product-gallery", "product-images", "images-wrapper"] as const;
-const MAX_PRIMARY_GALLERY_IMAGES = 4;
+const NARROW_PRODUCT_ROOT_CLASS_MARKERS = ["single-product", "type-product", "product-detail", "product-type-simple"] as const;
 
 function parseClassNamesFromTag(openingTag: string): string[] {
   const classMatch = openingTag.match(/\bclass=["']([^"']+)["']/i)?.[1];
@@ -183,6 +184,37 @@ function collectGalleryBlocks(html: string, classMarkers: readonly string[], req
   return blocks;
 }
 
+function collectNarrowProductRootBlocks(html: string): string[] {
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+  const allowedTags = new Set(["main", "article", "section", "div"]);
+
+  for (const openingTagMatch of Array.from(html.matchAll(/<([a-z0-9-]+)\b[^>]*>/gi))) {
+    const openingTag = openingTagMatch[0];
+    const tagName = openingTagMatch[1]?.toLowerCase();
+    if (!tagName || !allowedTags.has(tagName)) continue;
+    const classNames = parseClassNamesFromTag(openingTag);
+    if (classNames.length < 1) continue;
+
+    const hasNarrowRootMarker = NARROW_PRODUCT_ROOT_CLASS_MARKERS.some((marker) =>
+      classNames.some((className) => className.includes(marker)),
+    );
+    if (!hasNarrowRootMarker) continue;
+
+    const startIndex = openingTagMatch.index;
+    if (startIndex === undefined) continue;
+    const block = extractBalancedTagBlock(html, startIndex);
+    if (!block) continue;
+    const hasProductTitleSignal = /product_title|entry-title/i.test(block);
+    if (!hasProductTitleSignal) continue;
+    if (seen.has(block)) continue;
+    seen.add(block);
+    blocks.push(block);
+  }
+
+  return blocks;
+}
+
 function extractAttributeValue(tag: string, attributeName: string): string | null {
   const match = new RegExp(`\\b${attributeName}=["']([^"']+)["']`, "i").exec(tag);
   return match?.[1]?.trim() || null;
@@ -202,7 +234,8 @@ function isGalleryThumbnailVariant(imageUrl: URL): boolean {
 function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; failure?: ParseFailure } {
   const primaryBlocks = collectGalleryBlocks(html, PRIMARY_GALLERY_CLASS_MARKERS, false);
   const secondaryBlocks = primaryBlocks.length > 0 ? [] : collectGalleryBlocks(html, SECONDARY_GALLERY_CLASS_MARKERS, true);
-  const candidateBlocks = primaryBlocks.length > 0 ? primaryBlocks : secondaryBlocks;
+  const narrowFallbackBlocks = primaryBlocks.length > 0 || secondaryBlocks.length > 0 ? [] : collectNarrowProductRootBlocks(html);
+  const candidateBlocks = primaryBlocks.length > 0 ? primaryBlocks : secondaryBlocks.length > 0 ? secondaryBlocks : narrowFallbackBlocks;
   if (candidateBlocks.length < 1) {
     return {
       imageUrls: [],
@@ -265,15 +298,15 @@ function extractImageUrls(html: string, pageUrl: URL): { imageUrls: string[]; fa
 
     const urls =
       primaryUrls.length > 0
-        ? primaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+        ? primaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
         : secondaryUrls.length > 0
-          ? secondaryUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+          ? secondaryUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
           : fallbackImgUrls.length > 0
-            ? fallbackImgUrls.slice(0, MAX_PRIMARY_GALLERY_IMAGES)
+            ? fallbackImgUrls.slice(0, INTERNAL_GALLERY_URL_SANITY_CAP)
             : [];
 
     const score = primaryUrls.length > 0 ? 3 : secondaryUrls.length > 0 ? 2 : fallbackImgUrls.length > 0 ? 1 : 0;
-    if (score > bestScore) {
+    if (score > bestScore || (score === bestScore && urls.length > bestUrls.length)) {
       bestScore = score;
       bestUrls = urls;
     }
