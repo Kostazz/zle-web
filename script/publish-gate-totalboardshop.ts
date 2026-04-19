@@ -96,11 +96,11 @@ function classifyFailure(message: string): string {
   return "publish_gate_failed_closed";
 }
 
-async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ manifestPath: string; summaryPath: string }> {
+async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ errorPath: string; summaryPath: string }> {
   const outputDir = normalizeOutputDir(args.outputDir);
   await fs.promises.mkdir(outputDir, { recursive: true });
   const timestamp = new Date().toISOString();
-  const manifestPath = path.join(outputDir, `${args.runId}.publish-gate.json`);
+  const errorPath = path.join(outputDir, `${args.runId}.error.json`);
   const summaryPath = path.join(outputDir, `${args.runId}.summary.md`);
   const artifact: PublishGateFailureArtifact = {
     runId: args.runId,
@@ -140,9 +140,9 @@ async function writeFailureArtifacts(args: CliArgs, message: string): Promise<{ 
     "- This layer never writes live assets.",
     "- Writes are restricted to tmp/publish-gates.",
   ];
-  await fs.promises.writeFile(manifestPath, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+  await fs.promises.writeFile(errorPath, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   await fs.promises.writeFile(summaryPath, `${lines.join("\n")}\n`, "utf8");
-  return { manifestPath, summaryPath };
+  return { errorPath, summaryPath };
 }
 
 async function main(): Promise<void> {
@@ -185,7 +185,7 @@ main().catch(async (error) => {
   try {
     const failure = await writeFailureArtifacts(args, message);
     console.error(message);
-    console.error(`manifest ${failure.manifestPath}`);
+    console.error(`error ${failure.errorPath}`);
     console.error(`summary ${failure.summaryPath}`);
   } catch (artifactError) {
     console.error(message);
