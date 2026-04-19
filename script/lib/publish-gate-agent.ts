@@ -209,7 +209,7 @@ function evaluateEligibility(
   };
 }
 
-function buildTemplateManifest(input: PublishGateAgentInput): PublishGateManifest {
+function buildManifestFromArtifacts(input: PublishGateAgentInput): PublishGateManifest {
   const { review, staging, curation } = loadArtifacts(input);
   const approvedKeys = new Set(review.decisions.filter((decision) => decision.decision === "approved").map((decision) => decision.sourceProductKey));
   const curationByKey = new Map(curation.items.map((item) => [item.sourceProductKey, item]));
@@ -251,6 +251,10 @@ function buildTemplateManifest(input: PublishGateAgentInput): PublishGateManifes
     summary: computeSummary(orderedItems),
     items: orderedItems,
   };
+}
+
+function buildTemplateManifest(input: PublishGateAgentInput): PublishGateManifest {
+  return buildManifestFromArtifacts(input);
 }
 
 function validateManifestShape(raw: unknown): PublishGateManifest {
@@ -378,9 +382,7 @@ export async function validatePublishGateManifest(input: PublishGateAgentInput):
 
 export async function runPublishGateAgent(input: PublishGateAgentInput): Promise<PublishGateAgentOutput> {
   const outputDir = normalizeOutputDir(input.outputDir ?? path.join("tmp", "publish-gates"));
-  const rawManifestPath = input.inputPath ?? path.join(outputDir, `${input.runId}.publish-gate.json`);
-  assertFileExists(rawManifestPath, "publish gate manifest");
-  const manifest = validateAgainstArtifacts(input, validateManifestShape(readJsonFile<unknown>(rawManifestPath, "publish gate manifest")));
+  const manifest = validateAgainstArtifacts(input, validateManifestShape(buildManifestFromArtifacts(input)));
   const summaryMarkdown = renderSummaryMarkdown(manifest);
   const { manifestPath, summaryPath } = await writeArtifacts(outputDir, manifest, summaryMarkdown);
   return { manifest, summaryMarkdown, manifestPath, summaryPath };
