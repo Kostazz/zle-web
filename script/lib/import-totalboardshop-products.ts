@@ -257,7 +257,7 @@ function resolveImportedSizes(source: SourceProductRecord): string[] {
 
 export function mapPublishedItemToProduct(source: SourceProductRecord, liveTargetKey: string, liveImageRoot = DEFAULT_LIVE_IMAGE_ROOT): Product {
   if (!source.title.trim()) throw new Error(`Missing required title for ${source.sourceProductKey}`);
-  if (source.priceCzk === null || !Number.isInteger(source.priceCzk) || source.priceCzk < 0) {
+  if (source.priceCzk == null || Number.isNaN(source.priceCzk) || !Number.isFinite(source.priceCzk)) {
     throw new Error(`Missing required priceCzk for ${source.sourceProductKey}`);
   }
 
