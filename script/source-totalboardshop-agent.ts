@@ -1,7 +1,5 @@
 import path from "node:path";
-import fs from "node:fs";
 import { createSourceRunId, runTotalboardshopSourceAgent } from "./lib/source-totalboardshop.ts";
-import { canonicalizeCategory } from "./lib/category-normalization.ts";
 
 type CliArgs = {
   runId?: string;
@@ -12,53 +10,6 @@ type CliArgs = {
   maxImagesPerProduct: number;
   maxImageBytes: number;
 };
-
-const SUPPORTED_CANONICAL_CATEGORIES = new Set(["cap", "tee", "hoodie"]);
-
-function canonicalSupportedFromRaw(rawCategory: string): string | null {
-  const canonical = canonicalizeCategory(rawCategory);
-  return canonical && SUPPORTED_CANONICAL_CATEGORIES.has(canonical) ? canonical : null;
-}
-
-function fallbackCanonicalFromTitle(title: string): "cap" | "tee" | "hoodie" | null {
-  const normalizedTitle = title.toLowerCase();
-  if (normalizedTitle.includes("mikina")) return "hoodie";
-  if (normalizedTitle.includes("tričko") || normalizedTitle.includes("tricko")) return "tee";
-  if (
-    normalizedTitle.includes("kšiltovka") ||
-    normalizedTitle.includes("ksiltovka") ||
-    normalizedTitle.includes("čepice") ||
-    normalizedTitle.includes("cepice") ||
-    normalizedTitle.includes("snapback") ||
-    normalizedTitle.includes("trucker") ||
-    normalizedTitle.includes("truckerka") ||
-    normalizedTitle.includes("síťovka") ||
-    normalizedTitle.includes("sitovka")
-  ) {
-    return "cap";
-  }
-  return null;
-}
-
-async function applyCategoryFallback(productsPath: string): Promise<void> {
-  const raw = await fs.promises.readFile(productsPath, "utf8");
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) return;
-
-  let changed = false;
-  for (const item of parsed) {
-    if (!item || typeof item !== "object") continue;
-    if (typeof item.categoryRaw !== "string" || typeof item.title !== "string") continue;
-    if (canonicalSupportedFromRaw(item.categoryRaw)) continue;
-    const fallbackCanonical = fallbackCanonicalFromTitle(item.title);
-    if (!fallbackCanonical) continue;
-    item.categoryRaw = fallbackCanonical;
-    changed = true;
-  }
-
-  if (!changed) return;
-  await fs.promises.writeFile(productsPath, `${JSON.stringify(parsed, null, 2)}\n`);
-}
 
 function parseInteger(value: string | undefined, flag: string): number {
   if (!value) throw new Error(`${flag} requires a value`);
@@ -130,7 +81,6 @@ async function main(): Promise<void> {
     maxImagesPerProduct: args.maxImagesPerProduct,
     maxImageBytes: args.maxImageBytes,
   });
-  await applyCategoryFallback(result.productsPath);
 
   console.log(`run ${runId}`);
   console.log(`products ${result.productCount}`);
