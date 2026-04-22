@@ -93,6 +93,7 @@
     "lucide-react": "^0.468.0",
     "multer": "^2.1.1",
     "pg": "^8.12.0",
+    "playwright": "^1.59.1",
     "postcss": "^8.4.47",
     "react": "^18.2.0",
     "react-day-picker": "^9.13.0",

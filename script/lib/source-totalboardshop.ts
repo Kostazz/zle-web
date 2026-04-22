@@ -224,62 +224,34 @@ const DEFAULT_FETCH_LIMITS: Omit<FetchLimits, "maxImageBytes"> = {
   maxDelayMs: 400,
 };
 
-const TOTALBOARDSHOP_BROWSER_HEADERS: Record<string, string> = {
-  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "accept-language": "cs-CZ,cs;q=0.9,en;q=0.8",
-  "cache-control": "no-cache",
-  pragma: "no-cache",
-  referer: "https://totalboardshop.cz/",
-  "upgrade-insecure-requests": "1",
-};
-
-async function fetchTotalboardshopHtml(rawUrl: string, limits: FetchLimits): Promise<Buffer> {
-  const url = normalizeAllowedUrl(rawUrl);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), limits.timeoutMs);
+async function fetchHtmlViaBrowser(rawUrl: string, limits: FetchLimits): Promise<string> {
+  const url = normalizeAllowedUrl(rawUrl).toString();
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  page.setDefaultTimeout(limits.timeoutMs);
+  page.setDefaultNavigationTimeout(limits.timeoutMs);
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "manual",
-      headers: TOTALBOARDSHOP_BROWSER_HEADERS,
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error(`Redirect without location from ${url.toString()}`);
-      const redirected = new URL(location, url);
-      normalizeAllowedUrl(redirected.toString());
-      throw new Error(`Redirect blocked (fail-closed): ${url.toString()} -> ${redirected.toString()}`);
-    }
-
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url.toString()}`);
-
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (!contentType.includes("text/html")) throw new Error(`Unsupported content-type for HTML fetch: ${contentType}`);
-
-    const chunks: Buffer[] = [];
-    let totalBytes = 0;
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error(`Response body missing for ${url.toString()}`);
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = Buffer.from(value);
-      totalBytes += chunk.byteLength;
-      if (totalBytes > limits.maxHtmlBytes) {
-        await reader.cancel("payload_too_large");
-        controller.abort();
-        throw new Error(`Payload too large (${totalBytes} bytes > ${limits.maxHtmlBytes}) at ${url.toString()}`);
-      }
-      chunks.push(chunk);
-    }
-
-    return Buffer.concat(chunks, totalBytes);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: limits.timeoutMs });
+    normalizeAllowedUrl(page.url());
+    await page.waitForLoadState("networkidle", { timeout: limits.timeoutMs });
+    const html = await page.content();
+    const htmlBytes = Buffer.byteLength(html, "utf8");
+    if (htmlBytes > limits.maxHtmlBytes) throw new Error(`Payload too large (${htmlBytes} bytes > ${limits.maxHtmlBytes}) at ${url}`);
+    return html;
   } finally {
-    clearTimeout(timeout);
+    await page.close();
   }
+}
+
+let _browser: any = null;
+
+async function getBrowser() {
+  if (!_browser) {
+    const { chromium } = await (new Function('return import("playwright")')() as Promise<{ chromium: any }>);
+    _browser = await chromium.launch({ headless: true });
+  }
+  return _browser;
 }
 
 function inferExt(url: string, contentType: string): string {
@@ -316,7 +288,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     maxImageBytes: options.maxImageBytes,
   };
 
-  const listingHtml = (await fetchTotalboardshopHtml(options.seedUrl, fetchLimits)).toString("utf8");
+  const listingHtml = await fetchHtmlViaBrowser(options.seedUrl, fetchLimits);
   crawlLog.visitedPages.push(options.seedUrl);
 
   const candidateLinks = extractBrandListingProductLinks(options.seedUrl, listingHtml);
@@ -334,7 +306,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     let productHtml = "";
     try {
       normalizeAllowedUrl(sourceUrl);
-      productHtml = (await fetchTotalboardshopHtml(sourceUrl, fetchLimits)).toString("utf8");
+      productHtml = await fetchHtmlViaBrowser(sourceUrl, fetchLimits);
       crawlLog.visitedPages.push(sourceUrl);
     } catch (error) {
       crawlLog.skippedUrls.push({
