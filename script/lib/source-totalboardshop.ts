@@ -233,6 +233,7 @@ async function fetchHtmlViaBrowser(rawUrl: string, limits: FetchLimits): Promise
 
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: limits.timeoutMs });
+    normalizeAllowedUrl(page.url());
     await page.waitForLoadState("networkidle", { timeout: limits.timeoutMs });
     const html = await page.content();
     const htmlBytes = Buffer.byteLength(html, "utf8");
