@@ -233,3 +233,77 @@ test("redirect chain is explicitly blocked fail-closed", async () => {
   await assert.rejects(() => acquirer.fetchHtml("https://totalboardshop.cz/start"), /Redirect chain detected/);
   await acquirer.close();
 });
+
+test("non-main-frame subresource requests do not trigger allowlist false positive", async () => {
+  const listeners: Record<string, Array<(payload: any) => void>> = { request: [], response: [] };
+  const mainFrame = {};
+  const page = {
+    on(event: "request" | "response", handler: (payload: any) => void) {
+      listeners[event].push(handler);
+    },
+    off(event: "request" | "response", handler: (payload: any) => void) {
+      listeners[event] = listeners[event].filter((item) => item !== handler);
+    },
+    async route() {},
+    async unroute() {},
+    async goto() {
+      for (const handler of listeners.request) {
+        handler({
+          url: () => "https://cdn.badhost.example/font.woff2",
+          isNavigationRequest: () => false,
+          resourceType: () => "font",
+          frame: () => ({ not: "main-frame" }),
+        });
+      }
+      return {
+        ok: () => true,
+        status: () => 200,
+        url: () => "https://totalboardshop.cz/obchod/mikina-zle-classic/",
+        headers: () => ({ "content-type": "text/html" }),
+        request: () => ({
+          url: () => "https://totalboardshop.cz/obchod/mikina-zle-classic/",
+          redirectedFrom: () => null,
+          isNavigationRequest: () => true,
+          resourceType: () => "document",
+          frame: () => mainFrame,
+        }),
+      };
+    },
+    mainFrame() {
+      return mainFrame;
+    },
+    url() {
+      return "https://totalboardshop.cz/obchod/mikina-zle-classic/";
+    },
+    async content() {
+      return "<html><body>ok</body></html>";
+    },
+    async close() {},
+  };
+
+  const acquirer = await createTotalboardshopHtmlAcquirer({
+    timeoutMs: 1000,
+    maxHtmlBytes: 1000,
+    playwrightModule: {
+      chromium: {
+        async launch() {
+          return {
+            async newContext() {
+              return {
+                async newPage() {
+                  return page as any;
+                },
+                async close() {},
+              };
+            },
+            async close() {},
+          } as any;
+        },
+      },
+    },
+  });
+
+  const result = await acquirer.fetchHtml("https://totalboardshop.cz/obchod/mikina-zle-classic/");
+  assert.equal(result.status, 200);
+  await acquirer.close();
+});

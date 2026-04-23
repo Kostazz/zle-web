@@ -31,6 +31,17 @@ type RequestLike = {
   redirectedFrom(): RequestLike | null;
 };
 
+type NavigationRequestLike = {
+  isNavigationRequest(): boolean;
+  resourceType(): string;
+  frame(): unknown;
+  url(): string;
+};
+
+function isMainDocumentNavigationRequest(request: NavigationRequestLike, page: Page): boolean {
+  return request.isNavigationRequest() && request.resourceType() === "document" && request.frame() === page.mainFrame();
+}
+
 const RETRIABLE_ERROR_PATTERNS = [/timeout/i, /net::err/i, /network/i, /page crashed/i];
 
 function isRetriableAcquisitionError(error: unknown): boolean {
@@ -59,14 +70,16 @@ async function fetchSingleAttempt(page: Page, rawUrl: string, timeoutMs: number,
   const allowlistedInput = normalizeAllowedUrl(rawUrl).toString();
   let chainError: Error | null = null;
 
-  const requestListener = (request: { url(): string }) => {
+  const requestListener = (request: NavigationRequestLike) => {
+    if (!isMainDocumentNavigationRequest(request, page)) return;
     try {
       normalizeAllowedUrl(request.url());
     } catch {
       chainError = new Error("Non-allowlisted host blocked BEFORE navigation");
     }
   };
-  const responseListener = (response: { url(): string }) => {
+  const responseListener = (response: { url(): string; request(): NavigationRequestLike }) => {
+    if (!isMainDocumentNavigationRequest(response.request(), page)) return;
     try {
       normalizeAllowedUrl(response.url());
     } catch {
@@ -74,9 +87,9 @@ async function fetchSingleAttempt(page: Page, rawUrl: string, timeoutMs: number,
     }
   };
 
-  await page.route(/(\/obchod\/|\/nabidka-znacek\/|\.html(?:\?|$))/i, (route) => {
+  await page.route(/(\/obchod\/|\/nabidka-znacek\/|\.html(?:\?|$))/i, (route: { request(): NavigationRequestLike; continue(): Promise<void>; abort(reason: "blockedbyclient"): Promise<void> }) => {
     try {
-      if (route.request().resourceType() === "document") {
+      if (isMainDocumentNavigationRequest(route.request(), page)) {
         normalizeAllowedUrl(route.request().url());
       }
       return route.continue();
