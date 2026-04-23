@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseTbsProductPage, isProtectionPageHtml } from "./tbs-parser.ts";
-import { runTotalboardshopSourceAgent } from "./source-totalboardshop.ts";
+import { __setSourceTotalboardshopTestHooks, runTotalboardshopSourceAgent } from "./source-totalboardshop.ts";
 
 const WEDOS_HTML = `
 <!doctype html>
@@ -63,13 +63,15 @@ test("product parsing keeps only uploaded raster product media", () => {
         <div>Značka: <span>ZLE</span></div>
         <div>Kategorie: <span>Trika</span></div>
         <p class="price">790 Kč</p>
-        <img src="/wp-content/themes/store/logo.png" />
-        <img src="/images/facebook.png" />
-        <img src="/images/instagram.png" />
-        <img src="/facebook.svg" />
-        <img src="/instagram.svg" />
-        <img src="/wp-content/uploads/2025/10/palm-black-front.jpg" />
-        <img data-src="/wp-content/uploads/2025/10/palm-black-back.webp?size=1200" />
+        <div class="woocommerce-product-gallery">
+          <img src="/wp-content/themes/store/logo.png" />
+          <img src="/images/facebook.png" />
+          <img src="/images/instagram.png" />
+          <img src="/facebook.svg" />
+          <img src="/instagram.svg" />
+          <img src="/wp-content/uploads/2025/10/palm-black-front.jpg" />
+          <img data-src="/wp-content/uploads/2025/10/palm-black-back.webp?size=1200" />
+        </div>
       </body>
     </html>
   `);
@@ -82,24 +84,25 @@ test("product parsing keeps only uploaded raster product media", () => {
 
 test("crawl log skippedProducts records blocked_by_protection for challenge HTML", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-protection-"));
-  const originalFetch = globalThis.fetch;
-
-  globalThis.fetch = (async (input: string | URL | RequestInfo) => {
-    const url = String(input);
-    if (url.includes("nabidka-znacek")) {
-      return new Response('<a href="https://totalboardshop.cz/obchod/mikina-zle-classic/">Product</a>', {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
-    }
-
-    return new Response(WEDOS_HTML, {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    });
-  }) as typeof fetch;
 
   try {
+    __setSourceTotalboardshopTestHooks({
+      htmlAcquirerFactory: async () => ({
+        async fetchHtml(url: string) {
+          if (url.includes("nabidka-znacek")) {
+            return {
+              finalUrl: url,
+              status: 200,
+              contentType: "text/html",
+              html: '<a href="https://totalboardshop.cz/obchod/mikina-zle-classic/">Product</a>',
+            };
+          }
+          return { finalUrl: url, status: 200, contentType: "text/html", html: WEDOS_HTML };
+        },
+        async close() {},
+      }),
+    });
+
     const result = await runTotalboardshopSourceAgent({
       runId: "tbs-protection-test",
       outputRoot: tempRoot,
@@ -124,7 +127,7 @@ test("crawl log skippedProducts records blocked_by_protection for challenge HTML
     ]);
     assert.equal(crawlLog.skippedProductSummary.blocked_by_protection, 1);
   } finally {
-    globalThis.fetch = originalFetch;
+    __setSourceTotalboardshopTestHooks({});
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });

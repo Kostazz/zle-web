@@ -4,7 +4,8 @@ import path from "node:path";
 import { computeAuditChainHash, readLatestAuditHash, sha256File, type AuditChainRecord } from "./audit-chain.ts";
 import { extFromContentType, jitterDelay, normalizeAllowedUrl, safeFetchBinary, type FetchLimits } from "./fetch-utils.ts";
 import { ensureSourceRunDirs, type CrawlLog, type SourceDatasetManifest, type SourceProductRecord, writeJsonFile } from "./source-dataset.ts";
-import { createFingerprint, createSourceProductKey, extractBrandListingProductLinks, parseTbsProductPage, sanitizeSlug } from "./tbs-parser.ts";
+import { createFingerprint, createSourceProductKey, extractBrandListingProductLinks, isProtectionPageHtml, parseTbsProductPage, sanitizeSlug } from "./tbs-parser.ts";
+import { createTotalboardshopHtmlAcquirer, type TotalboardshopHtmlAcquirer } from "./totalboardshop-html-acquisition.ts";
 
 
 
@@ -224,62 +225,14 @@ const DEFAULT_FETCH_LIMITS: Omit<FetchLimits, "maxImageBytes"> = {
   maxDelayMs: 400,
 };
 
-const TOTALBOARDSHOP_BROWSER_HEADERS: Record<string, string> = {
-  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "accept-language": "cs-CZ,cs;q=0.9,en;q=0.8",
-  "cache-control": "no-cache",
-  pragma: "no-cache",
-  referer: "https://totalboardshop.cz/",
-  "upgrade-insecure-requests": "1",
+type SourceTotalboardshopTestHooks = {
+  htmlAcquirerFactory?: (limits: FetchLimits) => Promise<TotalboardshopHtmlAcquirer>;
 };
 
-async function fetchTotalboardshopHtml(rawUrl: string, limits: FetchLimits): Promise<Buffer> {
-  const url = normalizeAllowedUrl(rawUrl);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), limits.timeoutMs);
+let sourceTotalboardshopTestHooks: SourceTotalboardshopTestHooks = {};
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "manual",
-      headers: TOTALBOARDSHOP_BROWSER_HEADERS,
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error(`Redirect without location from ${url.toString()}`);
-      const redirected = new URL(location, url);
-      normalizeAllowedUrl(redirected.toString());
-      throw new Error(`Redirect blocked (fail-closed): ${url.toString()} -> ${redirected.toString()}`);
-    }
-
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url.toString()}`);
-
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (!contentType.includes("text/html")) throw new Error(`Unsupported content-type for HTML fetch: ${contentType}`);
-
-    const chunks: Buffer[] = [];
-    let totalBytes = 0;
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error(`Response body missing for ${url.toString()}`);
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = Buffer.from(value);
-      totalBytes += chunk.byteLength;
-      if (totalBytes > limits.maxHtmlBytes) {
-        await reader.cancel("payload_too_large");
-        controller.abort();
-        throw new Error(`Payload too large (${totalBytes} bytes > ${limits.maxHtmlBytes}) at ${url.toString()}`);
-      }
-      chunks.push(chunk);
-    }
-
-    return Buffer.concat(chunks, totalBytes);
-  } finally {
-    clearTimeout(timeout);
-  }
+export function __setSourceTotalboardshopTestHooks(hooks: SourceTotalboardshopTestHooks): void {
+  sourceTotalboardshopTestHooks = hooks;
 }
 
 function inferExt(url: string, contentType: string): string {
@@ -316,188 +269,207 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     maxImageBytes: options.maxImageBytes,
   };
 
-  const listingHtml = (await fetchTotalboardshopHtml(options.seedUrl, fetchLimits)).toString("utf8");
-  crawlLog.visitedPages.push(options.seedUrl);
+  const htmlAcquirer = await (sourceTotalboardshopTestHooks.htmlAcquirerFactory
+    ? sourceTotalboardshopTestHooks.htmlAcquirerFactory(fetchLimits)
+    : createTotalboardshopHtmlAcquirer({
+        timeoutMs: fetchLimits.timeoutMs,
+        maxHtmlBytes: fetchLimits.maxHtmlBytes,
+      }));
 
-  const candidateLinks = extractBrandListingProductLinks(options.seedUrl, listingHtml);
-  const allowedCandidates = candidateLinks.slice(0, options.maxPages);
-  const products: SourceProductRecord[] = [];
-
-  for (const sourceUrl of allowedCandidates) {
-    if (products.length >= options.maxProducts) {
-      crawlLog.skippedUrls.push({ url: sourceUrl, reasonCode: "max_products_reached" });
-      continue;
+  try {
+    const listing = await htmlAcquirer.fetchHtml(options.seedUrl);
+    const listingHtml = listing.html;
+    crawlLog.visitedPages.push(listing.finalUrl);
+    if (isProtectionPageHtml(listingHtml)) {
+      throw new Error("Seed returned protection page instead of listing HTML (fail-closed)");
     }
 
-    await jitterDelay(fetchLimits);
-
-    let productHtml = "";
-    try {
-      normalizeAllowedUrl(sourceUrl);
-      productHtml = (await fetchTotalboardshopHtml(sourceUrl, fetchLimits)).toString("utf8");
-      crawlLog.visitedPages.push(sourceUrl);
-    } catch (error) {
-      crawlLog.skippedUrls.push({
-        url: sourceUrl,
-        reasonCode: "fetch_failed",
-        detail: error instanceof Error ? error.message : String(error),
-      });
-      continue;
+    const candidateLinks = extractBrandListingProductLinks(options.seedUrl, listingHtml);
+    if (!listingHtml.toLowerCase().includes("obchod") || candidateLinks.length < 1) {
+      throw new Error("Seed returned empty listing (fail-closed)");
     }
+    const allowedCandidates = candidateLinks.slice(0, options.maxPages);
+    const products: SourceProductRecord[] = [];
 
-    const parsed = parseTbsProductPage(sourceUrl, productHtml);
-    if (!parsed.product) {
-      crawlLog.skippedProducts.push({
-        sourceUrl,
-        reasonCode: parsed.failure?.code ?? "parse_failed",
-        detail: parsed.failure?.reason,
-      });
-      continue;
-    }
-
-    const sourceSlug = parsed.product.sourceSlug;
-    let sourceProductKey = "";
-    try {
-      sourceProductKey = createSourceProductKey(sourceSlug);
-    } catch (error) {
-      crawlLog.skippedProducts.push({
-        sourceUrl,
-        reasonCode: "missing_stable_source_identity",
-        detail: error instanceof Error ? error.message : String(error),
-      });
-      continue;
-    }
-    const productImageDir = path.join(imageRoot, sourceProductKey);
-    await fs.promises.mkdir(productImageDir, { recursive: true });
-
-    const downloadedImages: string[] = [];
-    const downloadedImageHashes: string[] = [];
-    const allowlistedImages = parsed.product.imageUrls.filter((imageUrl) => {
-      try {
-        normalizeAllowedUrl(imageUrl);
-        return true;
-      } catch {
-        crawlLog.downloadErrors.push({
-          sourceUrl,
-          imageUrl,
-          reasonCode: "image_host_blocked",
-          detail: "Image URL is outside allowlisted hosts",
-        });
-        return false;
+    for (const sourceUrl of allowedCandidates) {
+      if (products.length >= options.maxProducts) {
+        crawlLog.skippedUrls.push({ url: sourceUrl, reasonCode: "max_products_reached" });
+        continue;
       }
-    });
 
-    for (let i = 0; i < allowlistedImages.length && i < options.maxImagesPerProduct; i++) {
-      const imageUrl = allowlistedImages[i];
+      await jitterDelay(fetchLimits);
+
+      let productHtml = "";
       try {
-        await jitterDelay(fetchLimits);
-        const fetchedImage = await safeFetchBinary(imageUrl, fetchLimits, "image");
-        const ext = inferExt(imageUrl, fetchedImage.contentType);
-        const fileName = `${String(i + 1).padStart(2, "0")}${ext}`;
-        const relativePath = path.posix.join("images", sourceProductKey, fileName);
-        await fs.promises.writeFile(path.join(runDir, relativePath), fetchedImage.body);
-        downloadedImages.push(relativePath);
-        downloadedImageHashes.push(`sha256:${crypto.createHash("sha256").update(fetchedImage.body).digest("hex")}`);
+        normalizeAllowedUrl(sourceUrl);
+        const detail = await htmlAcquirer.fetchHtml(sourceUrl);
+        productHtml = detail.html;
+        crawlLog.visitedPages.push(detail.finalUrl);
       } catch (error) {
-        crawlLog.downloadErrors.push({
-          sourceUrl,
-          imageUrl,
-          reasonCode: "image_download_failed",
+        crawlLog.skippedUrls.push({
+          url: sourceUrl,
+          reasonCode: "fetch_failed",
           detail: error instanceof Error ? error.message : String(error),
         });
+        continue;
       }
-    }
 
-    if (downloadedImages.length < 1) {
-      const imageFailure = parsed.product.imageExtractionFailure;
-      crawlLog.skippedProducts.push({
-        sourceUrl,
-        reasonCode: imageFailure?.code ?? "missing_images",
-        detail: imageFailure?.reason ?? "No allowlisted image successfully downloaded",
+      const parsed = parseTbsProductPage(sourceUrl, productHtml);
+      if (!parsed.product) {
+        crawlLog.skippedProducts.push({
+          sourceUrl,
+          reasonCode: parsed.failure?.code ?? "parse_failed",
+          detail: parsed.failure?.reason,
+        });
+        continue;
+      }
+
+      const sourceSlug = parsed.product.sourceSlug;
+      let sourceProductKey = "";
+      try {
+        sourceProductKey = createSourceProductKey(sourceSlug);
+      } catch (error) {
+        crawlLog.skippedProducts.push({
+          sourceUrl,
+          reasonCode: "missing_stable_source_identity",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+      const productImageDir = path.join(imageRoot, sourceProductKey);
+      await fs.promises.mkdir(productImageDir, { recursive: true });
+
+      const downloadedImages: string[] = [];
+      const downloadedImageHashes: string[] = [];
+      const allowlistedImages = parsed.product.imageUrls.filter((imageUrl) => {
+        try {
+          normalizeAllowedUrl(imageUrl);
+          return true;
+        } catch {
+          crawlLog.downloadErrors.push({
+            sourceUrl,
+            imageUrl,
+            reasonCode: "image_host_blocked",
+            detail: "Image URL is outside allowlisted hosts",
+          });
+          return false;
+        }
       });
-      continue;
-    }
 
-    const normalizedTitle = parsed.product.title.toLowerCase();
-    if (parsed.product.brandNormalized !== "zle") {
-      crawlLog.skippedProducts.push({ sourceUrl, reasonCode: "brand_not_zle" });
-      continue;
-    }
+      for (let i = 0; i < allowlistedImages.length && i < options.maxImagesPerProduct; i++) {
+        const imageUrl = allowlistedImages[i];
+        try {
+          await jitterDelay(fetchLimits);
+          const fetchedImage = await safeFetchBinary(imageUrl, fetchLimits, "image");
+          const ext = inferExt(imageUrl, fetchedImage.contentType);
+          const fileName = `${String(i + 1).padStart(2, "0")}${ext}`;
+          const relativePath = path.posix.join("images", sourceProductKey, fileName);
+          await fs.promises.writeFile(path.join(runDir, relativePath), fetchedImage.body);
+          downloadedImages.push(relativePath);
+          downloadedImageHashes.push(`sha256:${crypto.createHash("sha256").update(fetchedImage.body).digest("hex")}`);
+        } catch (error) {
+          crawlLog.downloadErrors.push({
+            sourceUrl,
+            imageUrl,
+            reasonCode: "image_download_failed",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
 
-    if (normalizedTitle.includes(" santa cruz ") || normalizedTitle.includes(" thrasher ")) {
-      crawlLog.skippedProducts.push({ sourceUrl, reasonCode: "contradictory_title_brand" });
-      continue;
-    }
+      if (downloadedImages.length < 1) {
+        const imageFailure = parsed.product.imageExtractionFailure;
+        crawlLog.skippedProducts.push({
+          sourceUrl,
+          reasonCode: imageFailure?.code ?? "missing_images",
+          detail: imageFailure?.reason ?? "No allowlisted image successfully downloaded",
+        });
+        continue;
+      }
 
-    const productRecord: SourceProductRecord = {
-      sourceProductKey,
-      sourceUrl,
-      sourceSlug,
-      title: parsed.product.title,
-      brandRaw: parsed.product.brandRaw,
-      brandNormalized: parsed.product.brandNormalized,
-      categoryRaw: parsed.product.categoryRaw,
-      tagRaw: parsed.product.tagRaw,
-      priceText: parsed.product.priceText,
-      priceCzk: parsed.product.priceCzk,
-      optionsRaw: parsed.product.optionsRaw,
-      sizes: parsed.product.sizes,
-      descriptionRaw: [parsed.product.descriptionRaw, parsed.product.additionalInfoRaw].filter(Boolean).join("\n\n"),
-      structured: parsed.product.structured,
-      imageUrls: parsed.product.imageUrls,
-      downloadedImages,
-      downloadedImageHashes,
-      fingerprint: createFingerprint({
+      const normalizedTitle = parsed.product.title.toLowerCase();
+      if (parsed.product.brandNormalized !== "zle") {
+        crawlLog.skippedProducts.push({ sourceUrl, reasonCode: "brand_not_zle" });
+        continue;
+      }
+
+      if (normalizedTitle.includes(" santa cruz ") || normalizedTitle.includes(" thrasher ")) {
+        crawlLog.skippedProducts.push({ sourceUrl, reasonCode: "contradictory_title_brand" });
+        continue;
+      }
+
+      const productRecord: SourceProductRecord = {
+        sourceProductKey,
         sourceUrl,
+        sourceSlug,
         title: parsed.product.title,
-        brand: parsed.product.brandRaw,
-        category: parsed.product.categoryRaw,
+        brandRaw: parsed.product.brandRaw,
+        brandNormalized: parsed.product.brandNormalized,
+        categoryRaw: parsed.product.categoryRaw,
+        tagRaw: parsed.product.tagRaw,
         priceText: parsed.product.priceText,
+        priceCzk: parsed.product.priceCzk,
+        optionsRaw: parsed.product.optionsRaw,
+        sizes: parsed.product.sizes,
+        descriptionRaw: [parsed.product.descriptionRaw, parsed.product.additionalInfoRaw].filter(Boolean).join("\n\n"),
+        structured: parsed.product.structured,
         imageUrls: parsed.product.imageUrls,
-      }),
+        downloadedImages,
+        downloadedImageHashes,
+        fingerprint: createFingerprint({
+          sourceUrl,
+          title: parsed.product.title,
+          brand: parsed.product.brandRaw,
+          category: parsed.product.categoryRaw,
+          priceText: parsed.product.priceText,
+          imageUrls: parsed.product.imageUrls,
+        }),
+      };
+
+      products.push(productRecord);
+    }
+
+    crawlLog.skippedProductSummary = summarizeSkippedProducts(crawlLog.skippedProducts);
+
+    const dataset: SourceDatasetManifest = {
+      runId: options.runId,
+      source: "totalboardshop",
+      sourceRoot: "https://totalboardshop.cz/",
+      createdAt: new Date().toISOString(),
+      mode: "crawl-snapshot",
+      scope: {
+        brand: "ZLE",
+        matchMode: "exact",
+      },
+      productCount: products.length,
+      imageCount: products.reduce((acc, item) => acc + item.downloadedImages.length, 0),
+      productsPath: "products.json",
+      crawlLogPath: "crawl-log.json",
+      auditPath: "audit.json",
+      imagesPath: "images",
+      sourceInput: {
+        type: "live-crawl",
+        operatorProvided: false,
+      },
     };
 
-    products.push(productRecord);
-  }
-
-  crawlLog.skippedProductSummary = summarizeSkippedProducts(crawlLog.skippedProducts);
-
-  const dataset: SourceDatasetManifest = {
-    runId: options.runId,
-    source: "totalboardshop",
-    sourceRoot: "https://totalboardshop.cz/",
-    createdAt: new Date().toISOString(),
-    mode: "crawl-snapshot",
-    scope: {
-      brand: "ZLE",
-      matchMode: "exact",
-    },
-    productCount: products.length,
-    imageCount: products.reduce((acc, item) => acc + item.downloadedImages.length, 0),
-    productsPath: "products.json",
-    crawlLogPath: "crawl-log.json",
-    auditPath: "audit.json",
-    imagesPath: "images",
-    sourceInput: {
-      type: "live-crawl",
+    crawlLog.mode = "crawl-snapshot";
+    crawlLog.trust = {
+      sourceType: "live-crawl",
       operatorProvided: false,
-    },
-  };
+      notes: ["Artifacts originated from the live TotalBoardShop crawl path."],
+    };
 
-  crawlLog.mode = "crawl-snapshot";
-  crawlLog.trust = {
-    sourceType: "live-crawl",
-    operatorProvided: false,
-    notes: ["Artifacts originated from the live TotalBoardShop crawl path."],
-  };
-
-  return writeSourceArtifacts({
-    runId: options.runId,
-    outputRoot: options.outputRoot,
-    dataset,
-    products,
-    crawlLog,
-  });
+    return writeSourceArtifacts({
+      runId: options.runId,
+      outputRoot: options.outputRoot,
+      dataset,
+      products,
+      crawlLog,
+    });
+  } finally {
+    await htmlAcquirer.close();
+  }
 }
 
 export function createSourceRunId(now = new Date()): string {
