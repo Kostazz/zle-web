@@ -43,9 +43,21 @@ function isMainDocumentNavigationRequest(request: NavigationRequestLike, page: P
 }
 
 const RETRIABLE_ERROR_PATTERNS = [/timeout/i, /net::err/i, /network/i, /page crashed/i];
+const NON_RETRIABLE_POLICY_PATTERNS = [
+  /blockedbyclient/i,
+  /blocked_by_client/i,
+  /err_blocked_by_client/i,
+  /non-allowlisted host blocked/i,
+  /non-allowlisted response/i,
+  /cross-host redirect blocked/i,
+  /redirect chain detected/i,
+  /unsupported content-type/i,
+  /payload too large/i,
+];
 
 function isRetriableAcquisitionError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
+  if (NON_RETRIABLE_POLICY_PATTERNS.some((pattern) => pattern.test(error.message))) return false;
   return RETRIABLE_ERROR_PATTERNS.some((pattern) => pattern.test(error.message));
 }
 
@@ -87,7 +99,7 @@ async function fetchSingleAttempt(page: Page, rawUrl: string, timeoutMs: number,
     }
   };
 
-  await page.route(/(\/obchod\/|\/nabidka-znacek\/|\.html(?:\?|$))/i, (route: { request(): NavigationRequestLike; continue(): Promise<void>; abort(reason: "blockedbyclient"): Promise<void> }) => {
+  await page.route("**/*", (route: { request(): NavigationRequestLike; continue(): Promise<void>; abort(reason: "blockedbyclient"): Promise<void> }) => {
     try {
       if (isMainDocumentNavigationRequest(route.request(), page)) {
         normalizeAllowedUrl(route.request().url());
@@ -110,7 +122,7 @@ async function fetchSingleAttempt(page: Page, rawUrl: string, timeoutMs: number,
   } finally {
     page.off("request", requestListener);
     page.off("response", responseListener);
-    await page.unroute(/(\/obchod\/|\/nabidka-znacek\/|\.html(?:\?|$))/i);
+    await page.unroute("**/*");
   }
 
   if (chainError) throw chainError;

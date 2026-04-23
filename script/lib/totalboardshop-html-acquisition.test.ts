@@ -216,6 +216,15 @@ test("retry is used only for retriable errors", async () => {
   await assert.rejects(() => nonRetriable.fetchHtml("https://totalboardshop.cz/start"), /Protocol violation/);
   assert.equal(nonRetriableStub.calls.gotoCalls.length, 1);
   await nonRetriable.close();
+
+  const blockedPolicyStub = createPlaywrightStub([
+    { ok: true, status: 200, url: "https://totalboardshop.cz/start", headers: { "content-type": "text/html" }, html: "<html></html>", error: new Error("net::ERR_BLOCKED_BY_CLIENT") },
+    { ok: true, status: 200, url: "https://totalboardshop.cz/start", headers: { "content-type": "text/html" }, html: "<html></html>" },
+  ]);
+  const blockedPolicy = await createTotalboardshopHtmlAcquirer({ timeoutMs: 1234, maxHtmlBytes: 1000, maxRetries: 2, playwrightModule: blockedPolicyStub.playwrightModule as any });
+  await assert.rejects(() => blockedPolicy.fetchHtml("https://totalboardshop.cz/start"), /ERR_BLOCKED_BY_CLIENT/);
+  assert.equal(blockedPolicyStub.calls.gotoCalls.length, 1);
+  await blockedPolicy.close();
 });
 
 test("redirect chain is explicitly blocked fail-closed", async () => {
