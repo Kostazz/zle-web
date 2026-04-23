@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Route } from "playwright";
 import { computeAuditChainHash, readLatestAuditHash, sha256File, type AuditChainRecord } from "./audit-chain.ts";
 import { extFromContentType, jitterDelay, normalizeAllowedUrl, safeFetchBinary, type FetchLimits } from "./fetch-utils.ts";
 import { ensureSourceRunDirs, type CrawlLog, type SourceDatasetManifest, type SourceProductRecord, writeJsonFile } from "./source-dataset.ts";
@@ -317,6 +317,16 @@ async function fetchHtmlViaBrowser(rawUrl: string, limits: FetchLimits): Promise
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const page = await browser.newPage();
     try {
+      await page.route("**/*", async (route: Route) => {
+        const requestUrl = route.request().url();
+        try {
+          normalizeAllowedUrl(requestUrl);
+          await route.continue();
+        } catch {
+          await route.abort("blockedbyclient");
+        }
+      });
+
       const response = await page.goto(normalizedInitialUrl, {
         waitUntil: "domcontentloaded",
         timeout: limits.timeoutMs,
@@ -411,6 +421,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
         reasonCode: reasonCodeForFetchError(fetchError),
         detail: fetchError.message,
       });
+      throw new Error(`Seed listing fetch failed for ${options.seedUrl}: ${fetchError.message}`);
     }
 
     const candidateLinks = extractBrandListingProductLinks(options.seedUrl, listingHtml);
