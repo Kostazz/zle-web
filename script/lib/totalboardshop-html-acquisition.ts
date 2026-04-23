@@ -100,15 +100,16 @@ async function fetchSingleAttempt(page: Page, rawUrl: string, timeoutMs: number,
   };
 
   await page.route("**/*", (route: { request(): NavigationRequestLike; continue(): Promise<void>; abort(reason: "blockedbyclient"): Promise<void> }) => {
-    try {
-      if (isMainDocumentNavigationRequest(route.request(), page)) {
+    if (isMainDocumentNavigationRequest(route.request(), page)) {
+      try {
         normalizeAllowedUrl(route.request().url());
+        return route.continue();
+      } catch {
+        chainError = new Error("Non-allowlisted host blocked BEFORE navigation");
+        return route.abort("blockedbyclient");
       }
-      return route.continue();
-    } catch {
-      chainError = new Error("Non-allowlisted host blocked BEFORE navigation");
-      return route.abort("blockedbyclient");
     }
+    return route.abort("blockedbyclient");
   });
   page.on("request", requestListener);
   page.on("response", responseListener);

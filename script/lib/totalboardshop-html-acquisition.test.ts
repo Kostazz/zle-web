@@ -243,9 +243,13 @@ test("redirect chain is explicitly blocked fail-closed", async () => {
   await acquirer.close();
 });
 
-test("non-main-frame subresource requests do not trigger allowlist false positive", async () => {
+test("valid main document passes while non-document subresource is aborted without retry", async () => {
   const listeners: Record<string, Array<(payload: any) => void>> = { request: [], response: [] };
+  let routeHandler: ((route: { request(): any; continue(): Promise<void>; abort(reason: "blockedbyclient"): Promise<void> }) => Promise<void>) | null = null;
   const mainFrame = {};
+  let gotoCalls = 0;
+  let abortCalls = 0;
+  let continueCalls = 0;
   const page = {
     on(event: "request" | "response", handler: (payload: any) => void) {
       listeners[event].push(handler);
@@ -253,9 +257,42 @@ test("non-main-frame subresource requests do not trigger allowlist false positiv
     off(event: "request" | "response", handler: (payload: any) => void) {
       listeners[event] = listeners[event].filter((item) => item !== handler);
     },
-    async route() {},
+    async route(_pattern: string, handler: typeof routeHandler) {
+      routeHandler = handler;
+    },
     async unroute() {},
     async goto() {
+      gotoCalls += 1;
+      await routeHandler?.({
+        request: () => ({
+          url: () => "https://cdn.badhost.example/font.woff2",
+          isNavigationRequest: () => false,
+          resourceType: () => "font",
+          frame: () => ({ not: "main-frame" }),
+        }),
+        async continue() {
+          continueCalls += 1;
+        },
+        async abort() {
+          abortCalls += 1;
+        },
+      });
+
+      await routeHandler?.({
+        request: () => ({
+          url: () => "https://totalboardshop.cz/obchod/mikina-zle-classic/",
+          isNavigationRequest: () => true,
+          resourceType: () => "document",
+          frame: () => mainFrame,
+        }),
+        async continue() {
+          continueCalls += 1;
+        },
+        async abort() {
+          abortCalls += 1;
+        },
+      });
+
       for (const handler of listeners.request) {
         handler({
           url: () => "https://cdn.badhost.example/font.woff2",
@@ -314,5 +351,8 @@ test("non-main-frame subresource requests do not trigger allowlist false positiv
 
   const result = await acquirer.fetchHtml("https://totalboardshop.cz/obchod/mikina-zle-classic/");
   assert.equal(result.status, 200);
+  assert.equal(gotoCalls, 1);
+  assert.equal(abortCalls, 1);
+  assert.equal(continueCalls, 1);
   await acquirer.close();
 });
