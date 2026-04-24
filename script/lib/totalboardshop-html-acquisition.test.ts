@@ -21,6 +21,7 @@ function createPlaywrightStub(steps: FakeResponse[]) {
   let offCalls = 0;
   let routeCalls = 0;
   let unrouteCalls = 0;
+  const newContextOptions: Array<Record<string, unknown> | undefined> = [];
   let cursor = 0;
 
   const context = {
@@ -78,7 +79,8 @@ function createPlaywrightStub(steps: FakeResponse[]) {
   };
 
   const browser = {
-    async newContext() {
+    async newContext(options?: Record<string, unknown>) {
+      newContextOptions.push(options);
       return context;
     },
     async close() {
@@ -87,7 +89,7 @@ function createPlaywrightStub(steps: FakeResponse[]) {
   };
 
   return {
-    calls: { pageCloseCalls, gotoCalls, waitUntilCalls, timeoutCalls, onCalls: () => onCalls, offCalls: () => offCalls, routeCalls: () => routeCalls, unrouteCalls: () => unrouteCalls },
+    calls: { pageCloseCalls, gotoCalls, waitUntilCalls, timeoutCalls, onCalls: () => onCalls, offCalls: () => offCalls, routeCalls: () => routeCalls, unrouteCalls: () => unrouteCalls, newContextOptions },
     playwrightModule: {
       chromium: {
         async launch() {
@@ -97,6 +99,26 @@ function createPlaywrightStub(steps: FakeResponse[]) {
     },
   };
 }
+
+test("browser context is created with Czech locale and Accept-Language headers", async () => {
+  const stub = createPlaywrightStub([
+    { ok: true, status: 200, url: "https://totalboardshop.cz/start", headers: { "content-type": "text/html" }, html: "<html>ok</html>" },
+  ]);
+  const acquirer = await createTotalboardshopHtmlAcquirer({
+    timeoutMs: 1000,
+    maxHtmlBytes: 1000,
+    playwrightModule: stub.playwrightModule as any,
+  });
+
+  assert.deepEqual(stub.calls.newContextOptions[0], {
+    locale: "cs-CZ",
+    extraHTTPHeaders: {
+      "Accept-Language": "cs-CZ,cs;q=0.9,en;q=0.8",
+    },
+  });
+
+  await acquirer.close();
+});
 
 test("allowlist is enforced before navigation", async () => {
   const stub = createPlaywrightStub([]);

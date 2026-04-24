@@ -170,7 +170,12 @@ export async function createTotalboardshopHtmlAcquirer(options: TotalboardshopHt
   const browser = await playwrightModule.chromium.launch({ headless: true });
   let context: BrowserContext;
   try {
-    context = await browser.newContext();
+    context = await browser.newContext({
+      locale: "cs-CZ",
+      extraHTTPHeaders: {
+        "Accept-Language": "cs-CZ,cs;q=0.9,en;q=0.8",
+      },
+    });
   } catch (error) {
     await browser.close().catch(() => undefined);
     throw error;
