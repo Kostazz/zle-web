@@ -65,6 +65,49 @@ test("seed acquisition failure hard-fails the run", async () => {
   }
 });
 
+test("primary crawl error is preserved when acquirer.close also fails", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-source-primary-error-"));
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    __setSourceTotalboardshopTestHooks({
+      htmlAcquirerFactory: async () => ({
+        async fetchHtml() {
+          throw new Error("seed timeout");
+        },
+        async close() {
+          throw new Error("close failed");
+        },
+      }),
+    });
+
+    await assert.rejects(
+      () =>
+        runTotalboardshopSourceAgent({
+          runId: "tbs-primary-error",
+          outputRoot: tempRoot,
+          seedUrl: "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding",
+          maxPages: 2,
+          maxProducts: 2,
+          maxImagesPerProduct: 1,
+          maxImageBytes: 500_000,
+        }),
+      /seed timeout/,
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0]?.[0] ?? ""), /cleanup failed after primary error/);
+    assert.match(String(warnings[0]?.[1] ?? ""), /close failed/);
+  } finally {
+    console.warn = originalWarn;
+    __setSourceTotalboardshopTestHooks({});
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("seed empty listing hard-fails fail-closed", async () => {
   const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-source-seed-empty-"));
   try {

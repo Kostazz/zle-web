@@ -182,8 +182,19 @@ export async function createTotalboardshopHtmlAcquirer(options: TotalboardshopHt
   }
 
   async function close(): Promise<void> {
-    await context.close();
-    await browser.close();
+    let closeError: unknown;
+    try {
+      await context.close();
+    } catch (error) {
+      closeError = error;
+    } finally {
+      try {
+        await browser.close();
+      } catch (error) {
+        if (!closeError) closeError = error;
+      }
+    }
+    if (closeError) throw closeError;
   }
 
   return {

@@ -120,6 +120,38 @@ test("browser context is created with Czech locale and Accept-Language headers",
   await acquirer.close();
 });
 
+test("close always attempts browser.close even when context.close fails", async () => {
+  let browserClosed = false;
+  const acquirer = await createTotalboardshopHtmlAcquirer({
+    timeoutMs: 1000,
+    maxHtmlBytes: 1000,
+    playwrightModule: {
+      chromium: {
+        async launch() {
+          return {
+            async newContext() {
+              return {
+                async newPage() {
+                  throw new Error("unused");
+                },
+                async close() {
+                  throw new Error("context close failed");
+                },
+              };
+            },
+            async close() {
+              browserClosed = true;
+            },
+          } as any;
+        },
+      },
+    },
+  });
+
+  await assert.rejects(() => acquirer.close(), /context close failed/);
+  assert.equal(browserClosed, true);
+});
+
 test("allowlist is enforced before navigation", async () => {
   const stub = createPlaywrightStub([]);
   const acquirer = await createTotalboardshopHtmlAcquirer({ timeoutMs: 1000, maxHtmlBytes: 1000, playwrightModule: stub.playwrightModule as any });

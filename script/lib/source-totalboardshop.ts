@@ -276,6 +276,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
         maxHtmlBytes: fetchLimits.maxHtmlBytes,
       }));
 
+  let primaryError: unknown;
   try {
     const listing = await htmlAcquirer.fetchHtml(options.seedUrl);
     const listingHtml = listing.html;
@@ -467,8 +468,16 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
       products,
       crawlLog,
     });
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await htmlAcquirer.close();
+    try {
+      await htmlAcquirer.close();
+    } catch (closeError) {
+      if (!primaryError) throw closeError;
+      console.warn("[totalboardshop-source] cleanup failed after primary error:", closeError);
+    }
   }
 }
 
