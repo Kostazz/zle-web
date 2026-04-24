@@ -461,7 +461,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
       notes: ["Artifacts originated from the live TotalBoardShop crawl path."],
     };
 
-    return writeSourceArtifacts({
+    return await writeSourceArtifacts({
       runId: options.runId,
       outputRoot: options.outputRoot,
       dataset,
