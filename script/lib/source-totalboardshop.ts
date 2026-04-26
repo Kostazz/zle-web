@@ -245,6 +245,17 @@ function inferExt(url: string, contentType: string): string {
   return ".jpg";
 }
 
+function isStoreRootCandidate(url: string): boolean {
+  if (url === "/obchod/" || url === "https://totalboardshop.cz/obchod/") return true;
+  try {
+    const parsed = new URL(url, "https://totalboardshop.cz");
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "/").toLowerCase();
+    return normalizedPath === "/obchod/";
+  } catch {
+    return false;
+  }
+}
+
 export async function runTotalboardshopSourceAgent(options: SourceRunOptions): Promise<{ runDir: string; datasetPath: string; productsPath: string; crawlLogPath: string; auditPath: string; productCount: number; imageCount: number }> {
   normalizeAllowedUrl(options.seedUrl);
   const { runDir, imageRoot } = await ensureSourceRunDirs(options.outputRoot, options.runId);
@@ -289,7 +300,7 @@ export async function runTotalboardshopSourceAgent(options: SourceRunOptions): P
     if (!listingHtml.toLowerCase().includes("obchod") || candidateLinks.length < 1) {
       throw new Error("Seed returned empty listing (fail-closed)");
     }
-    const allowedCandidates = candidateLinks.slice(0, options.maxPages);
+    const allowedCandidates = candidateLinks.filter((candidateUrl) => !isStoreRootCandidate(candidateUrl)).slice(0, options.maxPages);
     const products: SourceProductRecord[] = [];
 
     for (const sourceUrl of allowedCandidates) {

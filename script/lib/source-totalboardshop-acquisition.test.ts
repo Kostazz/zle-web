@@ -226,3 +226,70 @@ test("detail acquisition failure is skipped and image flow remains unchanged", a
     await fs.promises.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("store root candidate is filtered before maxPages slicing", async () => {
+  const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-source-root-filter-"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(new Uint8Array([1, 2, 3, 4]), {
+      status: 200,
+      headers: { "content-type": "image/jpeg", "content-length": "4" },
+    })) as typeof fetch;
+
+  const fetchHtmlCalls: string[] = [];
+
+  try {
+    __setSourceTotalboardshopTestHooks({
+      htmlAcquirerFactory: async () => ({
+        async fetchHtml(url: string) {
+          fetchHtmlCalls.push(url);
+          if (url.includes("nabidka-znacek")) {
+            return {
+              finalUrl: url,
+              status: 200,
+              contentType: "text/html",
+              html: `
+                <a href="https://totalboardshop.cz/obchod/">Root</a>
+                <a href="https://totalboardshop.cz/obchod/mikina-zle-classic/">Product A</a>
+                <a href="https://totalboardshop.cz/obchod/mikina-zle-failed/">Product B</a>
+              `,
+            };
+          }
+          if (url.includes("mikina-zle-classic")) {
+            return { finalUrl: url, status: 200, contentType: "text/html", html: PRODUCT_HTML };
+          }
+          if (url.includes("mikina-zle-failed")) {
+            return { finalUrl: url, status: 200, contentType: "text/html", html: PRODUCT_HTML.replaceAll("classic", "failed") };
+          }
+          throw new Error(`Unexpected URL: ${url}`);
+        },
+        async close() {},
+      }),
+    });
+
+    const result = await runTotalboardshopSourceAgent({
+      runId: "tbs-root-filter",
+      outputRoot: tempRoot,
+      seedUrl: "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding",
+      maxPages: 1,
+      maxProducts: 5,
+      maxImagesPerProduct: 1,
+      maxImageBytes: 500_000,
+    });
+
+    const crawlLog = JSON.parse(await fs.promises.readFile(result.crawlLogPath, "utf8")) as {
+      visitedPages: string[];
+    };
+
+    assert.equal(result.productCount, 1);
+    assert.equal(crawlLog.visitedPages.length, 2);
+    assert.ok(crawlLog.visitedPages.every((visitedUrl) => visitedUrl !== "https://totalboardshop.cz/obchod/"));
+    assert.ok(fetchHtmlCalls.every((fetchUrl) => fetchUrl !== "https://totalboardshop.cz/obchod/"));
+    assert.ok(fetchHtmlCalls.some((fetchUrl) => fetchUrl.includes("mikina-zle-classic")));
+    assert.ok(fetchHtmlCalls.every((fetchUrl) => !fetchUrl.includes("mikina-zle-failed")));
+  } finally {
+    __setSourceTotalboardshopTestHooks({});
+    globalThis.fetch = originalFetch;
+    await fs.promises.rm(tempRoot, { recursive: true, force: true });
+  }
+});
