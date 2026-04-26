@@ -43,6 +43,12 @@ type LivePathAuditResult = {
   validManagedJpg: boolean;
 };
 
+type SourceLocalField = "downloadedImages" | "ingestedImagePaths";
+type SourceLocalImagePathEntry = {
+  field: SourceLocalField;
+  rawPath: string;
+};
+
 type AuditReport = {
   runId: string;
   createdAt: string;
@@ -80,7 +86,11 @@ function parseArgs(argv: string[]): { runId: string } {
     }
   }
   if (!runId.trim()) throw new Error("Missing --run-id <runId>");
-  return { runId: runId.trim() };
+  const normalizedRunId = runId.trim();
+  if (!/^[A-Za-z0-9._-]+$/.test(normalizedRunId)) {
+    throw new Error("Invalid --run-id: only letters, numbers, dot, underscore, and dash are allowed");
+  }
+  return { runId: normalizedRunId };
 }
 
 function readJsonIfPresent(filePath: string, artifactLabel: string, findings: Finding[], required = false): unknown | null {
@@ -119,25 +129,17 @@ function readJsonIfPresent(filePath: string, artifactLabel: string, findings: Fi
   }
 }
 
-function isUnsafeRelativePath(candidate: string): { unsafe: boolean; normalized: string } {
-  const normalized = path.posix.normalize(candidate);
-  if (path.isAbsolute(candidate)) return { unsafe: true, normalized };
-  if (normalized === ".." || normalized.startsWith("../")) return { unsafe: true, normalized };
-  if (normalized.includes("..")) return { unsafe: true, normalized };
-  return { unsafe: false, normalized };
-}
-
 function extractStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function extractLocalSourceImagePaths(product: SourceProduct): string[] {
+function extractLocalSourceImagePathEntries(product: SourceProduct): SourceLocalImagePathEntry[] {
   const downloadedImages = extractStringArray(product.downloadedImages).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (downloadedImages.length > 0) return downloadedImages;
+  if (downloadedImages.length > 0) return downloadedImages.map((rawPath) => ({ field: "downloadedImages", rawPath }));
 
   const ingestedImagePaths = extractStringArray(product.ingestedImagePaths).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (ingestedImagePaths.length > 0) return ingestedImagePaths;
+  if (ingestedImagePaths.length > 0) return ingestedImagePaths.map((rawPath) => ({ field: "ingestedImagePaths", rawPath }));
 
   // imageUrls represent remote URLs and must not be treated as local filesystem paths.
   return [];
@@ -145,6 +147,54 @@ function extractLocalSourceImagePaths(product: SourceProduct): string[] {
 
 function toPortablePath(value: string): string {
   return value.replaceAll("\\", "/");
+}
+
+function resolveSourceLocalImagePath(
+  runId: string,
+  entry: SourceLocalImagePathEntry,
+): { ok: true; resolved: string; normalized: string } | { ok: false; code: "unsafe_absolute_source_path" | "unsafe_source_path_traversal"; message: string } {
+  const portableRaw = toPortablePath(entry.rawPath);
+  const normalized = path.posix.normalize(portableRaw);
+  if (path.isAbsolute(entry.rawPath)) {
+    return {
+      ok: false,
+      code: "unsafe_absolute_source_path",
+      message: `Source image path is absolute (${entry.field}): ${entry.rawPath}`,
+    };
+  }
+  if (normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) {
+    return {
+      ok: false,
+      code: "unsafe_source_path_traversal",
+      message: `Unsafe traversal in source image path (${entry.field}): ${entry.rawPath}`,
+    };
+  }
+
+  if (entry.field === "downloadedImages") {
+    const sourceRoot = path.resolve("tmp", "source-datasets", runId);
+    const resolved = path.resolve(sourceRoot, normalized);
+    const relativeToRoot = path.relative(sourceRoot, resolved);
+    if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+      return {
+        ok: false,
+        code: "unsafe_source_path_traversal",
+        message: `Source image path escapes source run root (${entry.field}): ${entry.rawPath}`,
+      };
+    }
+    return { ok: true, resolved, normalized };
+  }
+
+  const repoRoot = path.resolve(process.cwd());
+  const resolved = path.resolve(repoRoot, normalized);
+  const relativeToRepo = path.relative(repoRoot, resolved);
+  if (relativeToRepo.startsWith("..") || path.isAbsolute(relativeToRepo)) {
+    return {
+      ok: false,
+      code: "unsafe_source_path_traversal",
+      message: `Source image path escapes repository root (${entry.field}): ${entry.rawPath}`,
+    };
+  }
+  return { ok: true, resolved, normalized };
 }
 
 function classifyLiveOutputPath(rawPath: string): LivePathClassification {
@@ -484,8 +534,8 @@ async function main(): Promise<void> {
         });
       }
 
-      const localSourceImagePaths = extractLocalSourceImagePaths(product);
-      if (localSourceImagePaths.length < 1) {
+      const localSourceImagePathEntries = extractLocalSourceImagePathEntries(product);
+      if (localSourceImagePathEntries.length < 1) {
         findings.push({
           level: "error",
           code: "source_product_without_downloaded_images",
@@ -496,58 +546,30 @@ async function main(): Promise<void> {
         });
       }
 
-      for (const rawRelativePath of localSourceImagePaths) {
+      for (const localPathEntry of localSourceImagePathEntries) {
         checkedSourceImages += 1;
-        const pathCheck = isUnsafeRelativePath(rawRelativePath);
-        if (path.isAbsolute(rawRelativePath)) {
+        const resolvedPath = resolveSourceLocalImagePath(runId, localPathEntry);
+        if (!resolvedPath.ok) {
           findings.push({
             level: "error",
-            code: "unsafe_absolute_source_path",
-            message: `Source image path is absolute: ${rawRelativePath}`,
-            suggestedAction: "Store only relative image paths inside source dataset artifacts.",
-            sourceProductKey,
-            artifact: SOURCE_ARTIFACT_LABEL,
-            path: rawRelativePath,
-          });
-          continue;
-        }
-        if (pathCheck.unsafe) {
-          findings.push({
-            level: "error",
-            code: "unsafe_source_path_traversal",
-            message: `Unsafe traversal in source image path: ${rawRelativePath}`,
+            code: resolvedPath.code,
+            message: resolvedPath.message,
             suggestedAction: "Reject any path containing '..' or that escapes the source run directory.",
             sourceProductKey,
-            artifact: SOURCE_ARTIFACT_LABEL,
-            path: rawRelativePath,
+            artifact: `${SOURCE_ARTIFACT_LABEL}#${localPathEntry.field}`,
+            path: localPathEntry.rawPath,
           });
           continue;
         }
-
-        const resolved = path.resolve("tmp", "source-datasets", runId, pathCheck.normalized);
-        const sourceRoot = path.resolve("tmp", "source-datasets", runId);
-        const relativeToRoot = path.relative(sourceRoot, resolved);
-        if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
-          findings.push({
-            level: "error",
-            code: "unsafe_source_path_traversal",
-            message: `Source image path escapes source run root: ${rawRelativePath}`,
-            suggestedAction: "Keep source image references inside tmp/source-datasets/<runId>/.",
-            sourceProductKey,
-            artifact: SOURCE_ARTIFACT_LABEL,
-            path: rawRelativePath,
-          });
-          continue;
-        }
-        if (!fs.existsSync(resolved)) {
+        if (!fs.existsSync(resolvedPath.resolved)) {
           findings.push({
             level: "error",
             code: "missing_source_image_file",
-            message: `Referenced source image file is missing: ${rawRelativePath}`,
+            message: `Referenced source image file is missing (${localPathEntry.field}): ${localPathEntry.rawPath}`,
             suggestedAction: "Ensure every local source image path entry points to an existing file.",
             sourceProductKey,
-            artifact: SOURCE_ARTIFACT_LABEL,
-            path: rawRelativePath,
+            artifact: `${SOURCE_ARTIFACT_LABEL}#${localPathEntry.field}`,
+            path: localPathEntry.rawPath,
           });
         }
       }
@@ -555,8 +577,10 @@ async function main(): Promise<void> {
       if (Array.isArray(product.downloadedImageHashes)) {
         const hashes = product.downloadedImageHashes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
         const foldersForProduct = new Set(
-          localSourceImagePaths
-            .map((relativePath) => path.posix.dirname(path.posix.normalize(relativePath)))
+          localSourceImagePathEntries
+            .map((entry) => resolveSourceLocalImagePath(runId, entry))
+            .filter((resolved): resolved is { ok: true; resolved: string; normalized: string } => resolved.ok)
+            .map((resolved) => path.posix.dirname(resolved.normalized))
             .filter((dir) => dir && dir !== "."),
         );
         for (const hash of hashes) {
@@ -602,6 +626,7 @@ async function main(): Promise<void> {
   const liveRefs = collectLiveImageRefs(stagingRaw, publishRaw);
   let checkedLiveImages = 0;
   const validJpgPerItem = new Map<string, number>();
+  const managedOutputSeenPerItem = new Map<string, number>();
   const referencedFolders = new Set<string>();
 
   for (const ref of liveRefs) {
@@ -616,8 +641,9 @@ async function main(): Promise<void> {
       const segments = rel.split("/");
       if (segments.length === 4 && segments[0] === "images" && segments[1] === "products") {
         referencedFolders.add(segments[2]);
+        const key = `${ref.artifact}::${ref.sourceProductKey ?? "unknown"}`;
+        managedOutputSeenPerItem.set(key, (managedOutputSeenPerItem.get(key) ?? 0) + 1);
         if (pathAudit.validManagedJpg) {
-          const key = `${ref.artifact}::${ref.sourceProductKey ?? "unknown"}`;
           validJpgPerItem.set(key, (validJpgPerItem.get(key) ?? 0) + 1);
         }
       }
@@ -635,6 +661,7 @@ async function main(): Promise<void> {
       const outputs = extractStringArray(item[field]);
       if (outputs.length < 1) continue;
       const key = `${artifact}::${sourceProductKey ?? "unknown"}`;
+      if ((managedOutputSeenPerItem.get(key) ?? 0) < 1) continue;
       if ((validJpgPerItem.get(key) ?? 0) < 1) {
         findings.push({
           level: "risk",
