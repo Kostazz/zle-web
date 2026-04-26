@@ -1,6 +1,6 @@
 import { normalizeText } from "./catalog-index.ts";
 
-export const SUPPORTED_INTERNAL_CATEGORIES = ["hoodie", "tee", "cap", "beanie", "crewneck"] as const;
+export const SUPPORTED_INTERNAL_CATEGORIES = ["hoodie", "tee", "cap", "accessories", "beanie", "crewneck"] as const;
 
 export type SupportedInternalCategory = (typeof SUPPORTED_INTERNAL_CATEGORIES)[number];
 
@@ -39,6 +39,13 @@ const EXPLICIT_CATEGORY_SYNONYMS: Readonly<Record<string, SupportedInternalCateg
   hoodie: "hoodie",
   hoodies: "hoodie",
 
+  accessories: "accessories",
+  accessory: "accessories",
+  doplnek: "accessories",
+  doplnky: "accessories",
+  "ostatni doplnek": "accessories",
+  "ostatni doplnky": "accessories",
+
   crewneck: "crewneck",
   crew: "crewneck",
   sweatshirt: "crewneck",
@@ -51,7 +58,7 @@ const EXPLICIT_CATEGORY_SYNONYMS: Readonly<Record<string, SupportedInternalCateg
   "zimni cepice": "beanie",
 };
 
-export function normalizeCategory(input: string): string {
+export function normalizeCategoryText(input: string): string {
   return normalizeText(input)
     .replace(/[\/_-]+/g, " ")
     .replace(/\s+/g, " ")
@@ -59,7 +66,30 @@ export function normalizeCategory(input: string): string {
 }
 
 export function canonicalizeCategory(raw: string | null | undefined): SupportedInternalCategory | string | null {
-  const normalized = normalizeCategory(raw ?? "");
+  const normalized = normalizeCategoryText(raw ?? "");
   if (!normalized) return null;
   return EXPLICIT_CATEGORY_SYNONYMS[normalized] ?? normalized;
+}
+
+export function isSupportedCategory(value: unknown): value is SupportedInternalCategory {
+  return SUPPORTED_INTERNAL_CATEGORIES.includes(value as SupportedInternalCategory);
+}
+
+export function normalizeCategory(input: {
+  categoryRaw: string | null | undefined;
+  productType: string | null | undefined;
+  title: string | null | undefined;
+}): SupportedInternalCategory {
+  const mappedCategoryRaw = canonicalizeCategory(input.categoryRaw);
+  if (isSupportedCategory(mappedCategoryRaw)) return mappedCategoryRaw;
+
+  const mappedProductType = canonicalizeCategory(input.productType);
+  if (isSupportedCategory(mappedProductType)) return mappedProductType;
+
+  const normalizedTitle = normalizeCategoryText(input.title ?? "");
+  if (/\btricko\b/.test(normalizedTitle)) return "tee";
+  if (/\bmikina\b/.test(normalizedTitle)) return "hoodie";
+  if (/\b(cepice|ksiltovka)\b/.test(normalizedTitle)) return "cap";
+
+  return "tee";
 }

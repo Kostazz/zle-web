@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { canonicalizeCategory, SUPPORTED_INTERNAL_CATEGORIES } from "./category-normalization.ts";
+import { normalizeCategory } from "./category-normalization.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 import type { Product } from "@shared/schema";
 
@@ -178,48 +178,6 @@ function listManagedLiveImages(productDir: string, liveTargetKey: string, liveIm
   };
 }
 
-function normalizeCategory(source: SourceProductRecord): Product["category"] {
-  const candidates = [
-    source.structured.productType,
-    source.categoryRaw,
-    source.title,
-    source.sourceSlug,
-  ];
-
-  for (const candidate of candidates) {
-    const normalized = canonicalizeCategory(candidate);
-    if (
-      normalized &&
-      SUPPORTED_INTERNAL_CATEGORIES.includes(
-        normalized as (typeof SUPPORTED_INTERNAL_CATEGORIES)[number]
-      )
-    ) {
-      return normalized as Product["category"];
-    }
-  }
-
-  const text = [source.title, source.sourceSlug]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (/\b(tricko|tee)\b/.test(text)) return "tee";
-  if (/\b(mikina|hoodie)\b/.test(text)) return "hoodie";
-  if (/\bcrewneck\b/.test(text)) return "crewneck";
-  if (/\b(kulich|beanie)\b/.test(text)) return "beanie";
-  if (/\b(cepice|ksiltovka|trucker|snapback|sitovka|cap)\b/.test(text)) return "cap";
-
-  const normalized = canonicalizeCategory(
-    source.structured.productType ?? source.categoryRaw
-  );
-
-  throw new Error(
-    `Unsupported catalog category for ${source.sourceProductKey}: categoryRaw="${source.categoryRaw}" productType="${source.structured.productType ?? "null"}" normalized="${normalized ?? "null"}" supported=${SUPPORTED_INTERNAL_CATEGORIES.join(",")}`,
-  );
-}
-
 function normalizeSizeTokenStrict(rawValue: string): string | null {
   const compact = rawValue.trim().toUpperCase().replace(/\s+/g, "").replace(/-/g, "");
   if (!compact) return null;
@@ -278,7 +236,11 @@ export function mapPublishedItemToProduct(source: SourceProductRecord, liveTarge
     name: source.title,
     price: source.priceCzk,
     sizes: resolveImportedSizes(source),
-    category: normalizeCategory(source),
+    category: normalizeCategory({
+      categoryRaw: source.categoryRaw,
+      productType: source.structured.productType,
+      title: source.title,
+    }),
     description: source.descriptionRaw ?? "",
     stock: DEFAULT_STOCK,
     isActive: true,
