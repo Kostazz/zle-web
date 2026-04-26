@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Product } from "@shared/schema";
-import { canonicalizeCategory, normalizeCategory } from "./category-normalization.ts";
+import { canonicalizeCategory, isSupportedCategory, normalizeCategory, normalizeCategoryText } from "./category-normalization.ts";
 import { deriveSizesFromOptionsRawStrict, mapPublishedItemToProduct, runImportTotalboardshopProducts } from "./import-totalboardshop-products.ts";
 import type { SourceProductRecord } from "./source-dataset.ts";
 
@@ -116,12 +116,19 @@ async function withLiveRoot<T>(fn: (liveRoot: string) => Promise<T>): Promise<T>
   }
 }
 
-test("category normalization removes diacritics, trims whitespace, and collapses separators", () => {
-  assert.equal(normalizeCategory(" Kšiltovky "), "ksiltovky");
-  assert.equal(normalizeCategory("Trička"), "tricka");
-  assert.equal(normalizeCategory("Tryčka"), "trycka");
-  assert.equal(normalizeCategory("Mikýny"), "mikyny");
-  assert.equal(normalizeCategory("  trucker---hat  "), "trucker hat");
+test("category text normalization removes diacritics, trims whitespace, and collapses separators", () => {
+  assert.equal(normalizeCategoryText(" Kšiltovky "), "ksiltovky");
+  assert.equal(normalizeCategoryText("Trička"), "tricka");
+  assert.equal(normalizeCategoryText("Tryčka"), "trycka");
+  assert.equal(normalizeCategoryText("Mikýny"), "mikyny");
+  assert.equal(normalizeCategoryText("  trucker---hat  "), "trucker hat");
+});
+
+test("supported-category guard accepts only internal categories", () => {
+  assert.equal(isSupportedCategory("tee"), true);
+  assert.equal(isSupportedCategory("accessories"), true);
+  assert.equal(isSupportedCategory("batoh"), false);
+  assert.equal(isSupportedCategory(null), false);
 });
 
 test("Kšiltovky and cap-like synonyms map to cap", async () => {
@@ -167,6 +174,15 @@ test("Mikina, Mikyna, and hoodie variants map to hoodie", async () => {
   });
 });
 
+test("normalizer maps totalboardshop categoryRaw and productType values to required internal categories", () => {
+  assert.equal(normalizeCategory({ categoryRaw: "Trička", productType: null, title: "Basic Tričko" }), "tee");
+  assert.equal(normalizeCategory({ categoryRaw: "Mikiny", productType: null, title: "Heavy Mikina" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: null, productType: "mikina", title: "Core drop" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Kšiltovky", productType: null, title: "Snapback" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Ostatní doplňky", productType: null, title: "Pin pack" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Dětské", productType: null, title: "Kids logo tee" }), "tee");
+});
+
 test("beanie variants map correctly", async () => {
   assert.equal(canonicalizeCategory("Beanies"), "beanie");
   assert.equal(canonicalizeCategory("Kulichy"), "beanie");
@@ -194,39 +210,30 @@ test("explicit non-hooded wording maps to crewneck only when clearly stated", as
   });
 });
 
-test("unknown categories fail closed with detailed source category context", async () => {
-  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "tbs-import-category-"));
-  try {
-    const source = createSourceProduct("category-fixture", {
-      categoryRaw: "Batohy",
-      structured: { productType: "batoh", audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
-    });
-    const liveRoot = path.join(root, "client", "public", "images", "products");
-    const liveDir = path.join(liveRoot, "new-product-a");
-    await fs.promises.mkdir(liveDir, { recursive: true });
-    await fs.promises.writeFile(path.join(liveDir, "cover.jpg"), "cover-jpg", "utf8");
-
-    assert.throws(
-      () => mapPublishedItemToProduct(source, "new-product-a", liveRoot),
-      /Unsupported catalog category for source-category-fixture: categoryRaw="Batohy" productType="batoh"/,
-    );
-  } finally {
-    await fs.promises.rm(root, { recursive: true, force: true });
-  }
-});
-
-test("ambiguous values still fail closed", async () => {
-  await withLiveRoot(async (liveRoot) => {
-    const source = createSourceProduct("ambiguous-fixture", {
-      categoryRaw: "Čepice / kulich",
-      structured: { productType: null, audience: null, lineNormalized: null, designNormalized: "fixture", colorTokens: ["black"] },
-    });
-
-    assert.throws(
-      () => mapPublishedItemToProduct(source, "new-product-a", liveRoot),
-      /Unsupported catalog category for source-ambiguous-fixture: categoryRaw="Čepice \/ kulich" productType="null" normalized="cepice kulich"/,
-    );
-  });
+test("fallback from title maps tričko, mikina, and čepice/kšiltovka safely", () => {
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Oversized tričko black" }), "tee");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Classic Beanie black" }), "beanie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Kulich ZLE winter" }), "beanie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Zimní čepice core logo" }), "beanie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Heavyweight crewneck washed" }), "crewneck");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mikina bez kapuce stone wash" }), "crewneck");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE zip mikina premium" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Signature hoodie drop" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Hoodie Tool" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Street Gear Tee" }), "tee");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Corduroy čepice limited" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mesh kšiltovka logo" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Cap Gear" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Classic snapback black" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Foam trucker cap" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Trucker Tool" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Síťovka logo edition" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Metal klíčenka ZLE" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Nylon ledvinka utility" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE BAG" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE GEAR" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE TOOL" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mystery product" }), "tee");
 });
 
 test("imports only published new_candidate items and skips map_to_existing items", async () => {
