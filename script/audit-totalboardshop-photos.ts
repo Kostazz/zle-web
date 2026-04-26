@@ -87,8 +87,8 @@ function parseArgs(argv: string[]): { runId: string } {
   }
   if (!runId.trim()) throw new Error("Missing --run-id <runId>");
   const normalizedRunId = runId.trim();
-  if (!/^[A-Za-z0-9._-]+$/.test(normalizedRunId)) {
-    throw new Error("Invalid --run-id: only letters, numbers, dot, underscore, and dash are allowed");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(normalizedRunId)) {
+    throw new Error("Invalid --run-id: use letters/numbers plus dash/underscore, with optional single-dot-separated segments");
   }
   return { runId: normalizedRunId };
 }
