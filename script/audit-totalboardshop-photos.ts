@@ -17,6 +17,8 @@ type SourceProduct = {
   sourceProductKey?: unknown;
   title?: unknown;
   downloadedImages?: unknown;
+  ingestedImagePaths?: unknown;
+  imageUrls?: unknown;
   downloadedImageHashes?: unknown;
 };
 
@@ -27,6 +29,18 @@ type LiveImageRef = {
   artifact: string;
   ownerKey?: string;
   path: string;
+};
+
+type LivePathClassification =
+  | { kind: "managed_web"; managedWebPath: string }
+  | { kind: "managed_filesystem"; managedWebPath: string }
+  | { kind: "intermediate" }
+  | { kind: "unsafe"; reasonCode: "live_path_contains_traversal" | "live_path_absolute_filesystem" | "live_path_prefix_invalid"; message: string };
+
+type LivePathAuditResult = {
+  isManaged: boolean;
+  managedWebPath?: string;
+  validManagedJpg: boolean;
 };
 
 type AuditReport = {
@@ -118,6 +132,86 @@ function extractStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function extractLocalSourceImagePaths(product: SourceProduct): string[] {
+  const downloadedImages = extractStringArray(product.downloadedImages).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  if (downloadedImages.length > 0) return downloadedImages;
+
+  const ingestedImagePaths = extractStringArray(product.ingestedImagePaths).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  if (ingestedImagePaths.length > 0) return ingestedImagePaths;
+
+  // imageUrls represent remote URLs and must not be treated as local filesystem paths.
+  return [];
+}
+
+function toPortablePath(value: string): string {
+  return value.replaceAll("\\", "/");
+}
+
+function classifyLiveOutputPath(rawPath: string): LivePathClassification {
+  const portable = toPortablePath(rawPath.trim());
+  const normalizedPortable = path.posix.normalize(portable);
+
+  if (normalizedPortable === ".." || normalizedPortable.startsWith("../") || normalizedPortable.includes("/../")) {
+    return {
+      kind: "unsafe",
+      reasonCode: "live_path_contains_traversal",
+      message: `Live image path contains traversal segment: ${rawPath}`,
+    };
+  }
+
+  // /images/products/* is a browser/web path and intentionally valid, even if Node considers it "absolute".
+  if (normalizedPortable.startsWith("/images/products/") || normalizedPortable.startsWith("images/products/")) {
+    const managedWebPath = normalizedPortable.startsWith("/") ? normalizedPortable : `/${normalizedPortable}`;
+    return { kind: "managed_web", managedWebPath };
+  }
+
+  if (normalizedPortable.startsWith("client/public/images/products/")) {
+    return {
+      kind: "managed_filesystem",
+      managedWebPath: `/${normalizedPortable.replace(/^client\/public\//, "")}`,
+    };
+  }
+
+  if (normalizedPortable === "tmp" || normalizedPortable.startsWith("tmp/")) {
+    return { kind: "intermediate" };
+  }
+
+  if (path.isAbsolute(rawPath)) {
+    const repoRoot = path.resolve(process.cwd());
+    const liveFsRoot = path.resolve(repoRoot, "client", "public", "images", "products");
+    const tmpRoot = path.resolve(repoRoot, "tmp");
+    const resolved = path.resolve(rawPath);
+
+    if (resolved === tmpRoot || resolved.startsWith(`${tmpRoot}${path.sep}`)) {
+      return { kind: "intermediate" };
+    }
+
+    if (resolved === liveFsRoot || resolved.startsWith(`${liveFsRoot}${path.sep}`)) {
+      const relative = toPortablePath(path.relative(liveFsRoot, resolved));
+      if (!relative || relative === "." || relative.startsWith("..")) {
+        return {
+          kind: "unsafe",
+          reasonCode: "live_path_prefix_invalid",
+          message: `Malformed managed filesystem image path: ${rawPath}`,
+        };
+      }
+      return { kind: "managed_filesystem", managedWebPath: `/images/products/${relative}` };
+    }
+
+    return {
+      kind: "unsafe",
+      reasonCode: "live_path_absolute_filesystem",
+      message: `Live image path appears to be an absolute filesystem path: ${rawPath}`,
+    };
+  }
+
+  return {
+    kind: "unsafe",
+    reasonCode: "live_path_prefix_invalid",
+    message: `Live image path does not map to a managed or intermediate root: ${rawPath}`,
+  };
+}
+
 function deriveStagingOwnerKey(item: JsonMap): { ownerKey?: string; confident: boolean } {
   const resolutionType = typeof item.resolutionType === "string" ? item.resolutionType : "";
   const approvedLocalProductId = typeof item.approvedLocalProductId === "string" && item.approvedLocalProductId.trim() ? item.approvedLocalProductId.trim() : undefined;
@@ -180,9 +274,9 @@ function collectLiveImageRefs(staging: unknown, publish: unknown): LiveImageRef[
   return refs;
 }
 
-function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
+function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): LivePathAuditResult {
   if (!ref.path) {
-      findings.push({
+    findings.push({
       level: "risk",
       code: "ownership_not_confident",
       message: "Could not confidently derive expected live product folder for ownership check.",
@@ -190,35 +284,38 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
       sourceProductKey: ref.sourceProductKey,
       artifact: ref.artifact,
     });
-    return false;
+    return { isManaged: false, validManagedJpg: false };
+  }
+
+  const classification = classifyLiveOutputPath(ref.path);
+  if (classification.kind === "intermediate") {
+    findings.push({
+      level: "info",
+      code: "intermediate_output_path_not_live_managed",
+      message: `Output path is intermediate and not a live managed path: ${ref.path}`,
+      suggestedAction: "No action required unless this path is expected to be a final live output.",
+      sourceProductKey: ref.sourceProductKey,
+      artifact: ref.artifact,
+      path: ref.path,
+    });
+    return { isManaged: false, validManagedJpg: false };
+  }
+
+  if (classification.kind === "unsafe") {
+    findings.push({
+      level: "risk",
+      code: classification.reasonCode,
+      message: classification.message,
+      suggestedAction: "Normalize and restrict outputs to managed web/filesystem paths or tmp intermediate paths.",
+      sourceProductKey: ref.sourceProductKey,
+      artifact: ref.artifact,
+      path: ref.path,
+    });
+    return { isManaged: false, validManagedJpg: false };
   }
 
   let valid = true;
-  const p = ref.path;
-  if (!p.startsWith("/images/products/")) {
-    valid = false;
-    findings.push({
-      level: "risk",
-      code: "live_path_prefix_invalid",
-      message: `Live image path does not start with /images/products/: ${p}`,
-      suggestedAction: "Restrict managed outputs to /images/products/<product>/<managed-file>.",
-      sourceProductKey: ref.sourceProductKey,
-      artifact: ref.artifact,
-      path: p,
-    });
-  }
-  if (path.isAbsolute(p) && !p.startsWith("/images/products/")) {
-    valid = false;
-    findings.push({
-      level: "risk",
-      code: "live_path_absolute_filesystem",
-      message: `Live image path appears to be an absolute filesystem path: ${p}`,
-      suggestedAction: "Store web-relative image path values only.",
-      sourceProductKey: ref.sourceProductKey,
-      artifact: ref.artifact,
-      path: p,
-    });
-  }
+  const p = classification.managedWebPath;
   if (p.includes("..")) {
     valid = false;
     findings.push({
@@ -228,7 +325,7 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
       suggestedAction: "Normalize and reject any output path containing traversal.",
       sourceProductKey: ref.sourceProductKey,
       artifact: ref.artifact,
-      path: p,
+      path: ref.path,
     });
   }
   if (p.includes("/foto/")) {
@@ -240,7 +337,7 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
       suggestedAction: "Use only managed /images/products/ paths.",
       sourceProductKey: ref.sourceProductKey,
       artifact: ref.artifact,
-      path: p,
+      path: ref.path,
     });
   }
 
@@ -255,7 +352,7 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
       suggestedAction: "Use /images/products/<product-folder>/<managed-filename> format.",
       sourceProductKey: ref.sourceProductKey,
       artifact: ref.artifact,
-      path: p,
+      path: ref.path,
     });
   } else {
     const basename = segments[3] ?? "";
@@ -268,7 +365,7 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
         suggestedAction: "Use one of the managed names: cover/01..04 with jpg/webp.",
         sourceProductKey: ref.sourceProductKey,
         artifact: ref.artifact,
-        path: p,
+        path: ref.path,
       });
     }
 
@@ -281,7 +378,7 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
         suggestedAction: "Ensure each item only references images inside its own target folder.",
         sourceProductKey: ref.sourceProductKey,
         artifact: ref.artifact,
-        path: p,
+        path: ref.path,
       });
     }
     if (!ref.ownerKey) {
@@ -292,12 +389,16 @@ function auditLiveImagePath(ref: LiveImageRef, findings: Finding[]): boolean {
         suggestedAction: "Ensure staging/publish artifact includes clear target key fields.",
         sourceProductKey: ref.sourceProductKey,
         artifact: ref.artifact,
-        path: p,
+        path: ref.path,
       });
     }
   }
 
-  return valid;
+  return {
+    isManaged: true,
+    managedWebPath: p,
+    validManagedJpg: valid && segments.length === 4 && segments[3].endsWith(".jpg"),
+  };
 }
 
 function findingSortKey(finding: Finding): [number, string, string, string] {
@@ -383,31 +484,19 @@ async function main(): Promise<void> {
         });
       }
 
-      if (!Array.isArray(product.downloadedImages)) {
-        findings.push({
-          level: "error",
-          code: "missing_source_downloaded_images_array",
-          message: `downloadedImages must be an array for ${sourceProductKey}`,
-          suggestedAction: "Ensure source ingestion writes downloadedImages as an array.",
-          sourceProductKey,
-          artifact: SOURCE_ARTIFACT_LABEL,
-        });
-        continue;
-      }
-
-      const downloadedImages = product.downloadedImages.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-      if (downloadedImages.length < 1) {
+      const localSourceImagePaths = extractLocalSourceImagePaths(product);
+      if (localSourceImagePaths.length < 1) {
         findings.push({
           level: "error",
           code: "source_product_without_downloaded_images",
-          message: `Source product has no downloaded images: ${sourceProductKey}`,
-          suggestedAction: "Re-run source ingest and verify at least one image per source product.",
+          message: `Source product has no local source image paths: ${sourceProductKey}`,
+          suggestedAction: "Re-run source ingest and verify at least one local source image path per source product.",
           sourceProductKey,
           artifact: SOURCE_ARTIFACT_LABEL,
         });
       }
 
-      for (const rawRelativePath of downloadedImages) {
+      for (const rawRelativePath of localSourceImagePaths) {
         checkedSourceImages += 1;
         const pathCheck = isUnsafeRelativePath(rawRelativePath);
         if (path.isAbsolute(rawRelativePath)) {
@@ -455,7 +544,7 @@ async function main(): Promise<void> {
             level: "error",
             code: "missing_source_image_file",
             message: `Referenced source image file is missing: ${rawRelativePath}`,
-            suggestedAction: "Ensure every downloadedImages entry points to an existing file.",
+            suggestedAction: "Ensure every local source image path entry points to an existing file.",
             sourceProductKey,
             artifact: SOURCE_ARTIFACT_LABEL,
             path: rawRelativePath,
@@ -466,7 +555,7 @@ async function main(): Promise<void> {
       if (Array.isArray(product.downloadedImageHashes)) {
         const hashes = product.downloadedImageHashes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
         const foldersForProduct = new Set(
-          downloadedImages
+          localSourceImagePaths
             .map((relativePath) => path.posix.dirname(path.posix.normalize(relativePath)))
             .filter((dir) => dir && dir !== "."),
         );
@@ -521,14 +610,16 @@ async function main(): Promise<void> {
       continue;
     }
     checkedLiveImages += 1;
-    const valid = auditLiveImagePath(ref, findings);
-    const rel = ref.path.startsWith("/") ? ref.path.slice(1) : ref.path;
-    const segments = rel.split("/");
-    if (segments.length === 4 && segments[0] === "images" && segments[1] === "products") {
-      referencedFolders.add(segments[2]);
-      if (valid && segments[3].endsWith(".jpg")) {
-        const key = `${ref.artifact}::${ref.sourceProductKey ?? "unknown"}`;
-        validJpgPerItem.set(key, (validJpgPerItem.get(key) ?? 0) + 1);
+    const pathAudit = auditLiveImagePath(ref, findings);
+    if (pathAudit.isManaged && pathAudit.managedWebPath) {
+      const rel = pathAudit.managedWebPath.startsWith("/") ? pathAudit.managedWebPath.slice(1) : pathAudit.managedWebPath;
+      const segments = rel.split("/");
+      if (segments.length === 4 && segments[0] === "images" && segments[1] === "products") {
+        referencedFolders.add(segments[2]);
+        if (pathAudit.validManagedJpg) {
+          const key = `${ref.artifact}::${ref.sourceProductKey ?? "unknown"}`;
+          validJpgPerItem.set(key, (validJpgPerItem.get(key) ?? 0) + 1);
+        }
       }
     }
   }
