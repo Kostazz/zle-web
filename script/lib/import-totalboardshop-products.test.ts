@@ -219,10 +219,14 @@ test("fallback from title maps tričko, mikina, and čepice/kšiltovka safely", 
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mikina bez kapuce stone wash" }), "crewneck");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE zip mikina premium" }), "hoodie");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Signature hoodie drop" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Hoodie Tool" }), "hoodie");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Street Gear Tee" }), "tee");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Corduroy čepice limited" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mesh kšiltovka logo" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Cap Gear" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Classic snapback black" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Foam trucker cap" }), "cap");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Trucker Tool" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Síťovka logo edition" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Metal klíčenka ZLE" }), "accessories");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Nylon ledvinka utility" }), "accessories");

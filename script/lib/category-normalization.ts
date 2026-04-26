@@ -89,10 +89,11 @@ export function normalizeCategory(input: {
   const normalizedTitle = normalizeCategoryText(input.title ?? "");
   if (/\b(mikina bez kapuce|crewneck|sweatshirt)\b/.test(normalizedTitle)) return "crewneck";
   if (/\b(zimni cepice|beanie|kulich)\b/.test(normalizedTitle)) return "beanie";
-  if (/\b(accessories|accessory|doplnek|doplnky|klicenka|ledvinka|bag|gear|tool)\b/.test(normalizedTitle)) return "accessories";
   if (/\b(hoodie|mikina)\b/.test(normalizedTitle)) return "hoodie";
   if (/\b(tee|tricko|triko|t shirt|tshirt)\b/.test(normalizedTitle)) return "tee";
   if (/\b(cap|cepice|ksiltovka|snapback|trucker|sitovka)\b/.test(normalizedTitle)) return "cap";
+  if (/\b(accessories|accessory|doplnek|doplnky|klicenka|ledvinka)\b/.test(normalizedTitle)) return "accessories";
+  if (/\b(bag|gear|tool)\b/.test(normalizedTitle)) return "accessories";
 
   return "tee";
 }
