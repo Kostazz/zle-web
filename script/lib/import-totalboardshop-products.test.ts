@@ -226,6 +226,9 @@ test("fallback from title maps tričko, mikina, and čepice/kšiltovka safely", 
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Síťovka logo edition" }), "cap");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Metal klíčenka ZLE" }), "accessories");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Nylon ledvinka utility" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE BAG" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE GEAR" }), "accessories");
+  assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "ZLE TOOL" }), "accessories");
   assert.equal(normalizeCategory({ categoryRaw: "Neznámé", productType: null, title: "Mystery product" }), "tee");
 });
 
