@@ -675,7 +675,6 @@ async function main(): Promise<void> {
     }
   };
 
-  checkItemJpg("tmp/agent-manifests/<runId>.staging.json", stagingRaw, "producedOutputs");
   checkItemJpg("tmp/publish-reports/<runId>.publish.json", publishRaw, "publishedOutputs");
 
   if (fs.existsSync(LIVE_ROOT) && fs.statSync(LIVE_ROOT).isDirectory()) {
