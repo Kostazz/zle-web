@@ -760,8 +760,8 @@ export async function runPipeline(
     runId,
     outputRoot: path.join("tmp", "source-datasets"),
     seedUrl: "https://totalboardshop.cz/nabidka-znacek/?brands=zle-skateboarding",
-    maxPages: 40,
-    maxProducts: 30,
+    maxPages: 100,
+    maxProducts: 100,
     maxImagesPerProduct: 8,
     maxImageBytes: 8_000_000,
   });
