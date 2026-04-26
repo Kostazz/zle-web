@@ -40,7 +40,8 @@
     "source:totalboardshop:manual": "tsx script/source-totalboardshop-manual.ts",
     "source:totalboardshop:ingest-images": "tsx script/ingest-totalboardshop-source.ts",
     "catalog:import-totalboardshop": "tsx script/import-totalboardshop-products.ts",
-    "catalog:sanitize:plan": "tsx script/catalog-sanitize-plan.ts"
+    "catalog:sanitize:plan": "tsx script/catalog-sanitize-plan.ts",
+    "photos:audit": "tsx script/audit-totalboardshop-photos.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
