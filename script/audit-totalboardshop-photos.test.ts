@@ -1,0 +1,194 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { runPhotoAudit } from "./audit-totalboardshop-photos.ts";
+
+type ProductFixture = {
+  key: string;
+  slug: string;
+  hashes: string[];
+  imageUrls: string[];
+  localPaths: string[];
+};
+
+function runId(label: string): string {
+  return `${label}-${Date.now()}-${randomUUID()}`;
+}
+
+async function writeFixture(runIdValue: string, products: ProductFixture[]): Promise<void> {
+  const runRoot = path.join("tmp", "source-datasets", runIdValue);
+  await fs.promises.mkdir(runRoot, { recursive: true });
+  const payload = products.map((product) => ({
+    sourceProductKey: product.key,
+    sourceSlug: product.slug,
+    title: product.key,
+    downloadedImages: product.localPaths,
+    imageUrls: product.imageUrls,
+    downloadedImageHashes: product.hashes,
+  }));
+  await fs.promises.writeFile(path.join(runRoot, "products.json"), JSON.stringify(payload, null, 2), "utf8");
+  for (const product of products) {
+    for (const filePath of product.localPaths) {
+      const absolute = path.join(runRoot, filePath);
+      await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+      await fs.promises.writeFile(absolute, "fixture", "utf8");
+    }
+  }
+}
+
+async function cleanup(runIdValue: string): Promise<void> {
+  await fs.promises.rm(path.join("tmp", "source-datasets", runIdValue), { recursive: true, force: true });
+  await fs.promises.rm(path.join("tmp", "photo-audits", `${runIdValue}.photo-audit.json`), { force: true });
+  await fs.promises.rm(path.join("tmp", "photo-audits", `${runIdValue}.summary.md`), { force: true });
+}
+
+test("duplicate hash risk includes structured evidence and non-null products/files", async () => {
+  const id = runId("photo-audit-evidence");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:dup-hash-1"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-orange-black/cover.jpg"],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:dup-hash-1"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-blue-white/cover.jpg"],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.code === "duplicate_hash_cross_product_folder_risk");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
+    assert.ok(Array.isArray(duplicate.products));
+    assert.equal((duplicate.products ?? []).length, 2);
+    assert.ok(Array.isArray(duplicate.files));
+    assert.equal((duplicate.files ?? []).length, 2);
+    assert.equal(typeof duplicate.evidence, "object");
+    assert.equal((duplicate.evidence as { hash?: string }).hash, "sha256:dup-hash-1");
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("family shared secondary duplicate is classified benign and confidence remains above zero", async () => {
+  const id = runId("photo-audit-benign");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:primary-orange", "sha256:family-secondary"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-orange-black/cover.jpg",
+        "images/tricko-zle-skateboarding-orange-black/02.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:primary-blue", "sha256:family-secondary"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53507.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-blue-white/cover.jpg",
+        "images/tricko-zle-skateboarding-blue-white/02.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:family-secondary");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "benign_shared_family_image");
+    assert.notEqual(report.confidence, 0);
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("shared primary duplicate remains suspicious", async () => {
+  const id = runId("photo-audit-primary");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:shared-primary"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-orange-black/cover.jpg"],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:shared-primary"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-blue-white/cover.jpg"],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:shared-primary");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
+    assert.equal(duplicate.level, "risk");
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("mixed primary-secondary duplicate remains suspicious", async () => {
+  const id = runId("photo-audit-mixed-primary-secondary");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:mixed-duplicate", "sha256:unique-orange"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-orange.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-orange-black/cover.jpg",
+        "images/tricko-zle-skateboarding-orange-black/02.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:unique-blue", "sha256:mixed-duplicate"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-blue.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-blue-white/cover.jpg",
+        "images/tricko-zle-skateboarding-blue-white/02.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:mixed-duplicate");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
+    assert.equal(duplicate.level, "risk");
+  } finally {
+    await cleanup(id);
+  }
+});

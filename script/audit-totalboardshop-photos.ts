@@ -11,10 +11,16 @@ type Finding = {
   sourceProductKey?: string;
   path?: string;
   artifact?: string;
+  classification?: "benign_shared_family_image" | "suspicious_cross_product_duplicate";
+  duplicateHash?: string;
+  products?: string[] | null;
+  files?: string[] | null;
+  evidence?: Record<string, unknown> | null;
 };
 
 type SourceProduct = {
   sourceProductKey?: unknown;
+  sourceSlug?: unknown;
   title?: unknown;
   downloadedImages?: unknown;
   ingestedImagePaths?: unknown;
@@ -64,6 +70,16 @@ type AuditReport = {
     errors: number;
   };
   findings: Finding[];
+};
+
+type DuplicateOccurrence = {
+  sourceProductKey: string;
+  sourceSlug?: string;
+  folder?: string;
+  filePath?: string;
+  slot?: string;
+  sourceUrl?: string;
+  isPrimary: boolean;
 };
 
 const LIVE_ROOT = path.resolve("client", "public", "images", "products");
@@ -467,8 +483,53 @@ function normalizeFindings(findings: Finding[]): Finding[] {
   });
 }
 
-async function main(): Promise<void> {
-  const { runId } = parseArgs(process.argv.slice(2));
+function classifySlotFromPath(rawPath: string): { slot?: string; isPrimary: boolean } {
+  const portable = toPortablePath(rawPath);
+  const base = path.posix.basename(portable);
+  if (!base) return { isPrimary: false };
+  if (base === "cover.jpg" || base === "cover.webp" || base === "01.jpg" || base === "01.webp") {
+    return { slot: base, isPrimary: true };
+  }
+  if (/^\d{2}\.(jpg|webp)$/i.test(base)) return { slot: base, isPrimary: false };
+  return { slot: base, isPrimary: false };
+}
+
+function deriveFamilyKey(value: string): string {
+  const tokens = value.split("-").filter((token) => token.length > 0);
+  if (tokens.length <= 3) return value;
+  return tokens.slice(0, Math.max(2, tokens.length - 2)).join("-");
+}
+
+function isLikelySameFamily(occurrences: DuplicateOccurrence[]): boolean {
+  const keys = new Set(
+    occurrences.map((entry) => deriveFamilyKey(entry.sourceSlug?.trim() || entry.sourceProductKey)),
+  );
+  return keys.size === 1;
+}
+
+function calculateConfidence(findings: Finding[]): number {
+  const penaltyByLevel: Record<FindingLevel, number> = { error: 40, risk: 15, warning: 3, info: 0 };
+  let totalPenalty = 0;
+  for (const finding of findings) {
+    let penalty = penaltyByLevel[finding.level];
+    if (finding.code === "duplicate_hash_cross_product_folder_risk" && finding.classification === "benign_shared_family_image") {
+      penalty = 2;
+    }
+    totalPenalty += penalty;
+  }
+  return Math.max(0, Math.min(100, 100 - totalPenalty));
+}
+
+function findingDetailsLine(finding: Finding): string {
+  const classification = finding.classification ? ` (${finding.classification})` : "";
+  const products = Array.isArray(finding.products) && finding.products.length > 0 ? ` products=${finding.products.slice(0, 4).join(",")}${finding.products.length > 4 ? ",..." : ""}` : "";
+  const files = Array.isArray(finding.files) && finding.files.length > 0 ? ` files=${finding.files.slice(0, 3).join(",")}${finding.files.length > 3 ? ",..." : ""}` : "";
+  const duplicateHash = finding.duplicateHash ? ` hash=${finding.duplicateHash}` : "";
+  return `- [${finding.level}] ${finding.code}${classification}: ${finding.message}${duplicateHash}${products}${files}`;
+}
+
+export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean }): Promise<AuditReport> {
+  const { runId, exitOnError = true } = args;
 
   const sourceProductsPath = path.join("tmp", "source-datasets", runId, "products.json");
   const curationPath = path.join("tmp", "curation", `${runId}.curation.json`);
@@ -504,6 +565,7 @@ async function main(): Promise<void> {
 
   const hashOwners = new Map<string, Set<string>>();
   const hashFolders = new Map<string, Set<string>>();
+  const hashOccurrences = new Map<string, DuplicateOccurrence[]>();
 
   if (sourceProducts) {
     sourceProductsCount = sourceProducts.length;
@@ -576,20 +638,32 @@ async function main(): Promise<void> {
 
       if (Array.isArray(product.downloadedImageHashes)) {
         const hashes = product.downloadedImageHashes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-        const foldersForProduct = new Set(
-          localSourceImagePathEntries
-            .map((entry) => resolveSourceLocalImagePath(runId, entry))
-            .filter((resolved): resolved is { ok: true; resolved: string; normalized: string } => resolved.ok)
-            .map((resolved) => path.posix.dirname(resolved.normalized))
-            .filter((dir) => dir && dir !== "."),
-        );
-        for (const hash of hashes) {
+        for (let hashIndex = 0; hashIndex < hashes.length; hashIndex += 1) {
+          const hash = hashes[hashIndex]!;
+          const localPathEntry = localSourceImagePathEntries[hashIndex];
+          const resolved = localPathEntry ? resolveSourceLocalImagePath(runId, localPathEntry) : null;
+          const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
+          const folder = normalizedPath ? path.posix.dirname(normalizedPath) : undefined;
+          const slot = normalizedPath ? classifySlotFromPath(normalizedPath).slot : undefined;
+          const isPrimary = normalizedPath
+            ? classifySlotFromPath(normalizedPath).isPrimary
+            : hashIndex === 0;
+          const sourceUrl = extractStringArray(product.imageUrls)[hashIndex];
+
           if (!hashOwners.has(hash)) hashOwners.set(hash, new Set());
           hashOwners.get(hash)?.add(sourceProductKey);
           if (!hashFolders.has(hash)) hashFolders.set(hash, new Set());
-          for (const folder of Array.from(foldersForProduct)) {
-            hashFolders.get(hash)?.add(folder);
-          }
+          if (folder && folder !== ".") hashFolders.get(hash)?.add(folder);
+          if (!hashOccurrences.has(hash)) hashOccurrences.set(hash, []);
+          hashOccurrences.get(hash)?.push({
+            sourceProductKey,
+            sourceSlug: typeof product.sourceSlug === "string" ? product.sourceSlug : undefined,
+            folder,
+            filePath: normalizedPath,
+            slot,
+            sourceUrl,
+            isPrimary,
+          });
         }
       }
     }
@@ -611,13 +685,49 @@ async function main(): Promise<void> {
       });
 
       if (sharedAcrossFolders) {
+        const occurrences = hashOccurrences.get(hash) ?? [];
+        const products = Array.from(new Set(occurrences.map((entry) => entry.sourceProductKey))).sort((a, b) => a.localeCompare(b));
+        const files = Array.from(
+          new Set(
+            occurrences
+              .map((entry) => entry.filePath)
+              .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
+          ),
+        ).sort((a, b) => a.localeCompare(b));
+        const primaryProducts = new Set(occurrences.filter((entry) => entry.isPrimary).map((entry) => entry.sourceProductKey));
+        const sameFamily = occurrences.length > 1 && isLikelySameFamily(occurrences);
+        const isBenign = sameFamily && primaryProducts.size === 0;
+        const classification = isBenign ? "benign_shared_family_image" : "suspicious_cross_product_duplicate";
+        const riskLevel: FindingLevel = isBenign ? "warning" : "risk";
         findings.push({
-          level: "risk",
+          level: riskLevel,
           code: "duplicate_hash_cross_product_folder_risk",
-          message: `Hash ${hash} is shared across products in different folders, which can indicate ownership conflicts.`,
-          suggestedAction: "Validate image ownership before stage/publish to avoid cross-product contamination.",
-          sourceProductKey: Array.from(owners).sort((a, b) => a.localeCompare(b)).join(","),
+          message: isBenign
+            ? `Hash ${hash} is shared across same-family variants and appears non-primary for at least one variant.`
+            : `Hash ${hash} is shared across products in different folders and includes primary image reuse.`,
+          suggestedAction: isBenign
+            ? "Review once, then keep as known benign shared family image if intentional."
+            : "Validate source ownership/variant mapping before stage/publish to avoid cross-product contamination.",
+          sourceProductKey: products.join(","),
           artifact: SOURCE_ARTIFACT_LABEL,
+          classification,
+          duplicateHash: hash,
+          products,
+          files,
+          evidence: {
+            hash,
+            productCount: products.length,
+            fileCount: files.length,
+            folders: Array.from(new Set(occurrences.map((entry) => entry.folder).filter((entry): entry is string => Boolean(entry)))).sort((a, b) => a.localeCompare(b)),
+            files: occurrences.map((entry) => ({
+              sourceProductKey: entry.sourceProductKey,
+              sourceSlug: entry.sourceSlug,
+              filePath: entry.filePath ?? null,
+              slot: entry.slot ?? null,
+              sourceUrl: entry.sourceUrl ?? null,
+              isPrimary: entry.isPrimary,
+            })),
+          },
         });
       }
     }
@@ -706,7 +816,7 @@ async function main(): Promise<void> {
     errors: sortedFindings.filter((f) => f.level === "error").length,
   };
 
-  const confidence = Math.max(0, Math.min(100, 100 - counts.errors * 40 - counts.risks * 15 - counts.warnings * 3));
+  const confidence = calculateConfidence(sortedFindings);
 
   const report: AuditReport = {
     runId,
@@ -747,7 +857,7 @@ async function main(): Promise<void> {
     "",
     "## Top risks/errors",
     ...(topCritical.length > 0
-      ? topCritical.map((f) => `- [${f.level}] ${f.code}: ${f.message}`)
+      ? topCritical.map((f) => findingDetailsLine(f))
       : ["- None"]),
     "",
     "## Actionable next steps",
@@ -759,10 +869,18 @@ async function main(): Promise<void> {
 
   await fs.promises.writeFile(summaryPath, summaryLines.join("\n"), "utf8");
 
-  if (counts.errors > 0) process.exit(1);
+  if (counts.errors > 0 && exitOnError) process.exit(1);
+  return report;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const { runId } = parseArgs(process.argv.slice(2));
+  await runPhotoAudit({ runId, exitOnError: true });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
