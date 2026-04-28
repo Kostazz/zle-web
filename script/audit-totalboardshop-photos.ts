@@ -176,6 +176,15 @@ function extractLocalSourceImagePathEntriesByIndex(product: SourceProduct): Arra
   return [];
 }
 
+function getStringAtOriginalIndex(value: unknown, index: number): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const raw = value[index];
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim();
+  if (normalized.length < 1) return undefined;
+  return normalized;
+}
+
 function toPortablePath(value: string): string {
   return value.replaceAll("\\", "/");
 }
@@ -667,7 +676,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           const isPrimary = normalizedPath
             ? classifySlotFromPath(normalizedPath).isPrimary
             : hashIndex === 0;
-          const sourceUrl = extractStringArray(product.imageUrls)[hashIndex];
+          const sourceUrl = getStringAtOriginalIndex(product.imageUrls, hashIndex);
 
           if (!hashOwners.has(normalizedHash)) hashOwners.set(normalizedHash, new Set());
           hashOwners.get(normalizedHash)?.add(sourceProductKey);

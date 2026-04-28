@@ -9,7 +9,7 @@ type ProductFixture = {
   key: string;
   slug: string;
   hashes: unknown[];
-  imageUrls: string[];
+  imageUrls: unknown[];
   localPaths: unknown[];
 };
 
@@ -291,7 +291,7 @@ test("duplicate evidence keeps local-path index alignment when downloadedImages 
       hashes: ["sha256:unique-orange", "sha256:unused", "sha256:gap-aligned-duplicate"],
       imageUrls: [
         "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-orange-cover.jpg",
-        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused.jpg",
+        null,
         "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
       ],
       localPaths: [
@@ -306,7 +306,7 @@ test("duplicate evidence keeps local-path index alignment when downloadedImages 
       hashes: ["sha256:unique-blue", "sha256:unused-blue", "sha256:gap-aligned-duplicate"],
       imageUrls: [
         "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-blue-cover.jpg",
-        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused-blue.jpg",
+        "",
         "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
       ],
       localPaths: [
@@ -328,6 +328,10 @@ test("duplicate evidence keeps local-path index alignment when downloadedImages 
     assert.equal((evidence.folders ?? []).length, 2);
     assert.equal((evidence.files ?? []).every((entry) => entry.slot === "03.jpg"), true);
     assert.equal((evidence.files ?? []).every((entry) => (entry.filePath ?? "").endsWith("/03.jpg")), true);
+    assert.equal(
+      (evidence.files ?? []).every((entry) => entry.sourceUrl === "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg"),
+      true,
+    );
   } finally {
     await cleanup(id);
   }
