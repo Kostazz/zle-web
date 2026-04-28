@@ -130,7 +130,124 @@ test("family shared secondary duplicate is classified benign and confidence rema
   }
 });
 
-test("shared primary duplicate remains suspicious", async () => {
+test("non-primary duplicate with same exact sourceUrl is benign even across different slug suffixes", async () => {
+  const id = runId("photo-audit-benign-shared-sourceurl");
+  await writeFixture(id, [
+    {
+      key: "mikina-zle-core-black-v1",
+      slug: "mikina-zle-core-black-v1",
+      hashes: ["sha256:unique-black", "sha256:shared-secondary-sourceurl"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/mikina-black-main.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/mikina-zle-core-black-v1/01.jpg",
+        "images/mikina-zle-core-black-v1/02.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-logo-white-edition",
+      slug: "tricko-zle-logo-white-edition",
+      hashes: ["sha256:unique-white", "sha256:shared-secondary-sourceurl"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/tricko-white-main.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-logo-white-edition/01.jpg",
+        "images/tricko-zle-logo-white-edition/02.jpg",
+      ],
+    },
+    {
+      key: "ksiltovka-zle-red-drop",
+      slug: "ksiltovka-zle-red-drop",
+      hashes: ["sha256:unique-red", "sha256:shared-secondary-sourceurl"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/ksiltovka-red-main.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/ksiltovka-zle-red-drop/01.jpg",
+        "images/ksiltovka-zle-red-drop/02.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:shared-secondary-sourceurl");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "benign_shared_family_image");
+    assert.equal(duplicate.level, "warning");
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("skateboarding variants shared 02.jpg non-primary duplicate with same sourceUrl is benign", async () => {
+  const id = runId("photo-audit-skateboarding-shared-secondary-sourceurl");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:primary-orange", "sha256:c2d1e59-shared-secondary"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-orange-black/01.jpg",
+        "images/tricko-zle-skateboarding-orange-black/02.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:primary-blue", "sha256:c2d1e59-shared-secondary"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53507.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-blue-white/01.jpg",
+        "images/tricko-zle-skateboarding-blue-white/02.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-green-grey",
+      slug: "tricko-zle-skateboarding-green-grey",
+      hashes: ["sha256:primary-green", "sha256:c2d1e59-shared-secondary"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53508.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-green-grey/01.jpg",
+        "images/tricko-zle-skateboarding-green-grey/02.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:c2d1e59-shared-secondary");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "benign_shared_family_image");
+    assert.equal(duplicate.level, "warning");
+    const evidence = duplicate.evidence as { files?: Array<{ slot?: string | null; isPrimary?: boolean; sourceUrl?: string | null }> };
+    assert.equal((evidence.files ?? []).every((entry) => entry.slot === "02.jpg"), true);
+    assert.equal((evidence.files ?? []).every((entry) => entry.isPrimary === false), true);
+    assert.equal(
+      (evidence.files ?? []).every((entry) => entry.sourceUrl === "https://totalboardshop.cz/wp-content/uploads/2025/04/53497-1-scaled.jpg"),
+      true,
+    );
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("shared primary 01.jpg duplicate with same sourceUrl remains suspicious", async () => {
   const id = runId("photo-audit-primary");
   await writeFixture(id, [
     {
@@ -138,14 +255,14 @@ test("shared primary duplicate remains suspicious", async () => {
       slug: "tricko-zle-skateboarding-orange-black",
       hashes: ["sha256:shared-primary"],
       imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
-      localPaths: ["images/tricko-zle-skateboarding-orange-black/cover.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-orange-black/01.jpg"],
     },
     {
       key: "tricko-zle-skateboarding-blue-white",
       slug: "tricko-zle-skateboarding-blue-white",
       hashes: ["sha256:shared-primary"],
       imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.jpg"],
-      localPaths: ["images/tricko-zle-skateboarding-blue-white/cover.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-blue-white/01.jpg"],
     },
   ]);
 
