@@ -29,6 +29,7 @@ import { emitOrderEvent, OpsEventType } from "./ops/events";
 import { db } from "./db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { buildFallbackDailyLine, getDailyLineForDate, getPragueDateString } from "./dailyLine/service";
+import { loadProductEnrichmentManifest, toPublicProducts } from "./services/productEnrichmentOverlay";
 
 // -----------------------------
 // Stripe setup
@@ -672,7 +673,8 @@ export async function registerRoutes(app: Express) {
   app.get("/api/products", async (_req, res) => {
     try {
       const products = await storage.getProducts();
-      return res.json(products);
+      const manifest = await loadProductEnrichmentManifest();
+      return res.json(toPublicProducts(products, manifest));
     } catch {
       return sendApiError(res, 500, {
         code: "failed_to_load_products",

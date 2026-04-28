@@ -1,21 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Product } from "@shared/schema";
+import type { ProductPublic } from "@shared/product-public";
 
 export function useProducts() {
-  return useQuery<Product[]>({
+  return useQuery<ProductPublic[]>({
     queryKey: ["/api/products"],
   });
 }
 
 export function useProduct(id: string) {
-  return useQuery<Product>({
+  return useQuery<ProductPublic>({
     queryKey: ["/api/products", id],
     enabled: !!id,
   });
 }
 
 export function useProductsByCategory(category: string) {
-  return useQuery<Product[]>({
+  return useQuery<ProductPublic[]>({
     queryKey: ["/api/products/category", category],
     enabled: !!category && category !== "all",
   });

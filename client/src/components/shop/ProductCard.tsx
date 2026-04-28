@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useOverlay } from "@/lib/overlay-context";
-import type { Product } from "@shared/schema";
+import type { ProductPublic } from "@shared/product-public";
 import { ProductModal } from "./ProductModal";
 import { ImageOff } from "lucide-react";
 import {
@@ -23,7 +23,7 @@ function ImagePlaceholder({ name }: { name: string }) {
 }
 
 interface ProductCardProps {
-  product: Product;
+  product: ProductPublic;
 }
 
 export function ProductCard({ product }: ProductCardProps) {

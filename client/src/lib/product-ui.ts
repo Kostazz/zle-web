@@ -1,4 +1,4 @@
-import type { Product } from "@shared/schema";
+import type { ProductPublic } from "@shared/product-public";
 
 export const ONE_SIZE = "ONE_SIZE";
 
@@ -58,7 +58,7 @@ function getLocalFallbackCandidatesBySlot(
   });
 }
 
-function mergeDeclaredAndFallbackCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
+function mergeDeclaredAndFallbackCandidates(product: Pick<ProductPublic, "id" | "image" | "images">): string[] {
   const declaredCandidates = getOwnedDeclaredProductImages(product);
   const mergedCandidates: string[] = [];
   const seenDeclaredPaths = new Set<string>();
@@ -142,7 +142,7 @@ function normalizeLocalAssetPath(input: string): string {
   return `/${resolvedSegments.join("/")}`;
 }
 
-export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: string): boolean {
+export function isImageOwnedByProduct(product: Pick<ProductPublic, "id">, imagePath: string): boolean {
   const normalizedImagePath = normalizeImagePath(imagePath.trim());
 
   if (!normalizedImagePath || /^https?:\/\//i.test(normalizedImagePath) || normalizedImagePath.startsWith("data:")) {
@@ -161,7 +161,7 @@ export function isImageOwnedByProduct(product: Pick<Product, "id">, imagePath: s
   );
 }
 
-export function getDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
+export function getDeclaredProductImages(product: Pick<ProductPublic, "id" | "image" | "images">): string[] {
   const declaredCandidates = [product.image, ...(product.images ?? [])]
     .filter((value): value is string => Boolean(value && value.trim()))
     .map((value) => normalizeImagePath(value.trim()))
@@ -170,31 +170,31 @@ export function getDeclaredProductImages(product: Pick<Product, "id" | "image" |
   return Array.from(new Set(declaredCandidates));
 }
 
-export function getOwnedDeclaredProductImages(product: Pick<Product, "id" | "image" | "images">): string[] {
+export function getOwnedDeclaredProductImages(product: Pick<ProductPublic, "id" | "image" | "images">): string[] {
   const declaredImages = getDeclaredProductImages(product);
   return declaredImages.filter((imagePath) => isImageOwnedByProduct(product, imagePath));
 }
 
-export function getProductImageCandidates(product: Pick<Product, "id" | "image" | "images">): string[] {
+export function getProductImageCandidates(product: Pick<ProductPublic, "id" | "image" | "images">): string[] {
   return mergeDeclaredAndFallbackCandidates(product);
 }
 
 export function getOwnedProductGalleryImages(
-  product: Pick<Product, "id" | "image" | "images">,
+  product: Pick<ProductPublic, "id" | "image" | "images">,
   limit = 8
 ): string[] {
   return getOwnedDeclaredProductImages(product).slice(0, Math.max(1, limit));
 }
 
-export function getSelectableSizes(product: Pick<Product, "sizes">): string[] {
+export function getSelectableSizes(product: Pick<ProductPublic, "sizes">): string[] {
   return product.sizes.length > 0 ? product.sizes : [ONE_SIZE];
 }
 
-export function requiresExplicitSizeSelection(product: Pick<Product, "sizes">): boolean {
+export function requiresExplicitSizeSelection(product: Pick<ProductPublic, "sizes">): boolean {
   return product.sizes.length > 0;
 }
 
-export function getDefaultSelectedSize(product: Pick<Product, "sizes">): string | null {
+export function getDefaultSelectedSize(product: Pick<ProductPublic, "sizes">): string | null {
   return requiresExplicitSizeSelection(product) ? null : ONE_SIZE;
 }
 
