@@ -337,6 +337,41 @@ test("duplicate evidence keeps local-path index alignment when downloadedImages 
   }
 });
 
+test("duplicate hash across products stays visible when aligned local path evidence is missing", async () => {
+  const id = runId("photo-audit-missing-aligned-local-path");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:shared-missing-path-evidence"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/shared-a.jpg"],
+      localPaths: [null],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:shared-missing-path-evidence"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/shared-a.jpg"],
+      localPaths: [""],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:shared-missing-path-evidence");
+    assert.ok(duplicate);
+    assert.equal(duplicate.code, "duplicate_hash_cross_product_folder_risk");
+    assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
+    assert.equal(duplicate.level, "risk");
+    const evidence = duplicate.evidence as { missingAlignedLocalPathEvidenceCount?: number; files?: Array<{ filePath?: string | null; hasAlignedLocalPath?: boolean }> };
+    assert.equal(evidence.missingAlignedLocalPathEvidenceCount, 2);
+    assert.equal((evidence.files ?? []).every((entry) => entry.filePath === null), true);
+    assert.equal((evidence.files ?? []).every((entry) => entry.hasAlignedLocalPath === false), true);
+  } finally {
+    await cleanup(id);
+  }
+});
+
 test("isDirectCliEntrypoint handles missing argv and symlinked script path safely", async () => {
   const moduleUrl = new URL("./audit-totalboardshop-photos.ts", import.meta.url).href;
   assert.equal(isDirectCliEntrypoint(moduleUrl, undefined), false);

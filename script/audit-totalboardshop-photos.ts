@@ -76,11 +76,13 @@ type AuditReport = {
 type DuplicateOccurrence = {
   sourceProductKey: string;
   sourceSlug?: string;
+  hashIndex: number;
   folder?: string;
   filePath?: string;
   slot?: string;
   sourceUrl?: string;
   isPrimary: boolean;
+  hasAlignedLocalPath: boolean;
 };
 
 const LIVE_ROOT = path.resolve("client", "public", "images", "products");
@@ -183,6 +185,14 @@ function getStringAtOriginalIndex(value: unknown, index: number): string | undef
   const normalized = raw.trim();
   if (normalized.length < 1) return undefined;
   return normalized;
+}
+
+function getLocalSourceImagePathEntryAt(product: SourceProduct, index: number): SourceLocalImagePathEntry | undefined {
+  const downloaded = getStringAtOriginalIndex(product.downloadedImages, index);
+  if (downloaded) return { field: "downloadedImages", rawPath: downloaded };
+  const ingested = getStringAtOriginalIndex(product.ingestedImagePaths, index);
+  if (ingested) return { field: "ingestedImagePaths", rawPath: ingested };
+  return undefined;
 }
 
 function toPortablePath(value: string): string {
@@ -668,7 +678,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           const hash = rawHashes[hashIndex];
           if (typeof hash !== "string" || hash.trim().length < 1) continue;
           const normalizedHash = hash.trim();
-          const localPathEntry = localSourceImagePathEntries[hashIndex];
+          const localPathEntry = getLocalSourceImagePathEntryAt(product, hashIndex);
           const resolved = localPathEntry ? resolveSourceLocalImagePath(normalizedRunId, localPathEntry) : null;
           const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
           const folder = normalizedPath ? path.posix.dirname(normalizedPath) : undefined;
@@ -686,11 +696,13 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           hashOccurrences.get(normalizedHash)?.push({
             sourceProductKey,
             sourceSlug: typeof product.sourceSlug === "string" ? product.sourceSlug : undefined,
+            hashIndex,
             folder,
             filePath: normalizedPath,
             slot,
             sourceUrl,
             isPrimary,
+            hasAlignedLocalPath: Boolean(localPathEntry && normalizedPath),
           });
         }
       }
@@ -712,8 +724,9 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
         artifact: SOURCE_ARTIFACT_LABEL,
       });
 
-      if (sharedAcrossFolders) {
-        const occurrences = hashOccurrences.get(hash) ?? [];
+      const occurrences = hashOccurrences.get(hash) ?? [];
+      const missingAlignedLocalPathEvidenceCount = occurrences.filter((entry) => !entry.hasAlignedLocalPath).length;
+      if (sharedAcrossFolders || occurrences.length > 0) {
         const products = Array.from(new Set(occurrences.map((entry) => entry.sourceProductKey))).sort((a, b) => a.localeCompare(b));
         const files = Array.from(
           new Set(
@@ -724,16 +737,20 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
         ).sort((a, b) => a.localeCompare(b));
         const primaryProducts = new Set(occurrences.filter((entry) => entry.isPrimary).map((entry) => entry.sourceProductKey));
         const sameFamily = occurrences.length > 1 && isLikelySameFamily(occurrences);
-        const isBenign = sameFamily && primaryProducts.size === 0;
+        const isBenign = sameFamily && primaryProducts.size === 0 && missingAlignedLocalPathEvidenceCount === 0;
         const classification = isBenign ? "benign_shared_family_image" : "suspicious_cross_product_duplicate";
         const riskLevel: FindingLevel = isBenign ? "warning" : "risk";
         findings.push({
           level: riskLevel,
           code: "duplicate_hash_cross_product_folder_risk",
-          message: isBenign
+          message: missingAlignedLocalPathEvidenceCount > 0
+            ? `Hash ${hash} is shared across products, but aligned local path evidence is missing for ${missingAlignedLocalPathEvidenceCount} occurrence(s).`
+            : isBenign
             ? `Hash ${hash} is shared across same-family variants and appears non-primary for at least one variant.`
             : `Hash ${hash} is shared across products in different folders and includes primary image reuse.`,
-          suggestedAction: isBenign
+          suggestedAction: missingAlignedLocalPathEvidenceCount > 0
+            ? "Verify source artifacts for missing aligned local paths before approving ownership safety."
+            : isBenign
             ? "Review once, then keep as known benign shared family image if intentional."
             : "Validate source ownership/variant mapping before stage/publish to avoid cross-product contamination.",
           sourceProductKey: products.join(","),
@@ -746,14 +763,17 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
             hash,
             productCount: products.length,
             fileCount: files.length,
+            missingAlignedLocalPathEvidenceCount,
             folders: Array.from(new Set(occurrences.map((entry) => entry.folder).filter((entry): entry is string => Boolean(entry)))).sort((a, b) => a.localeCompare(b)),
             files: occurrences.map((entry) => ({
               sourceProductKey: entry.sourceProductKey,
               sourceSlug: entry.sourceSlug,
+              hashIndex: entry.hashIndex,
               filePath: entry.filePath ?? null,
               slot: entry.slot ?? null,
               sourceUrl: entry.sourceUrl ?? null,
               isPrimary: entry.isPrimary,
+              hasAlignedLocalPath: entry.hasAlignedLocalPath,
             })),
           },
         });
