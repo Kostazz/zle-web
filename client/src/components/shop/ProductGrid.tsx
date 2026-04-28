@@ -11,6 +11,7 @@ const categories = [
   { id: "cap", label: "ČEPICE" },
   { id: "crewneck", label: "CREWNECKS" },
   { id: "beanie", label: "BEANIES" },
+  { id: "accessories", label: "PŘÍSLUŠENSTVÍ" },
 ];
 
 function ProductSkeleton() {
