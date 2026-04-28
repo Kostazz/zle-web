@@ -10,7 +10,7 @@ type ProductFixture = {
   slug: string;
   hashes: unknown[];
   imageUrls: string[];
-  localPaths: string[];
+  localPaths: unknown[];
 };
 
 function runId(label: string): string {
@@ -31,6 +31,7 @@ async function writeFixture(runIdValue: string, products: ProductFixture[]): Pro
   await fs.promises.writeFile(path.join(runRoot, "products.json"), JSON.stringify(payload, null, 2), "utf8");
   for (const product of products) {
     for (const filePath of product.localPaths) {
+      if (typeof filePath !== "string" || filePath.trim().length < 1) continue;
       const absolute = path.join(runRoot, filePath);
       await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
       await fs.promises.writeFile(absolute, "fixture", "utf8");
@@ -276,6 +277,57 @@ test("shared 01.png duplicate remains suspicious primary reuse", async () => {
     assert.ok(duplicate);
     assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
     assert.equal(duplicate.level, "risk");
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("duplicate evidence keeps local-path index alignment when downloadedImages has gaps", async () => {
+  const id = runId("photo-audit-local-path-gap-alignment");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:unique-orange", "sha256:unused", "sha256:gap-aligned-duplicate"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-orange-cover.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
+      ],
+      localPaths: [
+        "",
+        "images/tricko-zle-skateboarding-orange-black/02.jpg",
+        "images/tricko-zle-skateboarding-orange-black/03.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:unique-blue", "sha256:unused-blue", "sha256:gap-aligned-duplicate"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-blue-cover.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused-blue.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
+      ],
+      localPaths: [
+        null,
+        "images/tricko-zle-skateboarding-blue-white/02.jpg",
+        "images/tricko-zle-skateboarding-blue-white/03.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:gap-aligned-duplicate");
+    assert.ok(duplicate);
+    const files = duplicate.files ?? [];
+    assert.equal(files.some((filePath) => filePath.endsWith("/03.jpg")), true);
+    assert.equal(files.some((filePath) => filePath.endsWith("/02.jpg")), false);
+    const evidence = duplicate.evidence as { folders?: string[]; files?: Array<{ slot?: string | null; filePath?: string | null }> };
+    assert.equal((evidence.folders ?? []).length, 2);
+    assert.equal((evidence.files ?? []).every((entry) => entry.slot === "03.jpg"), true);
+    assert.equal((evidence.files ?? []).every((entry) => (entry.filePath ?? "").endsWith("/03.jpg")), true);
   } finally {
     await cleanup(id);
   }

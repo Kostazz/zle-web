@@ -155,12 +155,22 @@ function extractStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function extractLocalSourceImagePathEntries(product: SourceProduct): SourceLocalImagePathEntry[] {
-  const downloadedImages = extractStringArray(product.downloadedImages).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (downloadedImages.length > 0) return downloadedImages.map((rawPath) => ({ field: "downloadedImages", rawPath }));
+function extractLocalSourceImagePathEntries(product: SourceProduct): Array<SourceLocalImagePathEntry | undefined> {
+  const toIndexedEntries = (field: SourceLocalField, value: unknown): Array<SourceLocalImagePathEntry | undefined> => {
+    if (!Array.isArray(value)) return [];
+    return value.map((entry) => {
+      if (typeof entry !== "string") return undefined;
+      const rawPath = entry.trim();
+      if (rawPath.length < 1) return undefined;
+      return { field, rawPath };
+    });
+  };
 
-  const ingestedImagePaths = extractStringArray(product.ingestedImagePaths).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (ingestedImagePaths.length > 0) return ingestedImagePaths.map((rawPath) => ({ field: "ingestedImagePaths", rawPath }));
+  const downloadedImages = toIndexedEntries("downloadedImages", product.downloadedImages);
+  if (downloadedImages.some((entry) => entry !== undefined)) return downloadedImages;
+
+  const ingestedImagePaths = toIndexedEntries("ingestedImagePaths", product.ingestedImagePaths);
+  if (ingestedImagePaths.some((entry) => entry !== undefined)) return ingestedImagePaths;
 
   // imageUrls represent remote URLs and must not be treated as local filesystem paths.
   return [];
@@ -603,7 +613,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
       }
 
       const localSourceImagePathEntries = extractLocalSourceImagePathEntries(product);
-      if (localSourceImagePathEntries.length < 1) {
+      if (!localSourceImagePathEntries.some((entry) => entry !== undefined)) {
         findings.push({
           level: "error",
           code: "source_product_without_downloaded_images",
@@ -615,6 +625,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
       }
 
       for (const localPathEntry of localSourceImagePathEntries) {
+        if (!localPathEntry) continue;
         checkedSourceImages += 1;
         const resolvedPath = resolveSourceLocalImagePath(normalizedRunId, localPathEntry);
         if (!resolvedPath.ok) {
