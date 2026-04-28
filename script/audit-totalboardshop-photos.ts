@@ -87,12 +87,21 @@ const LIVE_ROOT = path.resolve("client", "public", "images", "products");
 const VALID_BASENAMES = new Set(["cover.jpg", "cover.webp", "01.jpg", "01.webp", "02.jpg", "02.webp", "03.jpg", "03.webp", "04.jpg", "04.webp"]);
 const SOURCE_ARTIFACT_LABEL = "tmp/source-datasets/<runId>/products.json";
 
+function normalizeRunId(raw: string): string {
+  const normalizedRunId = raw.trim();
+  if (!normalizedRunId) throw new Error("Missing --run-id <runId>");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(normalizedRunId)) {
+    throw new Error("Invalid --run-id: use letters/numbers plus dash/underscore, with optional single-dot-separated segments");
+  }
+  return normalizedRunId;
+}
+
 function parseArgs(argv: string[]): { runId: string } {
-  let runId = "";
+  let rawRunId = "";
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === "--run-id") {
-      runId = argv[i + 1] ?? "";
+      rawRunId = argv[i + 1] ?? "";
       i += 1;
       continue;
     }
@@ -102,12 +111,7 @@ function parseArgs(argv: string[]): { runId: string } {
       continue;
     }
   }
-  if (!runId.trim()) throw new Error("Missing --run-id <runId>");
-  const normalizedRunId = runId.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(normalizedRunId)) {
-    throw new Error("Invalid --run-id: use letters/numbers plus dash/underscore, with optional single-dot-separated segments");
-  }
-  return { runId: normalizedRunId };
+  return { runId: normalizeRunId(rawRunId) };
 }
 
 function readJsonIfPresent(filePath: string, artifactLabel: string, findings: Finding[], required = false): unknown | null {
@@ -486,12 +490,12 @@ function normalizeFindings(findings: Finding[]): Finding[] {
 
 function classifySlotFromPath(rawPath: string): { slot?: string; isPrimary: boolean } {
   const portable = toPortablePath(rawPath);
-  const base = path.posix.basename(portable);
+  const base = path.posix.basename(portable).toLowerCase();
   if (!base) return { isPrimary: false };
-  if (base === "cover.jpg" || base === "cover.webp" || base === "01.jpg" || base === "01.webp") {
+  if (base === "cover.jpg" || base === "cover.jpeg" || base === "cover.png" || base === "cover.webp" || base === "01.jpg" || base === "01.jpeg" || base === "01.png" || base === "01.webp") {
     return { slot: base, isPrimary: true };
   }
-  if (/^\d{2}\.(jpg|webp)$/i.test(base)) return { slot: base, isPrimary: false };
+  if (/^\d{2}\.(jpg|jpeg|png|webp)$/i.test(base)) return { slot: base, isPrimary: false };
   return { slot: base, isPrimary: false };
 }
 
@@ -530,7 +534,8 @@ function findingDetailsLine(finding: Finding): string {
 }
 
 export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean }): Promise<AuditReport> {
-  const { runId, exitOnError = true } = args;
+  const runId = normalizeRunId(args.runId);
+  const { exitOnError = true } = args;
 
   const sourceProductsPath = path.join("tmp", "source-datasets", runId, "products.json");
   const curationPath = path.join("tmp", "curation", `${runId}.curation.json`);

@@ -241,3 +241,42 @@ test("duplicate hash preserves original index mapping when downloadedImageHashes
     await cleanup(id);
   }
 });
+
+test("runPhotoAudit rejects unsafe runId before any path usage", async () => {
+  await assert.rejects(
+    runPhotoAudit({ runId: "../evil", exitOnError: false }),
+    /Invalid --run-id/,
+  );
+  assert.equal(fs.existsSync(path.join("tmp", "source-datasets", "evil")), false);
+  assert.equal(fs.existsSync(path.join("tmp", "photo-audits", "../evil.photo-audit.json")), false);
+});
+
+test("shared 01.png duplicate remains suspicious primary reuse", async () => {
+  const id = runId("photo-audit-primary-png");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:shared-primary-png"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.png"],
+      localPaths: ["images/tricko-zle-skateboarding-orange-black/01.png"],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:shared-primary-png"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/53506.png"],
+      localPaths: ["images/tricko-zle-skateboarding-blue-white/01.png"],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:shared-primary-png");
+    assert.ok(duplicate);
+    assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
+    assert.equal(duplicate.level, "risk");
+  } finally {
+    await cleanup(id);
+  }
+});
