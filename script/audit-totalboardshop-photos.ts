@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 type FindingLevel = "info" | "warning" | "risk" | "error";
 
@@ -637,9 +638,11 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
       }
 
       if (Array.isArray(product.downloadedImageHashes)) {
-        const hashes = product.downloadedImageHashes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-        for (let hashIndex = 0; hashIndex < hashes.length; hashIndex += 1) {
-          const hash = hashes[hashIndex]!;
+        const rawHashes = product.downloadedImageHashes;
+        for (let hashIndex = 0; hashIndex < rawHashes.length; hashIndex += 1) {
+          const hash = rawHashes[hashIndex];
+          if (typeof hash !== "string" || hash.trim().length < 1) continue;
+          const normalizedHash = hash.trim();
           const localPathEntry = localSourceImagePathEntries[hashIndex];
           const resolved = localPathEntry ? resolveSourceLocalImagePath(runId, localPathEntry) : null;
           const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
@@ -650,12 +653,12 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
             : hashIndex === 0;
           const sourceUrl = extractStringArray(product.imageUrls)[hashIndex];
 
-          if (!hashOwners.has(hash)) hashOwners.set(hash, new Set());
-          hashOwners.get(hash)?.add(sourceProductKey);
-          if (!hashFolders.has(hash)) hashFolders.set(hash, new Set());
-          if (folder && folder !== ".") hashFolders.get(hash)?.add(folder);
-          if (!hashOccurrences.has(hash)) hashOccurrences.set(hash, []);
-          hashOccurrences.get(hash)?.push({
+          if (!hashOwners.has(normalizedHash)) hashOwners.set(normalizedHash, new Set());
+          hashOwners.get(normalizedHash)?.add(sourceProductKey);
+          if (!hashFolders.has(normalizedHash)) hashFolders.set(normalizedHash, new Set());
+          if (folder && folder !== ".") hashFolders.get(normalizedHash)?.add(folder);
+          if (!hashOccurrences.has(normalizedHash)) hashOccurrences.set(normalizedHash, []);
+          hashOccurrences.get(normalizedHash)?.push({
             sourceProductKey,
             sourceSlug: typeof product.sourceSlug === "string" ? product.sourceSlug : undefined,
             folder,
@@ -878,7 +881,7 @@ async function main(): Promise<void> {
   await runPhotoAudit({ runId, exitOnError: true });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

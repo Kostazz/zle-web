@@ -8,7 +8,7 @@ import { runPhotoAudit } from "./audit-totalboardshop-photos.ts";
 type ProductFixture = {
   key: string;
   slug: string;
-  hashes: string[];
+  hashes: unknown[];
   imageUrls: string[];
   localPaths: string[];
 };
@@ -188,6 +188,55 @@ test("mixed primary-secondary duplicate remains suspicious", async () => {
     assert.ok(duplicate);
     assert.equal(duplicate.classification, "suspicious_cross_product_duplicate");
     assert.equal(duplicate.level, "risk");
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("duplicate hash preserves original index mapping when downloadedImageHashes contain invalid entries", async () => {
+  const id = runId("photo-audit-hash-index-alignment");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:unique-orange", "", "sha256:index-sensitive-duplicate"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-orange-cover.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused-invalid-hash.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-orange-black/cover.jpg",
+        "images/tricko-zle-skateboarding-orange-black/02.jpg",
+        "images/tricko-zle-skateboarding-orange-black/03.jpg",
+      ],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:unique-blue", null, "sha256:index-sensitive-duplicate"],
+      imageUrls: [
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unique-blue-cover.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/unused-invalid-hash-2.jpg",
+        "https://totalboardshop.cz/wp-content/uploads/2025/04/shared-third-image.jpg",
+      ],
+      localPaths: [
+        "images/tricko-zle-skateboarding-blue-white/cover.jpg",
+        "images/tricko-zle-skateboarding-blue-white/02.jpg",
+        "images/tricko-zle-skateboarding-blue-white/03.jpg",
+      ],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:index-sensitive-duplicate");
+    assert.ok(duplicate);
+    const files = duplicate.files ?? [];
+    assert.equal(files.some((filePath) => filePath.endsWith("/03.jpg")), true);
+    assert.equal(files.some((filePath) => filePath.endsWith("/02.jpg")), false);
+    const evidenceFiles = ((duplicate.evidence as { files?: Array<{ slot?: string | null }> }).files ?? []);
+    assert.equal(evidenceFiles.every((entry) => entry.slot === "03.jpg"), true);
   } finally {
     await cleanup(id);
   }
