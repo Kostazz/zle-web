@@ -64,42 +64,292 @@
     <priority>0.2</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-hoodie-alpha</loc>
+    <loc>https://zleshop.cz/p/cepice-5-panel-snapback-zle-black</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-hoodie-crew</loc>
+    <loc>https://zleshop.cz/p/cepice-5-panel-snapback-zle-black-caramel-logo</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-tee-classic</loc>
+    <loc>https://zleshop.cz/p/cepice-5-panel-snapback-zle-blue</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-tee-underground</loc>
+    <loc>https://zleshop.cz/p/cepice-sitovka-mesh-zle-skateboarding-neon-green</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-cap-og</loc>
+    <loc>https://zleshop.cz/p/cepice-sitovka-mesh-zle-skateboarding-neon-orange</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-crewneck-heavy</loc>
+    <loc>https://zleshop.cz/p/cepice-sitovka-mesh-zle-skateboarding-neon-yellow</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-beanie-winter</loc>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://zleshop.cz/p/zle-tee-fire</loc>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-2</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-black-pink</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-blc-red</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-blue</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-earth-of-fire-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-hologram-black-grey-yellow</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-mesh-eye-black-white-vine</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-sitovka-zle-red</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-snapback-zle-black-grey-melange</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-snapback-zle-purple</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-snapback-zle-teg-grey</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-snapback-zle-winter-grey</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-snapback-zle-woodland</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-trucker-zle-white-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-truckerka-zle-mesh-black-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-truckerka-zle-mesh-blue-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-truckerka-zle-mesh-logo-blue</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-truckerka-zle-mesh-pink-ice-cream</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/cepice-zle-rainy-cap-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/detske-tricko-zle-army-tyrkys</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/detske-tricko-zle-planet-on-fire-tyrkys</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/klicenka-zle-skateboarding-color</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/klicenka-zle-skateboarding-rasta</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/ksiltovka-zle-army-woodland</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/ledvinka-zle-hip-organizer-bag-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-ice-cream-candyfloss-pink</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-ice-cream-deep-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-ice-cream-jade</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-ice-cream-peach</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-ice-cream-spring-green</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-sb-camo-cofe</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/mikina-zle-skateboards-black-tan</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/panska-mikina-zle-skateboards-abstract-black-khaki</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/panska-mikina-zle-skateboards-abstract-grey-melange-blue</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/panske-tricko-zle-skateboards-abstract-black-khaky</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/panske-tricko-zle-skateboards-abstract-grey-melange-blue</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/panske-tricko-zle-skateboards-abstract-white-green</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/skate-mikina-zle-cerna</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/skate-mikina-zle-fushia</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/skate-mikina-zle-purple</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/skate-mikina-zle-sedy-melir</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-black-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-blue-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-green-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-orange-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-pink-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-red-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-sv-khaki-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-tyrkys-white</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboarding-white-black</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://zleshop.cz/p/tricko-zle-skateboards-palm-black</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
