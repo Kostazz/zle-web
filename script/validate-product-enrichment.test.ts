@@ -101,3 +101,24 @@ test("internalNotes is allowed but not required", () => {
   assert.equal(withoutNotes["product-id"]?.internalNotes, undefined);
   assert.equal(withNotes["product-id-2"]?.internalNotes, "Only internal");
 });
+
+
+test("product ID key with leading or trailing whitespace fails", () => {
+  assert.throws(() =>
+    parseProductEnrichmentManifest({
+      " sku-1 ": {
+        displayName: "Tee",
+      },
+    }),
+  );
+});
+
+test("valid product ID key passes", () => {
+  const parsed = parseProductEnrichmentManifest({
+    "sku-1": {
+      displayName: "Tee",
+    },
+  });
+
+  assert.equal(parsed["sku-1"]?.displayName, "Tee");
+});

@@ -2,6 +2,11 @@ import { z } from "zod";
 
 const nonEmptyString = z.string().trim().min(1, "Must be a non-empty string");
 
+const productEnrichmentKeySchema = z
+  .string()
+  .min(1, "Product ID must be a non-empty string")
+  .refine((value) => value === value.trim(), "Product ID must not include leading or trailing whitespace");
+
 export const productEnrichmentEntrySchema = z
   .object({
     displayName: nonEmptyString.optional(),
@@ -16,7 +21,7 @@ export const productEnrichmentEntrySchema = z
   })
   .strict();
 
-export const productEnrichmentManifestSchema = z.record(nonEmptyString, productEnrichmentEntrySchema);
+export const productEnrichmentManifestSchema = z.record(productEnrichmentKeySchema, productEnrichmentEntrySchema);
 
 export type ProductEnrichmentEntry = z.infer<typeof productEnrichmentEntrySchema>;
 export type ProductEnrichmentManifest = z.infer<typeof productEnrichmentManifestSchema>;
