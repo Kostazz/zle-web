@@ -1,12 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   auditProducts,
+  closeDbPoolSafely,
   detectBrandLogoByPath,
   detectSizeChartByPath,
   inferLogoCoverFromSignals,
   inferSizeChartFromSignals,
+  resolveLocalProductAssetPath,
 } from "./audit-product-gallery-quality.ts";
 import type { Product } from "@shared/schema";
 
@@ -125,4 +129,43 @@ test("auditProducts uses pixel-signal evidence for generic 'cover.jpg' names", (
   );
 
   assert.ok(audited.findings.some((f) => f.code === "possible_size_chart_cover" && f.productId === "signal-cover"));
+});
+
+test("resolveLocalProductAssetPath resolves client/public product asset path", async () => {
+  const rel = path.join("client", "public", "images", "products", "path-test-a", "cover.jpg");
+  await fs.promises.mkdir(path.dirname(rel), { recursive: true });
+  await fs.promises.writeFile(rel, "x", "utf8");
+  try {
+    const resolved = resolveLocalProductAssetPath("/images/products/path-test-a/cover.jpg");
+    assert.equal(resolved, path.resolve(rel));
+  } finally {
+    await fs.promises.rm(path.join("client", "public", "images", "products", "path-test-a"), { recursive: true, force: true });
+  }
+});
+
+test("resolveLocalProductAssetPath resolves public product asset path", async () => {
+  const rel = path.join("public", "images", "products", "path-test-b", "cover.jpg");
+  await fs.promises.mkdir(path.dirname(rel), { recursive: true });
+  await fs.promises.writeFile(rel, "x", "utf8");
+  try {
+    const resolved = resolveLocalProductAssetPath("/images/products/path-test-b/cover.jpg");
+    assert.equal(resolved, path.resolve(rel));
+  } finally {
+    await fs.promises.rm(path.join("public", "images", "products", "path-test-b"), { recursive: true, force: true });
+  }
+});
+
+test("resolveLocalProductAssetPath rejects traversal and non-product web paths", () => {
+  assert.equal(resolveLocalProductAssetPath("/images/products/../escape/cover.jpg"), null);
+  assert.equal(resolveLocalProductAssetPath("/images/other/path.jpg"), null);
+});
+
+test("closeDbPoolSafely does not throw when DB import/cleanup is unavailable", async () => {
+  const original = process.env.DATABASE_URL;
+  delete process.env.DATABASE_URL;
+  try {
+    await assert.doesNotReject(closeDbPoolSafely());
+  } finally {
+    if (typeof original === "string") process.env.DATABASE_URL = original;
+  }
 });

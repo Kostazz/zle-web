@@ -119,15 +119,24 @@ function tokenizePath(value: string): string {
   return value.toLowerCase().replace(/[_%]+/g, "-");
 }
 
-function toAssetFilesystemPath(imagePath: string): string | null {
+const PRODUCT_ASSET_ROOTS = [
+  path.resolve("client", "public", "images", "products"),
+  path.resolve("public", "images", "products"),
+];
+
+export function resolveLocalProductAssetPath(imagePath: string): string | null {
   const normalized = imagePath.trim();
   if (!normalized.startsWith("/images/products/")) return null;
-  const withoutLeading = normalized.slice(1);
-  const candidate = path.resolve("client", "public", withoutLeading);
-  const allowedRoot = path.resolve("client", "public", "images", "products");
-  const rel = path.relative(allowedRoot, candidate);
-  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return candidate;
+  const relFromProducts = path.posix.normalize(normalized.slice("/images/products/".length));
+  if (!relFromProducts || relFromProducts === "." || relFromProducts.startsWith("../") || relFromProducts.includes("/../")) return null;
+
+  for (const root of PRODUCT_ASSET_ROOTS) {
+    const candidate = path.resolve(root, relFromProducts);
+    const rel = path.relative(root, candidate);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 export function detectSizeChartByPath(value: string): { hit: boolean; reason: string } {
@@ -362,9 +371,8 @@ export function auditProducts(
 }
 
 async function extractImageSignalsFromPath(imagePath: string): Promise<ImageSignals | null> {
-  const filePath = toAssetFilesystemPath(imagePath);
+  const filePath = resolveLocalProductAssetPath(imagePath);
   if (!filePath) return null;
-  if (!fs.existsSync(filePath)) return null;
 
   const { data, info } = await sharp(filePath)
     .ensureAlpha()
@@ -516,6 +524,16 @@ async function main(): Promise<void> {
   console.log(`created: ${result.summaryPath}`);
 }
 
+async function closeDbPoolSafely(): Promise<void> {
+  try {
+    const { pool } = await import("../server/db.ts");
+    await pool.end();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[gallery-audit] non-fatal cleanup warning: ${message}`);
+  }
+}
+
 const entrypointPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
 if (import.meta.url === entrypointPath) {
   main()
@@ -525,9 +543,8 @@ if (import.meta.url === entrypointPath) {
       process.exitCode = 1;
     })
     .finally(async () => {
-      const { pool } = await import("../server/db.ts");
-      await pool.end();
+      await closeDbPoolSafely();
     });
 }
 
-export { parseArgs, normalizeRunId, createSummaryMarkdown };
+export { parseArgs, normalizeRunId, createSummaryMarkdown, closeDbPoolSafely };
