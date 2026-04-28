@@ -42,7 +42,8 @@
     "catalog:import-totalboardshop": "tsx script/import-totalboardshop-products.ts",
     "catalog:sanitize:plan": "tsx script/catalog-sanitize-plan.ts",
     "photos:audit": "tsx script/audit-totalboardshop-photos.ts",
-    "products:gallery-audit": "tsx script/audit-product-gallery-quality.ts"
+    "products:gallery-audit": "tsx script/audit-product-gallery-quality.ts",
+    "products:enrichment-validate": "tsx script/validate-product-enrichment.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
