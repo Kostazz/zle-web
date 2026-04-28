@@ -183,7 +183,7 @@ export function getOwnedProductGalleryImages(
   product: Pick<Product, "id" | "image" | "images">,
   limit = 8
 ): string[] {
-  return mergeDeclaredAndFallbackCandidates(product).slice(0, Math.max(1, limit));
+  return getOwnedDeclaredProductImages(product).slice(0, Math.max(1, limit));
 }
 
 export function getSelectableSizes(product: Pick<Product, "sizes">): string[] {
