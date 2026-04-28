@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 type FindingLevel = "info" | "warning" | "risk" | "error";
 
@@ -155,7 +155,7 @@ function extractStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function extractLocalSourceImagePathEntries(product: SourceProduct): Array<SourceLocalImagePathEntry | undefined> {
+function extractLocalSourceImagePathEntriesByIndex(product: SourceProduct): Array<SourceLocalImagePathEntry | undefined> {
   const toIndexedEntries = (field: SourceLocalField, value: unknown): Array<SourceLocalImagePathEntry | undefined> => {
     if (!Array.isArray(value)) return [];
     return value.map((entry) => {
@@ -612,7 +612,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
         });
       }
 
-      const localSourceImagePathEntries = extractLocalSourceImagePathEntries(product);
+      const localSourceImagePathEntries = extractLocalSourceImagePathEntriesByIndex(product);
       if (!localSourceImagePathEntries.some((entry) => entry !== undefined)) {
         findings.push({
           level: "error",
@@ -897,7 +897,26 @@ async function main(): Promise<void> {
   await runPhotoAudit({ runId, exitOnError: true });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function realpathOrFallback(value: string): string {
+  try {
+    return typeof fs.realpathSync.native === "function" ? fs.realpathSync.native(value) : fs.realpathSync(value);
+  } catch {
+    return value;
+  }
+}
+
+export function isDirectCliEntrypoint(importMetaUrl: string, argv1?: string): boolean {
+  if (!argv1) return false;
+  try {
+    const modulePath = realpathOrFallback(fileURLToPath(importMetaUrl));
+    const argvPath = realpathOrFallback(path.resolve(argv1));
+    return modulePath === argvPath;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectCliEntrypoint(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

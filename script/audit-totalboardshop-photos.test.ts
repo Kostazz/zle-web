@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { runPhotoAudit } from "./audit-totalboardshop-photos.ts";
+import { runPhotoAudit, isDirectCliEntrypoint } from "./audit-totalboardshop-photos.ts";
 
 type ProductFixture = {
   key: string;
@@ -330,5 +330,27 @@ test("duplicate evidence keeps local-path index alignment when downloadedImages 
     assert.equal((evidence.files ?? []).every((entry) => (entry.filePath ?? "").endsWith("/03.jpg")), true);
   } finally {
     await cleanup(id);
+  }
+});
+
+test("isDirectCliEntrypoint handles missing argv and symlinked script path safely", async () => {
+  const moduleUrl = new URL("./audit-totalboardshop-photos.ts", import.meta.url).href;
+  assert.equal(isDirectCliEntrypoint(moduleUrl, undefined), false);
+  assert.equal(isDirectCliEntrypoint(moduleUrl, "/definitely/not/a/real/path.ts"), false);
+
+  const linkDir = path.join("tmp", "photo-audit-entrypoint-link-test");
+  const linkPath = path.join(linkDir, "audit-link.ts");
+  await fs.promises.mkdir(linkDir, { recursive: true });
+
+  try {
+    const targetPath = path.resolve("script", "audit-totalboardshop-photos.ts");
+    try {
+      await fs.promises.symlink(targetPath, linkPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    assert.equal(isDirectCliEntrypoint(moduleUrl, linkPath), true);
+  } finally {
+    await fs.promises.rm(linkDir, { recursive: true, force: true });
   }
 });
