@@ -730,7 +730,12 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
         ).sort((a, b) => a.localeCompare(b));
         const primaryProducts = new Set(occurrences.filter((entry) => entry.isPrimary).map((entry) => entry.sourceProductKey));
         const sameFamily = occurrences.length > 1 && isLikelySameFamily(occurrences);
-        const isBenign = sameFamily && primaryProducts.size === 0 && missingAlignedLocalPathEvidenceCount === 0;
+        const hasSameExactNonEmptySourceUrl = occurrences.length > 0
+          && occurrences.every((entry) => typeof entry.sourceUrl === "string" && entry.sourceUrl.trim().length > 0)
+          && new Set(occurrences.map((entry) => (entry.sourceUrl as string).trim())).size === 1;
+        const isBenign = primaryProducts.size === 0
+          && missingAlignedLocalPathEvidenceCount === 0
+          && (sameFamily || hasSameExactNonEmptySourceUrl);
         const classification = isBenign ? "benign_shared_family_image" : "suspicious_cross_product_duplicate";
         const riskLevel: FindingLevel = isBenign ? "warning" : "risk";
         findings.push({
@@ -739,7 +744,9 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           message: missingAlignedLocalPathEvidenceCount > 0
             ? `Hash ${hash} is shared across products, but aligned local path evidence is missing for ${missingAlignedLocalPathEvidenceCount} occurrence(s).`
             : isBenign
-            ? `Hash ${hash} is shared across same-family variants and appears non-primary for at least one variant.`
+            ? hasSameExactNonEmptySourceUrl
+              ? `Hash ${hash} is shared across non-primary occurrences with one exact source URL.`
+              : `Hash ${hash} is shared across same-family variants and appears non-primary for at least one variant.`
             : `Hash ${hash} is shared across products in different folders and includes primary image reuse.`,
           suggestedAction: missingAlignedLocalPathEvidenceCount > 0
             ? "Verify source artifacts for missing aligned local paths before approving ownership safety."
