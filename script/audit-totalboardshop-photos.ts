@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 type FindingLevel = "info" | "warning" | "risk" | "error";
 
@@ -11,10 +12,16 @@ type Finding = {
   sourceProductKey?: string;
   path?: string;
   artifact?: string;
+  classification?: "benign_shared_family_image" | "suspicious_cross_product_duplicate";
+  duplicateHash?: string;
+  products?: string[] | null;
+  files?: string[] | null;
+  evidence?: Record<string, unknown> | null;
 };
 
 type SourceProduct = {
   sourceProductKey?: unknown;
+  sourceSlug?: unknown;
   title?: unknown;
   downloadedImages?: unknown;
   ingestedImagePaths?: unknown;
@@ -66,16 +73,37 @@ type AuditReport = {
   findings: Finding[];
 };
 
+type DuplicateOccurrence = {
+  sourceProductKey: string;
+  sourceSlug?: string;
+  hashIndex: number;
+  folder?: string;
+  filePath?: string;
+  slot?: string;
+  sourceUrl?: string;
+  isPrimary: boolean;
+  hasAlignedLocalPath: boolean;
+};
+
 const LIVE_ROOT = path.resolve("client", "public", "images", "products");
 const VALID_BASENAMES = new Set(["cover.jpg", "cover.webp", "01.jpg", "01.webp", "02.jpg", "02.webp", "03.jpg", "03.webp", "04.jpg", "04.webp"]);
 const SOURCE_ARTIFACT_LABEL = "tmp/source-datasets/<runId>/products.json";
 
+function normalizeRunId(raw: string): string {
+  const normalizedRunId = raw.trim();
+  if (!normalizedRunId) throw new Error("Missing --run-id <runId>");
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(normalizedRunId)) {
+    throw new Error("Invalid --run-id: use letters/numbers plus dash/underscore, with optional single-dot-separated segments");
+  }
+  return normalizedRunId;
+}
+
 function parseArgs(argv: string[]): { runId: string } {
-  let runId = "";
+  let rawRunId = "";
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === "--run-id") {
-      runId = argv[i + 1] ?? "";
+      rawRunId = argv[i + 1] ?? "";
       i += 1;
       continue;
     }
@@ -85,12 +113,7 @@ function parseArgs(argv: string[]): { runId: string } {
       continue;
     }
   }
-  if (!runId.trim()) throw new Error("Missing --run-id <runId>");
-  const normalizedRunId = runId.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*$/.test(normalizedRunId)) {
-    throw new Error("Invalid --run-id: use letters/numbers plus dash/underscore, with optional single-dot-separated segments");
-  }
-  return { runId: normalizedRunId };
+  return { runId: normalizeRunId(rawRunId) };
 }
 
 function readJsonIfPresent(filePath: string, artifactLabel: string, findings: Finding[], required = false): unknown | null {
@@ -134,15 +157,34 @@ function extractStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function extractLocalSourceImagePathEntries(product: SourceProduct): SourceLocalImagePathEntry[] {
-  const downloadedImages = extractStringArray(product.downloadedImages).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (downloadedImages.length > 0) return downloadedImages.map((rawPath) => ({ field: "downloadedImages", rawPath }));
+function getAuthoritativeLocalPathField(product: SourceProduct): SourceLocalField | null {
+  const hasDownloaded = Array.isArray(product.downloadedImages) && product.downloadedImages.some((entry) => typeof entry === "string" && entry.trim().length > 0);
+  if (hasDownloaded) return "downloadedImages";
+  const hasIngested = Array.isArray(product.ingestedImagePaths) && product.ingestedImagePaths.some((entry) => typeof entry === "string" && entry.trim().length > 0);
+  if (hasIngested) return "ingestedImagePaths";
+  return null;
+}
 
-  const ingestedImagePaths = extractStringArray(product.ingestedImagePaths).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-  if (ingestedImagePaths.length > 0) return ingestedImagePaths.map((rawPath) => ({ field: "ingestedImagePaths", rawPath }));
+function extractLocalSourceImagePathEntriesByIndex(product: SourceProduct): Array<SourceLocalImagePathEntry | undefined> {
+  const field = getAuthoritativeLocalPathField(product);
+  if (!field || !Array.isArray(product[field])) return [];
+  return product[field].map((_, index) => getLocalSourceImagePathEntryAt(product, index, field));
+}
 
-  // imageUrls represent remote URLs and must not be treated as local filesystem paths.
-  return [];
+function getStringAtOriginalIndex(value: unknown, index: number): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const raw = value[index];
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim();
+  if (normalized.length < 1) return undefined;
+  return normalized;
+}
+
+function getLocalSourceImagePathEntryAt(product: SourceProduct, index: number, field: SourceLocalField | null): SourceLocalImagePathEntry | undefined {
+  if (!field) return undefined;
+  const rawPath = getStringAtOriginalIndex(product[field], index);
+  if (!rawPath) return undefined;
+  return { field, rawPath };
 }
 
 function toPortablePath(value: string): string {
@@ -467,14 +509,60 @@ function normalizeFindings(findings: Finding[]): Finding[] {
   });
 }
 
-async function main(): Promise<void> {
-  const { runId } = parseArgs(process.argv.slice(2));
+function classifySlotFromPath(rawPath: string): { slot?: string; isPrimary: boolean } {
+  const portable = toPortablePath(rawPath);
+  const base = path.posix.basename(portable).toLowerCase();
+  if (!base) return { isPrimary: false };
+  if (base === "cover.jpg" || base === "cover.jpeg" || base === "cover.png" || base === "cover.webp" || base === "01.jpg" || base === "01.jpeg" || base === "01.png" || base === "01.webp") {
+    return { slot: base, isPrimary: true };
+  }
+  if (/^\d{2}\.(jpg|jpeg|png|webp)$/i.test(base)) return { slot: base, isPrimary: false };
+  return { slot: base, isPrimary: false };
+}
 
-  const sourceProductsPath = path.join("tmp", "source-datasets", runId, "products.json");
-  const curationPath = path.join("tmp", "curation", `${runId}.curation.json`);
-  const stagingPath = path.join("tmp", "agent-manifests", `${runId}.staging.json`);
-  const gatePath = path.join("tmp", "publish-gates", `${runId}.publish-gate.json`);
-  const publishPath = path.join("tmp", "publish-reports", `${runId}.publish.json`);
+function deriveFamilyKey(value: string): string {
+  const tokens = value.split("-").filter((token) => token.length > 0);
+  if (tokens.length <= 3) return value;
+  return tokens.slice(0, Math.max(2, tokens.length - 2)).join("-");
+}
+
+function isLikelySameFamily(occurrences: DuplicateOccurrence[]): boolean {
+  const keys = new Set(
+    occurrences.map((entry) => deriveFamilyKey(entry.sourceSlug?.trim() || entry.sourceProductKey)),
+  );
+  return keys.size === 1;
+}
+
+function calculateConfidence(findings: Finding[]): number {
+  const penaltyByLevel: Record<FindingLevel, number> = { error: 40, risk: 15, warning: 3, info: 0 };
+  let totalPenalty = 0;
+  for (const finding of findings) {
+    let penalty = penaltyByLevel[finding.level];
+    if (finding.code === "duplicate_hash_cross_product_folder_risk" && finding.classification === "benign_shared_family_image") {
+      penalty = 2;
+    }
+    totalPenalty += penalty;
+  }
+  return Math.max(0, Math.min(100, 100 - totalPenalty));
+}
+
+function findingDetailsLine(finding: Finding): string {
+  const classification = finding.classification ? ` (${finding.classification})` : "";
+  const products = Array.isArray(finding.products) && finding.products.length > 0 ? ` products=${finding.products.slice(0, 4).join(",")}${finding.products.length > 4 ? ",..." : ""}` : "";
+  const files = Array.isArray(finding.files) && finding.files.length > 0 ? ` files=${finding.files.slice(0, 3).join(",")}${finding.files.length > 3 ? ",..." : ""}` : "";
+  const duplicateHash = finding.duplicateHash ? ` hash=${finding.duplicateHash}` : "";
+  return `- [${finding.level}] ${finding.code}${classification}: ${finding.message}${duplicateHash}${products}${files}`;
+}
+
+export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean }): Promise<AuditReport> {
+  const normalizedRunId = normalizeRunId(args.runId);
+  const { exitOnError = true } = args;
+
+  const sourceProductsPath = path.join("tmp", "source-datasets", normalizedRunId, "products.json");
+  const curationPath = path.join("tmp", "curation", `${normalizedRunId}.curation.json`);
+  const stagingPath = path.join("tmp", "agent-manifests", `${normalizedRunId}.staging.json`);
+  const gatePath = path.join("tmp", "publish-gates", `${normalizedRunId}.publish-gate.json`);
+  const publishPath = path.join("tmp", "publish-reports", `${normalizedRunId}.publish.json`);
 
   const findings: Finding[] = [];
   const outputDir = path.join("tmp", "photo-audits");
@@ -504,6 +592,7 @@ async function main(): Promise<void> {
 
   const hashOwners = new Map<string, Set<string>>();
   const hashFolders = new Map<string, Set<string>>();
+  const hashOccurrences = new Map<string, DuplicateOccurrence[]>();
 
   if (sourceProducts) {
     sourceProductsCount = sourceProducts.length;
@@ -534,8 +623,9 @@ async function main(): Promise<void> {
         });
       }
 
-      const localSourceImagePathEntries = extractLocalSourceImagePathEntries(product);
-      if (localSourceImagePathEntries.length < 1) {
+      const authoritativeLocalPathField = getAuthoritativeLocalPathField(product);
+      const localSourceImagePathEntries = extractLocalSourceImagePathEntriesByIndex(product);
+      if (!localSourceImagePathEntries.some((entry) => entry !== undefined)) {
         findings.push({
           level: "error",
           code: "source_product_without_downloaded_images",
@@ -547,8 +637,9 @@ async function main(): Promise<void> {
       }
 
       for (const localPathEntry of localSourceImagePathEntries) {
+        if (!localPathEntry) continue;
         checkedSourceImages += 1;
-        const resolvedPath = resolveSourceLocalImagePath(runId, localPathEntry);
+        const resolvedPath = resolveSourceLocalImagePath(normalizedRunId, localPathEntry);
         if (!resolvedPath.ok) {
           findings.push({
             level: "error",
@@ -575,21 +666,37 @@ async function main(): Promise<void> {
       }
 
       if (Array.isArray(product.downloadedImageHashes)) {
-        const hashes = product.downloadedImageHashes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-        const foldersForProduct = new Set(
-          localSourceImagePathEntries
-            .map((entry) => resolveSourceLocalImagePath(runId, entry))
-            .filter((resolved): resolved is { ok: true; resolved: string; normalized: string } => resolved.ok)
-            .map((resolved) => path.posix.dirname(resolved.normalized))
-            .filter((dir) => dir && dir !== "."),
-        );
-        for (const hash of hashes) {
-          if (!hashOwners.has(hash)) hashOwners.set(hash, new Set());
-          hashOwners.get(hash)?.add(sourceProductKey);
-          if (!hashFolders.has(hash)) hashFolders.set(hash, new Set());
-          for (const folder of Array.from(foldersForProduct)) {
-            hashFolders.get(hash)?.add(folder);
-          }
+        const rawHashes = product.downloadedImageHashes;
+        for (let hashIndex = 0; hashIndex < rawHashes.length; hashIndex += 1) {
+          const hash = rawHashes[hashIndex];
+          if (typeof hash !== "string" || hash.trim().length < 1) continue;
+          const normalizedHash = hash.trim();
+          const localPathEntry = getLocalSourceImagePathEntryAt(product, hashIndex, authoritativeLocalPathField);
+          const resolved = localPathEntry ? resolveSourceLocalImagePath(normalizedRunId, localPathEntry) : null;
+          const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
+          const folder = normalizedPath ? path.posix.dirname(normalizedPath) : undefined;
+          const slot = normalizedPath ? classifySlotFromPath(normalizedPath).slot : undefined;
+          const isPrimary = normalizedPath
+            ? classifySlotFromPath(normalizedPath).isPrimary
+            : hashIndex === 0;
+          const sourceUrl = getStringAtOriginalIndex(product.imageUrls, hashIndex);
+
+          if (!hashOwners.has(normalizedHash)) hashOwners.set(normalizedHash, new Set());
+          hashOwners.get(normalizedHash)?.add(sourceProductKey);
+          if (!hashFolders.has(normalizedHash)) hashFolders.set(normalizedHash, new Set());
+          if (folder && folder !== ".") hashFolders.get(normalizedHash)?.add(folder);
+          if (!hashOccurrences.has(normalizedHash)) hashOccurrences.set(normalizedHash, []);
+          hashOccurrences.get(normalizedHash)?.push({
+            sourceProductKey,
+            sourceSlug: typeof product.sourceSlug === "string" ? product.sourceSlug : undefined,
+            hashIndex,
+            folder,
+            filePath: normalizedPath,
+            slot,
+            sourceUrl,
+            isPrimary,
+            hasAlignedLocalPath: Boolean(localPathEntry && normalizedPath),
+          });
         }
       }
     }
@@ -610,14 +717,58 @@ async function main(): Promise<void> {
         artifact: SOURCE_ARTIFACT_LABEL,
       });
 
-      if (sharedAcrossFolders) {
+      const occurrences = hashOccurrences.get(hash) ?? [];
+      const missingAlignedLocalPathEvidenceCount = occurrences.filter((entry) => !entry.hasAlignedLocalPath).length;
+      if (sharedAcrossFolders || occurrences.length > 0) {
+        const products = Array.from(new Set(occurrences.map((entry) => entry.sourceProductKey))).sort((a, b) => a.localeCompare(b));
+        const files = Array.from(
+          new Set(
+            occurrences
+              .map((entry) => entry.filePath)
+              .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
+          ),
+        ).sort((a, b) => a.localeCompare(b));
+        const primaryProducts = new Set(occurrences.filter((entry) => entry.isPrimary).map((entry) => entry.sourceProductKey));
+        const sameFamily = occurrences.length > 1 && isLikelySameFamily(occurrences);
+        const isBenign = sameFamily && primaryProducts.size === 0 && missingAlignedLocalPathEvidenceCount === 0;
+        const classification = isBenign ? "benign_shared_family_image" : "suspicious_cross_product_duplicate";
+        const riskLevel: FindingLevel = isBenign ? "warning" : "risk";
         findings.push({
-          level: "risk",
+          level: riskLevel,
           code: "duplicate_hash_cross_product_folder_risk",
-          message: `Hash ${hash} is shared across products in different folders, which can indicate ownership conflicts.`,
-          suggestedAction: "Validate image ownership before stage/publish to avoid cross-product contamination.",
-          sourceProductKey: Array.from(owners).sort((a, b) => a.localeCompare(b)).join(","),
+          message: missingAlignedLocalPathEvidenceCount > 0
+            ? `Hash ${hash} is shared across products, but aligned local path evidence is missing for ${missingAlignedLocalPathEvidenceCount} occurrence(s).`
+            : isBenign
+            ? `Hash ${hash} is shared across same-family variants and appears non-primary for at least one variant.`
+            : `Hash ${hash} is shared across products in different folders and includes primary image reuse.`,
+          suggestedAction: missingAlignedLocalPathEvidenceCount > 0
+            ? "Verify source artifacts for missing aligned local paths before approving ownership safety."
+            : isBenign
+            ? "Review once, then keep as known benign shared family image if intentional."
+            : "Validate source ownership/variant mapping before stage/publish to avoid cross-product contamination.",
+          sourceProductKey: products.join(","),
           artifact: SOURCE_ARTIFACT_LABEL,
+          classification,
+          duplicateHash: hash,
+          products,
+          files,
+          evidence: {
+            hash,
+            productCount: products.length,
+            fileCount: files.length,
+            missingAlignedLocalPathEvidenceCount,
+            folders: Array.from(new Set(occurrences.map((entry) => entry.folder).filter((entry): entry is string => Boolean(entry)))).sort((a, b) => a.localeCompare(b)),
+            files: occurrences.map((entry) => ({
+              sourceProductKey: entry.sourceProductKey,
+              sourceSlug: entry.sourceSlug,
+              hashIndex: entry.hashIndex,
+              filePath: entry.filePath ?? null,
+              slot: entry.slot ?? null,
+              sourceUrl: entry.sourceUrl ?? null,
+              isPrimary: entry.isPrimary,
+              hasAlignedLocalPath: entry.hasAlignedLocalPath,
+            })),
+          },
         });
       }
     }
@@ -706,10 +857,10 @@ async function main(): Promise<void> {
     errors: sortedFindings.filter((f) => f.level === "error").length,
   };
 
-  const confidence = Math.max(0, Math.min(100, 100 - counts.errors * 40 - counts.risks * 15 - counts.warnings * 3));
+  const confidence = calculateConfidence(sortedFindings);
 
   const report: AuditReport = {
-    runId,
+    runId: normalizedRunId,
     createdAt: new Date().toISOString(),
     status: counts.errors > 0 ? "failed" : "passed",
     confidence,
@@ -717,8 +868,8 @@ async function main(): Promise<void> {
     findings: sortedFindings,
   };
 
-  const reportPath = path.join(outputDir, `${runId}.photo-audit.json`);
-  const summaryPath = path.join(outputDir, `${runId}.summary.md`);
+  const reportPath = path.join(outputDir, `${normalizedRunId}.photo-audit.json`);
+  const summaryPath = path.join(outputDir, `${normalizedRunId}.summary.md`);
   await fs.promises.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
   const topCritical = sortedFindings.filter((f) => f.level === "error" || f.level === "risk").slice(0, 10);
@@ -731,7 +882,7 @@ async function main(): Promise<void> {
   const summaryLines = [
     `# TotalBoardShop/ZLE Photo Audit`,
     "",
-    `- runId: ${runId}`,
+    `- runId: ${normalizedRunId}`,
     `- status: ${report.status}`,
     `- confidence: ${report.confidence}`,
     `- createdAt: ${report.createdAt}`,
@@ -747,7 +898,7 @@ async function main(): Promise<void> {
     "",
     "## Top risks/errors",
     ...(topCritical.length > 0
-      ? topCritical.map((f) => `- [${f.level}] ${f.code}: ${f.message}`)
+      ? topCritical.map((f) => findingDetailsLine(f))
       : ["- None"]),
     "",
     "## Actionable next steps",
@@ -759,10 +910,37 @@ async function main(): Promise<void> {
 
   await fs.promises.writeFile(summaryPath, summaryLines.join("\n"), "utf8");
 
-  if (counts.errors > 0) process.exit(1);
+  if (counts.errors > 0 && exitOnError) process.exit(1);
+  return report;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const { runId } = parseArgs(process.argv.slice(2));
+  await runPhotoAudit({ runId, exitOnError: true });
+}
+
+function realpathOrFallback(value: string): string {
+  try {
+    return typeof fs.realpathSync.native === "function" ? fs.realpathSync.native(value) : fs.realpathSync(value);
+  } catch {
+    return value;
+  }
+}
+
+export function isDirectCliEntrypoint(importMetaUrl: string, argv1?: string): boolean {
+  if (!argv1) return false;
+  try {
+    const modulePath = realpathOrFallback(fileURLToPath(importMetaUrl));
+    const argvPath = realpathOrFallback(path.resolve(argv1));
+    return modulePath === argvPath;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectCliEntrypoint(import.meta.url, process.argv[1])) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
