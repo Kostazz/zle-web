@@ -157,25 +157,18 @@ function extractStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function getAuthoritativeLocalPathField(product: SourceProduct): SourceLocalField | null {
+  const hasDownloaded = Array.isArray(product.downloadedImages) && product.downloadedImages.some((entry) => typeof entry === "string" && entry.trim().length > 0);
+  if (hasDownloaded) return "downloadedImages";
+  const hasIngested = Array.isArray(product.ingestedImagePaths) && product.ingestedImagePaths.some((entry) => typeof entry === "string" && entry.trim().length > 0);
+  if (hasIngested) return "ingestedImagePaths";
+  return null;
+}
+
 function extractLocalSourceImagePathEntriesByIndex(product: SourceProduct): Array<SourceLocalImagePathEntry | undefined> {
-  const toIndexedEntries = (field: SourceLocalField, value: unknown): Array<SourceLocalImagePathEntry | undefined> => {
-    if (!Array.isArray(value)) return [];
-    return value.map((entry) => {
-      if (typeof entry !== "string") return undefined;
-      const rawPath = entry.trim();
-      if (rawPath.length < 1) return undefined;
-      return { field, rawPath };
-    });
-  };
-
-  const downloadedImages = toIndexedEntries("downloadedImages", product.downloadedImages);
-  if (downloadedImages.some((entry) => entry !== undefined)) return downloadedImages;
-
-  const ingestedImagePaths = toIndexedEntries("ingestedImagePaths", product.ingestedImagePaths);
-  if (ingestedImagePaths.some((entry) => entry !== undefined)) return ingestedImagePaths;
-
-  // imageUrls represent remote URLs and must not be treated as local filesystem paths.
-  return [];
+  const field = getAuthoritativeLocalPathField(product);
+  if (!field || !Array.isArray(product[field])) return [];
+  return product[field].map((_, index) => getLocalSourceImagePathEntryAt(product, index, field));
 }
 
 function getStringAtOriginalIndex(value: unknown, index: number): string | undefined {
@@ -187,12 +180,11 @@ function getStringAtOriginalIndex(value: unknown, index: number): string | undef
   return normalized;
 }
 
-function getLocalSourceImagePathEntryAt(product: SourceProduct, index: number): SourceLocalImagePathEntry | undefined {
-  const downloaded = getStringAtOriginalIndex(product.downloadedImages, index);
-  if (downloaded) return { field: "downloadedImages", rawPath: downloaded };
-  const ingested = getStringAtOriginalIndex(product.ingestedImagePaths, index);
-  if (ingested) return { field: "ingestedImagePaths", rawPath: ingested };
-  return undefined;
+function getLocalSourceImagePathEntryAt(product: SourceProduct, index: number, field: SourceLocalField | null): SourceLocalImagePathEntry | undefined {
+  if (!field) return undefined;
+  const rawPath = getStringAtOriginalIndex(product[field], index);
+  if (!rawPath) return undefined;
+  return { field, rawPath };
 }
 
 function toPortablePath(value: string): string {
@@ -631,6 +623,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
         });
       }
 
+      const authoritativeLocalPathField = getAuthoritativeLocalPathField(product);
       const localSourceImagePathEntries = extractLocalSourceImagePathEntriesByIndex(product);
       if (!localSourceImagePathEntries.some((entry) => entry !== undefined)) {
         findings.push({
@@ -678,7 +671,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           const hash = rawHashes[hashIndex];
           if (typeof hash !== "string" || hash.trim().length < 1) continue;
           const normalizedHash = hash.trim();
-          const localPathEntry = getLocalSourceImagePathEntryAt(product, hashIndex);
+          const localPathEntry = getLocalSourceImagePathEntryAt(product, hashIndex, authoritativeLocalPathField);
           const resolved = localPathEntry ? resolveSourceLocalImagePath(normalizedRunId, localPathEntry) : null;
           const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
           const folder = normalizedPath ? path.posix.dirname(normalizedPath) : undefined;

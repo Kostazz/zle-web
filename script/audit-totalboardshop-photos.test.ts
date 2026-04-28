@@ -11,6 +11,7 @@ type ProductFixture = {
   hashes: unknown[];
   imageUrls: unknown[];
   localPaths: unknown[];
+  ingestedPaths?: unknown[];
 };
 
 function runId(label: string): string {
@@ -25,12 +26,19 @@ async function writeFixture(runIdValue: string, products: ProductFixture[]): Pro
     sourceSlug: product.slug,
     title: product.key,
     downloadedImages: product.localPaths,
+    ingestedImagePaths: product.ingestedPaths,
     imageUrls: product.imageUrls,
     downloadedImageHashes: product.hashes,
   }));
   await fs.promises.writeFile(path.join(runRoot, "products.json"), JSON.stringify(payload, null, 2), "utf8");
   for (const product of products) {
     for (const filePath of product.localPaths) {
+      if (typeof filePath !== "string" || filePath.trim().length < 1) continue;
+      const absolute = path.join(runRoot, filePath);
+      await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
+      await fs.promises.writeFile(absolute, "fixture", "utf8");
+    }
+    for (const filePath of product.ingestedPaths ?? []) {
       if (typeof filePath !== "string" || filePath.trim().length < 1) continue;
       const absolute = path.join(runRoot, filePath);
       await fs.promises.mkdir(path.dirname(absolute), { recursive: true });
@@ -367,6 +375,70 @@ test("duplicate hash across products stays visible when aligned local path evide
     assert.equal(evidence.missingAlignedLocalPathEvidenceCount, 2);
     assert.equal((evidence.files ?? []).every((entry) => entry.filePath === null), true);
     assert.equal((evidence.files ?? []).every((entry) => entry.hasAlignedLocalPath === false), true);
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("downloadedImages stays authoritative and does not fallback per-index to ingestedImagePaths", async () => {
+  const id = runId("photo-audit-authoritative-downloaded");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:unique-orange", "sha256:authoritative-no-fallback"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/a.jpg", "https://totalboardshop.cz/wp-content/uploads/2025/04/shared.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-orange-black/cover.jpg", ""],
+      ingestedPaths: ["images/tricko-zle-skateboarding-orange-black/cover.jpg", "images/tricko-zle-skateboarding-orange-black/02.jpg"],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:unique-blue", "sha256:authoritative-no-fallback"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/b.jpg", "https://totalboardshop.cz/wp-content/uploads/2025/04/shared.jpg"],
+      localPaths: ["images/tricko-zle-skateboarding-blue-white/cover.jpg", null],
+      ingestedPaths: ["images/tricko-zle-skateboarding-blue-white/cover.jpg", "images/tricko-zle-skateboarding-blue-white/02.jpg"],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:authoritative-no-fallback");
+    assert.ok(duplicate);
+    const evidence = duplicate.evidence as { missingAlignedLocalPathEvidenceCount?: number; files?: Array<{ filePath?: string | null }> };
+    assert.equal(evidence.missingAlignedLocalPathEvidenceCount, 2);
+    assert.equal((evidence.files ?? []).every((entry) => entry.filePath === null), true);
+  } finally {
+    await cleanup(id);
+  }
+});
+
+test("ingestedImagePaths is used when downloadedImages has no valid paths at all", async () => {
+  const id = runId("photo-audit-authoritative-ingested-fallback");
+  await writeFixture(id, [
+    {
+      key: "tricko-zle-skateboarding-orange-black",
+      slug: "tricko-zle-skateboarding-orange-black",
+      hashes: ["sha256:ingested-fallback-dup"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/shared-fallback.jpg"],
+      localPaths: [""],
+      ingestedPaths: ["images/tricko-zle-skateboarding-orange-black/03.jpg"],
+    },
+    {
+      key: "tricko-zle-skateboarding-blue-white",
+      slug: "tricko-zle-skateboarding-blue-white",
+      hashes: ["sha256:ingested-fallback-dup"],
+      imageUrls: ["https://totalboardshop.cz/wp-content/uploads/2025/04/shared-fallback.jpg"],
+      localPaths: [null],
+      ingestedPaths: ["images/tricko-zle-skateboarding-blue-white/03.jpg"],
+    },
+  ]);
+
+  try {
+    const report = await runPhotoAudit({ runId: id, exitOnError: false });
+    const duplicate = report.findings.find((finding) => finding.duplicateHash === "sha256:ingested-fallback-dup");
+    assert.ok(duplicate);
+    assert.equal((duplicate.files ?? []).every((filePath) => filePath.endsWith("/03.jpg")), true);
   } finally {
     await cleanup(id);
   }
