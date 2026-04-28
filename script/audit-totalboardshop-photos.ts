@@ -534,14 +534,14 @@ function findingDetailsLine(finding: Finding): string {
 }
 
 export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean }): Promise<AuditReport> {
-  const runId = normalizeRunId(args.runId);
+  const normalizedRunId = normalizeRunId(args.runId);
   const { exitOnError = true } = args;
 
-  const sourceProductsPath = path.join("tmp", "source-datasets", runId, "products.json");
-  const curationPath = path.join("tmp", "curation", `${runId}.curation.json`);
-  const stagingPath = path.join("tmp", "agent-manifests", `${runId}.staging.json`);
-  const gatePath = path.join("tmp", "publish-gates", `${runId}.publish-gate.json`);
-  const publishPath = path.join("tmp", "publish-reports", `${runId}.publish.json`);
+  const sourceProductsPath = path.join("tmp", "source-datasets", normalizedRunId, "products.json");
+  const curationPath = path.join("tmp", "curation", `${normalizedRunId}.curation.json`);
+  const stagingPath = path.join("tmp", "agent-manifests", `${normalizedRunId}.staging.json`);
+  const gatePath = path.join("tmp", "publish-gates", `${normalizedRunId}.publish-gate.json`);
+  const publishPath = path.join("tmp", "publish-reports", `${normalizedRunId}.publish.json`);
 
   const findings: Finding[] = [];
   const outputDir = path.join("tmp", "photo-audits");
@@ -616,7 +616,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
 
       for (const localPathEntry of localSourceImagePathEntries) {
         checkedSourceImages += 1;
-        const resolvedPath = resolveSourceLocalImagePath(runId, localPathEntry);
+        const resolvedPath = resolveSourceLocalImagePath(normalizedRunId, localPathEntry);
         if (!resolvedPath.ok) {
           findings.push({
             level: "error",
@@ -649,7 +649,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
           if (typeof hash !== "string" || hash.trim().length < 1) continue;
           const normalizedHash = hash.trim();
           const localPathEntry = localSourceImagePathEntries[hashIndex];
-          const resolved = localPathEntry ? resolveSourceLocalImagePath(runId, localPathEntry) : null;
+          const resolved = localPathEntry ? resolveSourceLocalImagePath(normalizedRunId, localPathEntry) : null;
           const normalizedPath = resolved && resolved.ok ? resolved.normalized : localPathEntry?.rawPath;
           const folder = normalizedPath ? path.posix.dirname(normalizedPath) : undefined;
           const slot = normalizedPath ? classifySlotFromPath(normalizedPath).slot : undefined;
@@ -827,7 +827,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
   const confidence = calculateConfidence(sortedFindings);
 
   const report: AuditReport = {
-    runId,
+    runId: normalizedRunId,
     createdAt: new Date().toISOString(),
     status: counts.errors > 0 ? "failed" : "passed",
     confidence,
@@ -835,8 +835,8 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
     findings: sortedFindings,
   };
 
-  const reportPath = path.join(outputDir, `${runId}.photo-audit.json`);
-  const summaryPath = path.join(outputDir, `${runId}.summary.md`);
+  const reportPath = path.join(outputDir, `${normalizedRunId}.photo-audit.json`);
+  const summaryPath = path.join(outputDir, `${normalizedRunId}.summary.md`);
   await fs.promises.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
   const topCritical = sortedFindings.filter((f) => f.level === "error" || f.level === "risk").slice(0, 10);
@@ -849,7 +849,7 @@ export async function runPhotoAudit(args: { runId: string; exitOnError?: boolean
   const summaryLines = [
     `# TotalBoardShop/ZLE Photo Audit`,
     "",
-    `- runId: ${runId}`,
+    `- runId: ${normalizedRunId}`,
     `- status: ${report.status}`,
     `- confidence: ${report.confidence}`,
     `- createdAt: ${report.createdAt}`,
