@@ -2,20 +2,12 @@ import type { ProductPublic } from "@shared/product-public";
 
 export const ONE_SIZE = "ONE_SIZE";
 
-const LOCAL_IMAGE_CANDIDATE_NAMES = [
-  "cover.jpg",
-  "cover.webp",
-  "01.jpg",
-  "01.webp",
-  "02.jpg",
-  "02.webp",
-  "03.jpg",
-  "03.webp",
-  "04.jpg",
-  "04.webp",
-] as const;
+const LOGICAL_GALLERY_SLOTS = ["cover", "01", "02", "03", "04", "05", "06", "07", "08"] as const;
+const LOCAL_IMAGE_EXTENSIONS = ["jpg", "webp"] as const;
 
-const LOGICAL_GALLERY_SLOTS = ["cover", "01", "02", "03", "04"] as const;
+const LOCAL_IMAGE_CANDIDATE_NAMES = LOGICAL_GALLERY_SLOTS.flatMap((slot) =>
+  LOCAL_IMAGE_EXTENSIONS.map((extension) => `${slot}.${extension}`)
+);
 
 type LogicalGallerySlot = (typeof LOGICAL_GALLERY_SLOTS)[number];
 
@@ -33,7 +25,7 @@ function getLogicalGallerySlot(imagePath: string): LogicalGallerySlot | null {
     return null;
   }
 
-  const slotMatch = fileName.match(/^(cover|0[1-4])\.(jpg|webp)$/i);
+  const slotMatch = fileName.match(/^(cover|0[1-8])\.(jpg|webp)$/i);
 
   if (!slotMatch) {
     return null;
