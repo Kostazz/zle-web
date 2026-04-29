@@ -32,7 +32,7 @@ export default function ProductDetail() {
       .slice(0, 4);
   }, [products, product]);
 
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [selectedImageSrc, setSelectedImageSrc] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [hiddenImageSet, setHiddenImageSet] = useState<Set<string>>(new Set());
   const { addItem } = useCart();
@@ -42,7 +42,9 @@ export default function ProductDetail() {
     () => imageCandidates.filter((image) => !hiddenImageSet.has(image)).slice(0, 8),
     [imageCandidates, hiddenImageSet]
   );
-  const mainImage = images[selectedImageIndex] ?? images[0] ?? "";
+  const mainImage =
+    selectedImageSrc && images.includes(selectedImageSrc) ? selectedImageSrc : images[0] ?? "";
+  const selectedImageIndex = mainImage ? images.indexOf(mainImage) : -1;
   const selectableSizes = product ? getSelectableSizes(product) : [];
   const defaultSelectedSize = product ? getDefaultSelectedSize(product) : null;
   const sizeSelectionRequired = product ? requiresExplicitSizeSelection(product) : false;
@@ -70,22 +72,9 @@ export default function ProductDetail() {
   }, [productState]);
 
   useEffect(() => {
-    setSelectedImageIndex(0);
+    setSelectedImageSrc(null);
     setHiddenImageSet(new Set());
   }, [product?.id]);
-
-  useEffect(() => {
-    if (images.length === 0) {
-      if (selectedImageIndex !== 0) {
-        setSelectedImageIndex(0);
-      }
-      return;
-    }
-
-    if (selectedImageIndex >= images.length) {
-      setSelectedImageIndex(images.length - 1);
-    }
-  }, [images, selectedImageIndex]);
 
   const hideImage = (image: string) => {
     setHiddenImageSet((current) => {
@@ -192,7 +181,7 @@ export default function ProductDetail() {
                     <button
                       key={`${image}-${index}`}
                       type="button"
-                      onClick={() => setSelectedImageIndex(index)}
+                      onClick={() => setSelectedImageSrc(image)}
                       className={`aspect-square border overflow-hidden ${
                         selectedImageIndex === index ? "border-white" : "border-white/20"
                       }`}
