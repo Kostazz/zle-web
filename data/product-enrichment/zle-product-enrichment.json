@@ -1,1 +1,42 @@
-{}
+{
+  "cepice-5-panel-snapback-zle-black": {
+    "displayName": "Černý 5-panel snapback ZLE",
+    "description": "Černý 5-panel snapback s logem ZLE. Jednoduchý kus na ven, do města i na spot.",
+    "badges": ["ZLE"],
+    "tags": ["snapback", "čepice", "skate", "zle"],
+    "seoTitle": "Černý 5-panel snapback ZLE | ZLE",
+    "seoDescription": "Černý 5-panel snapback s logem ZLE. Jednoduchá čepice na ven, do města i na spot."
+  },
+  "ledvinka-zle-hip-organizer-bag-black": {
+    "displayName": "Černá ledvinka ZLE Hip Organizer",
+    "description": "Černá ledvinka ZLE Hip Organizer na drobnosti, co mají být po ruce. Praktický kus mimo kapsy.",
+    "badges": ["ZLE"],
+    "tags": ["ledvinka", "accessories", "skate", "zle"],
+    "seoTitle": "Černá ledvinka ZLE Hip Organizer | ZLE",
+    "seoDescription": "Černá ledvinka ZLE Hip Organizer na drobnosti, které chceš mít po ruce."
+  },
+  "mikina-zle-ice-cream-deep-black": {
+    "displayName": "Mikina ZLE ICE Cream – Deep Black",
+    "description": "Černá mikina ZLE ICE Cream s výrazným motivem. Kus pro dny, kdy nechceš vysvětlovat nic.",
+    "badges": ["ZLE"],
+    "tags": ["mikina", "ice cream", "skate", "zle"],
+    "seoTitle": "Mikina ZLE ICE Cream – Deep Black | ZLE",
+    "seoDescription": "Černá mikina ZLE ICE Cream s výrazným motivem. Streetový kus z e-shopu ZLE."
+  },
+  "mikina-zle-sb-camo-cofe": {
+    "displayName": "Mikina ZLE SB – Camo/cofe",
+    "description": "Mikina ZLE SB v camo/cofe provedení. Výrazný kus pro ty, co nejedou podle čistých pravidel.",
+    "badges": ["ZLE", "SB"],
+    "tags": ["mikina", "camo", "sb", "skate", "zle"],
+    "seoTitle": "Mikina ZLE SB – Camo/cofe | ZLE",
+    "seoDescription": "Mikina ZLE SB v camo/cofe provedení. Výrazný streetový kus z e-shopu ZLE."
+  },
+  "panske-tricko-zle-skateboards-abstract-black-khaky": {
+    "displayName": "Pánské tričko ZLE Abstract – black/khaky",
+    "description": "Pánské tričko ZLE Abstract v kombinaci black/khaky. Čistý skate motiv bez zbytečné omáčky.",
+    "badges": ["ZLE"],
+    "tags": ["tričko", "abstract", "skateboards", "skate", "zle"],
+    "seoTitle": "Pánské tričko ZLE Abstract – black/khaky | ZLE",
+    "seoDescription": "Pánské tričko ZLE Abstract v kombinaci black/khaky. Skate motiv bez zbytečné omáčky."
+  }
+}
