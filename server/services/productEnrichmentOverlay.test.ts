@@ -9,7 +9,7 @@ import {
   __resetProductEnrichmentManifestCacheForTests,
   loadProductEnrichmentManifest,
   toPublicProduct,
-} from "./productEnrichmentOverlay";
+} from "./productEnrichmentOverlay.ts";
 
 const baseProduct: Product = {
   id: "p-1",
