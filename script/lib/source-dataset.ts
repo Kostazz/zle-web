@@ -50,6 +50,11 @@ export type SourceProductRecord = {
   imageUrls: string[];
   downloadedImages: string[];
   ingestedImagePaths?: string[];
+  ingestedImages?: Array<{
+    path: string;
+    originalImageUrl: string;
+    originalImageIndex: number;
+  }>;
   downloadedImageHashes: string[];
   fingerprint: string;
 };

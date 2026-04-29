@@ -14,6 +14,7 @@ type IngestManifestProduct = {
   sourceProductKey: string;
   imageCount: number;
   ingestedImagePaths: string[];
+  ingestedImages: Array<{ path: string; originalImageUrl: string; originalImageIndex: number }>;
   downloadedImageHashes: string[];
 };
 
@@ -162,6 +163,7 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
     const productRoot = assertInsideRoot(outputRoot, path.join(outputRoot, product.sourceProductKey), "Product image dir");
     const limit = Math.min(product.imageUrls.length, args.maxImagesPerProduct ?? product.imageUrls.length);
     const ingestedImagePaths: string[] = [];
+    const ingestedImages: Array<{ path: string; originalImageUrl: string; originalImageIndex: number }> = [];
     const downloadedImageHashes: string[] = [];
 
     for (let i = 0; i < limit; i++) {
@@ -170,11 +172,16 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
         const normalized = normalizeAllowedUrl(imageUrl).toString();
         const fetched = await safeFetchBinary(normalized, DEFAULT_FETCH_LIMITS, "image");
         const ext = inferExt(normalized, fetched.contentType);
-        const fileName = `${String(i + 1).padStart(2, "0")}${ext}`;
+        const fileName = `${String(ingestedImagePaths.length + 1).padStart(2, "0")}${ext}`;
         const absoluteTarget = assertInsideRoot(productRoot, path.join(productRoot, fileName), "Image target");
         const relativeTarget = path.relative(process.cwd(), absoluteTarget).split(path.sep).join("/");
         if (!args.validateOnly) await safeWriteBinary(absoluteTarget, fetched.body);
         ingestedImagePaths.push(relativeTarget);
+        ingestedImages.push({
+          path: relativeTarget,
+          originalImageUrl: imageUrl,
+          originalImageIndex: i,
+        });
         downloadedImageHashes.push(sha256(fetched.body));
         downloadedImageCount += 1;
       } catch (error) {
@@ -189,11 +196,13 @@ export async function runTotalboardshopSourceIngest(args: CliArgs): Promise<Inge
     }
 
     product.ingestedImagePaths = ingestedImagePaths;
+    product.ingestedImages = ingestedImages;
     product.downloadedImageHashes = downloadedImageHashes;
     manifestProducts.push({
       sourceProductKey: product.sourceProductKey,
       imageCount: ingestedImagePaths.length,
       ingestedImagePaths,
+      ingestedImages,
       downloadedImageHashes,
     });
   }

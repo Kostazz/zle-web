@@ -137,3 +137,17 @@ test("regression: front/back stay ahead of size-specification image", () => {
     "/tmp/kapybara-size-specification.jpg",
   ]);
 });
+
+test("roleHintPath classification never replaces local sourcePath", () => {
+  const localPath = "tmp/source-images/run/product/01.jpg";
+  const resolved = resolveGalleryImageOrder([
+    {
+      sourcePath: localPath,
+      originalIndex: 0,
+      roleHintPath: "https://totalboardshop.cz/wp-content/uploads/front-model.jpg",
+    },
+  ]);
+  assert.equal(resolved.status, "ok");
+  assert.equal(resolved.ordered[0]?.sourcePath, localPath);
+  assert.equal(resolved.ordered[0]?.role, "product");
+});
