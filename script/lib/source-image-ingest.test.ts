@@ -119,7 +119,7 @@ test("ingest fails closed for malformed or forbidden image urls and prevents wri
   assert.equal(fs.existsSync(path.join("tmp", "source-images", runId)), false);
 
   const traversalRunId = uniqueRunId("ingest-traversal");
-  const traversalProduct = createProduct(traversalRunId, ["https://totalboardshop.cz/wp-content/uploads/a.jpg"]);
+  const traversalProduct = createProduct(traversalRunId, ["https://totalboardshop.cz/wp-content/uploads/front-model.jpg"]);
   traversalProduct.sourceProductKey = "../escape";
   await writeSourceFixture(traversalRunId, [traversalProduct]);
   const originalFetch = globalThis.fetch;

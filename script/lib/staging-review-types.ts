@@ -7,6 +7,7 @@ export type ApprovedStagingItem = {
   resolutionType: ApprovedStagingResolution;
   approvedLocalProductId: string | null;
   sourceImagePaths: string[];
+  sourceImageRoleHints?: Array<string | null>;
   sourceUrl: string;
   title: string;
   imageCount: number;

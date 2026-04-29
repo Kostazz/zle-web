@@ -13,6 +13,7 @@ export type GalleryImageRole =
 export type GalleryImageCandidate = {
   sourcePath: string;
   originalIndex: number;
+  roleHintPath?: string;
 };
 
 export type ClassifiedGalleryImage = GalleryImageCandidate & {
@@ -111,10 +112,17 @@ export function resolveGalleryImageOrder(candidates: GalleryImageCandidate[]): {
   ordered: ClassifiedGalleryImage[];
   reason: string;
 } {
-  const classified = candidates.map((candidate) => ({
-    ...candidate,
-    ...classifyGalleryImageRole(candidate.sourcePath),
-  }));
+  const classified = candidates.map((candidate) => {
+    const classificationPath = candidate.roleHintPath ?? candidate.sourcePath;
+    const classifiedRole = classifyGalleryImageRole(classificationPath);
+    return {
+      ...candidate,
+      sourcePath: candidate.sourcePath,
+      role: classifiedRole.role,
+      confidence: classifiedRole.confidence,
+      reason: classifiedRole.reason,
+    };
+  });
   const safeHero = classified.find((item) => ["product", "product_detail", "back_detail", "fabric_detail"].includes(item.role));
   if (!safeHero) {
     return { status: "review_required", ordered: classified, reason: "No safe product-like hero image candidate." };

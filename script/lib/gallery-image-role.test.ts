@@ -137,3 +137,28 @@ test("regression: front/back stay ahead of size-specification image", () => {
     "/tmp/kapybara-size-specification.jpg",
   ]);
 });
+
+test("role hint URLs are used while keeping local source paths in ordered output", () => {
+  const resolved = resolveGalleryImageOrder([
+    { sourcePath: "images/p/01.jpg", roleHintPath: "https://host/front-model.jpg", originalIndex: 0 },
+    { sourcePath: "images/p/02.jpg", roleHintPath: "https://host/size-chart.jpg", originalIndex: 1 },
+    { sourcePath: "images/p/03.jpg", roleHintPath: "https://host/dsc0734-scaled.jpg", originalIndex: 2 },
+  ]);
+  assert.equal(resolved.status, "ok");
+  assert.deepEqual(resolved.ordered.map((item) => item.sourcePath), [
+    "images/p/01.jpg",
+    "images/p/03.jpg",
+    "images/p/02.jpg",
+  ]);
+  assert.equal(resolved.ordered[0].role, "product");
+  assert.equal(resolved.ordered[2].role, "size_chart");
+});
+
+test("bare numeric local paths without role hints remain fail-closed", () => {
+  const resolved = resolveGalleryImageOrder([
+    { sourcePath: "images/p/01.jpg", originalIndex: 0 },
+    { sourcePath: "images/p/02.jpg", originalIndex: 1 },
+    { sourcePath: "images/p/03.jpg", originalIndex: 2 },
+  ]);
+  assert.equal(resolved.status, "review_required");
+});

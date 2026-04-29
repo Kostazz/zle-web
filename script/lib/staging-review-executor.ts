@@ -353,6 +353,12 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
       return resolved;
     });
 
+    const hasAlignedRoleHints = sourceProduct.imageUrls.length >= sourceImagePaths.length;
+    const sourceImageRoleHints = sourceImagePaths.map((_, index) => {
+      if (!hasAlignedRoleHints) return sourceProduct.imageUrls[index] ?? null;
+      return sourceProduct.imageUrls[index] ?? null;
+    });
+
     if (sourceImagePaths.length < 1) throw new Error(`Approved item has no source images: ${decision.sourceProductKey}`);
     const stagingTargetKey = createStagingTargetKey({
       sourceProductKey: decision.sourceProductKey,
@@ -373,6 +379,7 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
       resolutionType: decision.resolutionType,
       approvedLocalProductId: decision.approvedLocalProductId ?? null,
       sourceImagePaths,
+      sourceImageRoleHints,
       sourceUrl: sourceProduct.sourceUrl,
       title: sourceProduct.title,
       imageCount: sourceImagePaths.length,
@@ -389,7 +396,11 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
 }
 
 async function stageItem(runId: string, outputRoot: string, item: ApprovedStagingItem, validateOnly: boolean): Promise<StagingExecutionItem> {
-  const ordering = resolveGalleryImageOrder(item.sourceImagePaths.map((sourcePath, originalIndex) => ({ sourcePath, originalIndex })));
+  const ordering = resolveGalleryImageOrder(item.sourceImagePaths.map((sourcePath, originalIndex) => ({
+    sourcePath,
+    originalIndex,
+    roleHintPath: item.sourceImageRoleHints?.[originalIndex] ?? undefined,
+  })));
   const orderedSourcePaths = ordering.ordered.map((entry) => entry.sourcePath);
   const itemWithResolvedOrdering: ApprovedStagingItem = { ...item, sourceImagePaths: orderedSourcePaths };
   const plannedOutputs = plannedOutputsForItem(outputRoot, runId, itemWithResolvedOrdering);
