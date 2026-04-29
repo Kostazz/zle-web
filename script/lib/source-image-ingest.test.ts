@@ -94,6 +94,18 @@ test("ingest downloads remote images into trusted local root and updates source 
       `tmp/source-images/${runId}/${products[0]?.sourceProductKey}/01.jpg`,
       `tmp/source-images/${runId}/${products[0]?.sourceProductKey}/02.jpg`,
     ]);
+    assert.deepEqual(products[0]?.ingestedImages, [
+      {
+        path: `tmp/source-images/${runId}/${products[0]?.sourceProductKey}/01.jpg`,
+        originalImageUrl: "https://totalboardshop.cz/wp-content/uploads/a.jpg",
+        originalImageIndex: 0,
+      },
+      {
+        path: `tmp/source-images/${runId}/${products[0]?.sourceProductKey}/02.jpg`,
+        originalImageUrl: "https://totalboardshop.cz/wp-content/uploads/b.jpg",
+        originalImageIndex: 1,
+      },
+    ]);
     assert.equal(products[0]?.downloadedImages[0], "https://totalboardshop.cz/wp-content/uploads/a.jpg");
     assert.equal(products[0]?.downloadedImageHashes.length, 2);
     assert.equal(fs.existsSync(path.join("tmp", "source-images", runId, products[0]!.sourceProductKey, "01.jpg")), true);
@@ -119,7 +131,7 @@ test("ingest fails closed for malformed or forbidden image urls and prevents wri
   assert.equal(fs.existsSync(path.join("tmp", "source-images", runId)), false);
 
   const traversalRunId = uniqueRunId("ingest-traversal");
-  const traversalProduct = createProduct(traversalRunId, ["https://totalboardshop.cz/wp-content/uploads/a.jpg"]);
+  const traversalProduct = createProduct(traversalRunId, ["https://totalboardshop.cz/wp-content/uploads/front-model.jpg"]);
   traversalProduct.sourceProductKey = "../escape";
   await writeSourceFixture(traversalRunId, [traversalProduct]);
   const originalFetch = globalThis.fetch;
@@ -168,6 +180,9 @@ test("ingest continues on per-image HTTP failure and still writes ingest artifac
 
     assert.equal(manifest.products[0]?.imageCount, 2);
     assert.equal(manifest.products[0]?.ingestedImagePaths.length, 2);
+    assert.equal(manifest.products[0]?.ingestedImages.length, 2);
+    assert.equal(manifest.products[0]?.ingestedImages[0]?.originalImageIndex, 0);
+    assert.equal(manifest.products[0]?.ingestedImages[1]?.originalImageIndex, 2);
     assert.equal(manifest.products[0]?.downloadedImageHashes.length, 2);
 
     const product = manifest.products[0]!;
@@ -192,7 +207,7 @@ test("reviewed staging consumes ingested local paths and still rejects remote-on
   const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ingest-stage-"));
   const runId = uniqueRunId("stage-ingested");
   const remoteOnlyRunId = uniqueRunId("stage-remote-only");
-  const product = createProduct(runId, ["https://totalboardshop.cz/wp-content/uploads/a.jpg"]);
+  const product = createProduct(runId, ["https://totalboardshop.cz/wp-content/uploads/front-model.jpg"]);
   await writeSourceFixture(runId, [product]);
   const curationDir = path.join(tmpRoot, "curation");
   const reviewDir = path.join(tmpRoot, "review");
@@ -260,7 +275,7 @@ test("reviewed staging consumes ingested local paths and still rejects remote-on
       manifestDir,
       validateOnly: false,
     });
-    assert.equal(staged.report.summary.stagedItems, 1);
+    assert.equal(staged.report.summary.selectedItems, 1);
 
     await writeSourceFixture(remoteOnlyRunId, [createProduct(remoteOnlyRunId, ["https://totalboardshop.cz/wp-content/uploads/remote.jpg"])]);
     await fs.promises.writeFile(path.join(curationDir, `${remoteOnlyRunId}.curation.json`), JSON.stringify({
@@ -288,6 +303,61 @@ test("reviewed staging consumes ingested local paths and still rejects remote-on
     globalThis.fetch = originalFetch;
     await fs.promises.rm(path.join("tmp", "source-datasets", runId), { recursive: true, force: true });
     await fs.promises.rm(path.join("tmp", "source-datasets", remoteOnlyRunId), { recursive: true, force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", runId), { recursive: true, force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", `${runId}.ingest.json`), { force: true });
+    await fs.promises.rm(path.join("tmp", "source-images", `${runId}.summary.md`), { force: true });
+    await fs.promises.rm(path.join("tmp", "agent-staging", runId), { recursive: true, force: true });
+    await fs.promises.rm(path.join("tmp", "agent-manifests", `${runId}.staging.json`), { force: true });
+    await fs.promises.rm(path.join("tmp", "agent-manifests", `${runId}.staging-summary.md`), { force: true });
+    await fs.promises.rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test("staging validate-only uses explicit ingest provenance for role hints and stays fail-closed without it", async () => {
+  const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ingest-stage-prov-"));
+  const runId = uniqueRunId("stage-prov");
+  const product = createProduct(runId, [
+    "https://totalboardshop.cz/wp-content/uploads/front-model.jpg",
+    "https://totalboardshop.cz/wp-content/uploads/size-chart.jpg",
+    "https://totalboardshop.cz/wp-content/uploads/back-detail.jpg",
+  ]);
+  await writeSourceFixture(runId, [product]);
+  const curationDir = path.join(tmpRoot, "curation");
+  const reviewDir = path.join(tmpRoot, "review");
+  const stagingDir = path.join(process.cwd(), "tmp", "agent-staging");
+  const manifestDir = path.join(process.cwd(), "tmp", "agent-manifests");
+
+  const image = await createImageBuffer({ r: 21, g: 42, b: 63 });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(image, { status: 200, headers: { "content-type": "image/jpeg" } })) as typeof fetch;
+
+  try {
+    await runTotalboardshopSourceIngest({ runId, validateOnly: false });
+    await fs.promises.mkdir(curationDir, { recursive: true });
+    await fs.promises.mkdir(reviewDir, { recursive: true });
+    await fs.promises.writeFile(path.join(curationDir, `${runId}.curation.json`), JSON.stringify({
+      runId, sourceRunId: runId, createdAt: new Date().toISOString(), mode: "bootstrap-replacement",
+      summary: { totalItems: 1, acceptedCandidates: 1, reviewRequired: 0, rejected: 0, deterministicMatches: 0, proposedNewCandidates: 1, malformedRejected: 0 },
+      items: [{ sourceProductKey: product.sourceProductKey, sourceUrl: product.sourceUrl, title: product.title, brandNormalized: "zle", categoryRaw: product.categoryRaw, structured: product.structured, priceCzk: product.priceCzk, sizes: product.sizes, imageCount: 3, proposedLocalProductId: null, reconciliation: "ACCEPT", delta: "NEW", curationDecision: "ACCEPT_CANDIDATE", reasonCodes: ["accepted_valid_new_candidate"], requiresHumanReview: false, fingerprints: { identityFingerprint: "a", contentFingerprint: "b", imageFingerprint: "c" } }],
+    }, null, 2), "utf8");
+    await fs.promises.writeFile(path.join(reviewDir, `${runId}.review.json`), JSON.stringify({ runId, createdAt: new Date().toISOString(), sourceRunId: runId, decisions: [{ sourceProductKey: product.sourceProductKey, decision: "approved", resolutionType: "new_candidate" }] }, null, 2), "utf8");
+
+    const staged = await runApprovedStagingExecutor({ runId, reviewRunId: runId, sourceRoot: path.join(process.cwd(), "tmp", "source-datasets"), curationDir, reviewDir, outputDir: stagingDir, manifestDir, validateOnly: true });
+    assert.equal(staged.report.summary.failedItems, 0);
+    assert.ok(staged.report.items[0]?.reasonCodes.includes("role_order_applied"));
+    assert.ok(staged.report.items[0]?.reasonCodes.includes("size_chart_deprioritized"));
+    assert.ok(staged.report.items[0]?.plannedOutputs.every((entry) => entry.startsWith("tmp/agent-staging/")));
+
+    const productsPath = path.join("tmp", "source-datasets", runId, "products.json");
+    const parsed = JSON.parse(await fs.promises.readFile(productsPath, "utf8")) as SourceProductRecord[];
+    delete parsed[0]!.ingestedImages;
+    await fs.promises.writeFile(productsPath, JSON.stringify(parsed, null, 2), "utf8");
+    const withoutProvenance = await runApprovedStagingExecutor({ runId, reviewRunId: runId, sourceRoot: path.join(process.cwd(), "tmp", "source-datasets"), curationDir, reviewDir, outputDir: stagingDir, manifestDir, validateOnly: true });
+    assert.equal(withoutProvenance.report.items[0]?.status, "failed");
+    assert.ok(withoutProvenance.report.items[0]?.reasonCodes.includes("review_required_no_safe_hero"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    await fs.promises.rm(path.join("tmp", "source-datasets", runId), { recursive: true, force: true });
     await fs.promises.rm(path.join("tmp", "source-images", runId), { recursive: true, force: true });
     await fs.promises.rm(path.join("tmp", "source-images", `${runId}.ingest.json`), { force: true });
     await fs.promises.rm(path.join("tmp", "source-images", `${runId}.summary.md`), { force: true });

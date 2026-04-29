@@ -353,6 +353,20 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
       return resolved;
     });
 
+    const sourceImageRoleHints = selectedImageCandidate?.label === "ingested images root"
+      ? (sourceProduct.ingestedImages ?? [])
+        .filter((entry) => entry && typeof entry.path === "string" && typeof entry.originalImageUrl === "string" && Number.isInteger(entry.originalImageIndex))
+        .map((entry) => {
+          const resolvedSourcePath = path.resolve(path.join(selectedImageCandidate.basePath, entry.path));
+          if (!isPathInside(selectedImageCandidate.root, resolvedSourcePath)) return null;
+          return {
+            sourcePath: resolvedSourcePath,
+            roleHintPath: entry.originalImageUrl,
+          };
+        })
+        .filter((entry): entry is { sourcePath: string; roleHintPath: string } => entry !== null)
+      : [];
+
     if (sourceImagePaths.length < 1) throw new Error(`Approved item has no source images: ${decision.sourceProductKey}`);
     const stagingTargetKey = createStagingTargetKey({
       sourceProductKey: decision.sourceProductKey,
@@ -373,6 +387,7 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
       resolutionType: decision.resolutionType,
       approvedLocalProductId: decision.approvedLocalProductId ?? null,
       sourceImagePaths,
+      sourceImageRoleHints,
       sourceUrl: sourceProduct.sourceUrl,
       title: sourceProduct.title,
       imageCount: sourceImagePaths.length,
@@ -389,7 +404,12 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
 }
 
 async function stageItem(runId: string, outputRoot: string, item: ApprovedStagingItem, validateOnly: boolean): Promise<StagingExecutionItem> {
-  const ordering = resolveGalleryImageOrder(item.sourceImagePaths.map((sourcePath, originalIndex) => ({ sourcePath, originalIndex })));
+  const roleHintBySourcePath = new Map((item.sourceImageRoleHints ?? []).map((entry) => [entry.sourcePath, entry.roleHintPath]));
+  const ordering = resolveGalleryImageOrder(item.sourceImagePaths.map((sourcePath, originalIndex) => ({
+    sourcePath,
+    originalIndex,
+    roleHintPath: roleHintBySourcePath.get(sourcePath),
+  })));
   const orderedSourcePaths = ordering.ordered.map((entry) => entry.sourcePath);
   const itemWithResolvedOrdering: ApprovedStagingItem = { ...item, sourceImagePaths: orderedSourcePaths };
   const plannedOutputs = plannedOutputsForItem(outputRoot, runId, itemWithResolvedOrdering);

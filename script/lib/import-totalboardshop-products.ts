@@ -86,6 +86,11 @@ const sourceProductSchema: z.ZodType<SourceProductRecord> = z.object({
   imageUrls: z.array(z.string()),
   downloadedImages: z.array(z.string()),
   ingestedImagePaths: z.array(z.string()).optional(),
+  ingestedImages: z.array(z.object({
+    path: z.string(),
+    originalImageUrl: z.string(),
+    originalImageIndex: z.number().int().nonnegative(),
+  }).strict()).optional(),
   downloadedImageHashes: z.array(z.string()),
   fingerprint: z.string().min(1),
 }).strict();
