@@ -68,6 +68,11 @@ export function ProductModal({ product }: ProductModalProps) {
   const isSoldOut = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
   const maxQuantity = Math.min(product.stock, 10);
+  const visibleBadges = product.badges?.filter((badge) => badge.trim().length > 0) ?? [];
+  const visibleTags = product.tags?.filter((tag) => tag.trim().length > 0) ?? [];
+  const hasBadges = visibleBadges.length > 0;
+  const hasTags = visibleTags.length > 0;
+  const hasProductMeta = Boolean(product.material || product.dimensions);
 
   useEffect(() => {
     if (!isOpen) {
@@ -200,11 +205,53 @@ export function ProductModal({ product }: ProductModalProps) {
                   </span>
                 )}
               </div>
+              {hasBadges && (
+                <div className="flex flex-wrap gap-2 mt-2" data-testid="product-badges">
+                  {visibleBadges.map((badge, index) => (
+                    <span
+                      key={`${badge}-${index}`}
+                      className="font-heading text-[10px] md:text-xs tracking-wider uppercase text-black bg-white px-2 py-1 border border-white"
+                      data-testid={`product-badge-${index}`}
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              )}
             </DialogHeader>
 
             <p className="font-sans text-white/70 text-sm mb-3 md:mb-6 leading-relaxed max-h-16 overflow-hidden md:max-h-none">
               {product.description}
             </p>
+            {hasProductMeta && (
+              <div className="space-y-2 mb-3 md:mb-6 border-t border-white/10 pt-3" data-testid="product-meta">
+                {product.material && (
+                  <div className="grid grid-cols-[5.5rem_1fr] gap-3" data-testid="product-material">
+                    <span className="font-heading text-xs font-bold text-white/50 tracking-wider">MATERIÁL</span>
+                    <span className="font-sans text-sm text-white/75">{product.material}</span>
+                  </div>
+                )}
+                {product.dimensions && (
+                  <div className="grid grid-cols-[5.5rem_1fr] gap-3" data-testid="product-dimensions">
+                    <span className="font-heading text-xs font-bold text-white/50 tracking-wider">ROZMĚRY</span>
+                    <span className="font-sans text-sm text-white/75">{product.dimensions}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {hasTags && (
+              <div className="mb-3 md:mb-6 flex flex-wrap gap-2" data-testid="product-tags">
+                {visibleTags.map((tag, index) => (
+                  <span
+                    key={`${tag}-${index}`}
+                    className="font-sans text-xs text-white/60 border border-white/15 px-2 py-1 rounded-sm"
+                    data-testid={`product-tag-${index}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {!isSoldOut && (
               <>
