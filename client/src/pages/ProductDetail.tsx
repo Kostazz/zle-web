@@ -11,7 +11,7 @@ import { ArrowLeft, ShoppingBag } from "lucide-react";
 import {
   formatSizeLabel,
   getDefaultSelectedSize,
-  getOwnedProductGalleryImages,
+  getProductImageCandidates,
   getSelectableSizes,
   requiresExplicitSizeSelection,
 } from "@/lib/product-ui";
@@ -34,8 +34,20 @@ export default function ProductDetail() {
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [hiddenImageSet, setHiddenImageSet] = useState<Set<string>>(new Set());
   const { addItem } = useCart();
   const { toast } = useToast();
+  const imageCandidates = useMemo(() => (product ? getProductImageCandidates(product) : []), [product]);
+  const images = useMemo(
+    () => imageCandidates.filter((image) => !hiddenImageSet.has(image)).slice(0, 8),
+    [imageCandidates, hiddenImageSet]
+  );
+  const mainImage = images[selectedImageIndex] ?? images[0] ?? "";
+  const selectableSizes = product ? getSelectableSizes(product) : [];
+  const defaultSelectedSize = product ? getDefaultSelectedSize(product) : null;
+  const sizeSelectionRequired = product ? requiresExplicitSizeSelection(product) : false;
+  const resolvedSize = selectedSize ?? defaultSelectedSize;
+  const isSoldOut = product ? product.stock <= 0 : true;
 
   const productState = isLoading ? "loading" : error || !product ? "NOT_FOUND" : "found";
 
@@ -56,6 +68,36 @@ export default function ProductDetail() {
       robotsTag.remove();
     }
   }, [productState]);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+    setHiddenImageSet(new Set());
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (images.length === 0) {
+      if (selectedImageIndex !== 0) {
+        setSelectedImageIndex(0);
+      }
+      return;
+    }
+
+    if (selectedImageIndex >= images.length) {
+      setSelectedImageIndex(images.length - 1);
+    }
+  }, [images, selectedImageIndex]);
+
+  const hideImage = (image: string) => {
+    setHiddenImageSet((current) => {
+      if (current.has(image)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(image);
+      return next;
+    });
+  };
 
   if (productState === "loading") {
     return (
@@ -81,14 +123,6 @@ export default function ProductDetail() {
   if (!product) {
     return <NotFound />;
   }
-
-  const images = getOwnedProductGalleryImages(product, 8);
-  const mainImage = images[selectedImageIndex] ?? images[0] ?? "";
-  const selectableSizes = getSelectableSizes(product);
-  const defaultSelectedSize = getDefaultSelectedSize(product);
-  const sizeSelectionRequired = requiresExplicitSizeSelection(product);
-  const resolvedSize = selectedSize ?? defaultSelectedSize;
-  const isSoldOut = product.stock <= 0;
 
   const handleAddToCart = () => {
     if (isSoldOut) {
@@ -142,7 +176,11 @@ export default function ProductDetail() {
                     src={mainImage}
                     alt={`${product.name} ZLE streetwear`}
                     className="w-full h-full object-cover"
-                    onError={() => setSelectedImageIndex((current) => current + 1)}
+                    onError={() => {
+                      if (mainImage) {
+                        hideImage(mainImage);
+                      }
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-white/50">Bez obrázku</div>
@@ -163,6 +201,7 @@ export default function ProductDetail() {
                         src={image}
                         alt={`${product.name} ZLE streetwear ${index + 1}`}
                         className="w-full h-full object-cover"
+                        onError={() => hideImage(image)}
                       />
                     </button>
                   ))}
@@ -174,6 +213,45 @@ export default function ProductDetail() {
               <h1 className="font-display text-4xl text-white tracking-tight">{product.name}</h1>
               <p className="font-sans text-2xl font-semibold text-white">{product.price} Kč</p>
               <p className="text-white/70 leading-relaxed">{product.description}</p>
+
+              {(product.material || product.dimensions || (product.badges?.length ?? 0) > 0 || (product.tags?.length ?? 0) > 0) && (
+                <div className="space-y-4 rounded-sm border border-white/10 bg-white/[0.02] p-4">
+                  <p className="font-heading text-xs tracking-wider text-white/55">DETAILY</p>
+                  {(product.badges?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {(product.badges ?? []).map((badge) => (
+                        <span key={badge} className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/90">
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {product.material && (
+                    <div>
+                      <p className="font-heading text-xs tracking-wider text-white/55">MATERIÁL</p>
+                      <p className="mt-1 text-sm text-white/85">{product.material}</p>
+                    </div>
+                  )}
+                  {product.dimensions && (
+                    <div>
+                      <p className="font-heading text-xs tracking-wider text-white/55">ROZMĚRY</p>
+                      <p className="mt-1 text-sm text-white/85">{product.dimensions}</p>
+                    </div>
+                  )}
+                  {(product.tags?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="font-heading text-xs tracking-wider text-white/55">TAGY</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(product.tags ?? []).map((tag) => (
+                          <span key={tag} className="rounded-full border border-white/15 bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/70">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <p className="font-heading text-xs tracking-wider text-white/60 mb-2">VELIKOSTI</p>
