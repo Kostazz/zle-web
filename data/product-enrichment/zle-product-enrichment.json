@@ -257,7 +257,8 @@
     "badges": ["ZLE"],
     "tags": ["dětské tričko", "army", "skate", "zle"],
     "seoTitle": "Dětské tričko ZLE Army – tyrkys | ZLE",
-    "seoDescription": "Dětské tričko ZLE Army v tyrkysové barvě. Malý kus ZLE energie pro další generaci."
+    "seoDescription": "Dětské tričko ZLE Army v tyrkysové barvě. Malý kus ZLE energie pro další generaci.",
+    "material": "100 % bavlna"
   },
   "detske-tricko-zle-planet-on-fire-tyrkys": {
     "displayName": "Dětské tričko ZLE Planet on Fire – tyrkys",
@@ -265,7 +266,8 @@
     "badges": ["ZLE"],
     "tags": ["dětské tričko", "planet on fire", "skate", "zle"],
     "seoTitle": "Dětské tričko ZLE Planet on Fire – tyrkys | ZLE",
-    "seoDescription": "Dětské tričko ZLE Planet on Fire v tyrkysové barvě. Motiv pro malé lidi s velkým výrazem."
+    "seoDescription": "Dětské tričko ZLE Planet on Fire v tyrkysové barvě. Motiv pro malé lidi s velkým výrazem.",
+    "material": "100 % bavlna"
   },
   "klicenka-zle-skateboarding-color": {
     "displayName": "Klíčenka ZLE Skateboarding – color",
@@ -298,7 +300,8 @@
     "badges": ["ZLE"],
     "tags": ["mikina", "ice cream", "skate", "zle"],
     "seoTitle": "Mikina ZLE ICE Cream – Jade | ZLE",
-    "seoDescription": "Mikina ZLE ICE Cream v Jade variantě. Výrazný kus pro město, spot i špinavý den."
+    "seoDescription": "Mikina ZLE ICE Cream v Jade variantě. Výrazný kus pro město, spot i špinavý den.",
+    "material": "80 % bavlna / 20 % polyester"
   },
   "mikina-zle-ice-cream-peach": {
     "displayName": "Mikina ZLE ICE Cream – Peach",
@@ -306,7 +309,8 @@
     "badges": ["ZLE"],
     "tags": ["mikina", "ice cream", "skate", "zle"],
     "seoTitle": "Mikina ZLE ICE Cream – Peach | ZLE",
-    "seoDescription": "Mikina ZLE ICE Cream v Peach variantě. Výrazný kus pro město, spot i špinavý den."
+    "seoDescription": "Mikina ZLE ICE Cream v Peach variantě. Výrazný kus pro město, spot i špinavý den.",
+    "material": "80 % bavlna / 20 % polyester"
   },
   "mikina-zle-ice-cream-spring-green": {
     "displayName": "Mikina ZLE ICE Cream – Spring Green",
@@ -314,7 +318,8 @@
     "badges": ["ZLE"],
     "tags": ["mikina", "ice cream", "skate", "zle"],
     "seoTitle": "Mikina ZLE ICE Cream – Spring Green | ZLE",
-    "seoDescription": "Mikina ZLE ICE Cream v zelené Spring variantě. Výrazný kus pro město, spot i špinavý den."
+    "seoDescription": "Mikina ZLE ICE Cream v zelené Spring variantě. Výrazný kus pro město, spot i špinavý den.",
+    "material": "80 % bavlna / 20 % polyester"
   },
   "mikina-zle-skateboards-black-tan": {
     "displayName": "Mikina ZLE Skateboards – black/tan",
@@ -391,7 +396,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "abstract", "skateboards", "skate", "zle"],
     "seoTitle": "Pánské tričko ZLE Abstract – white/green | ZLE",
-    "seoDescription": "Pánské tričko ZLE Abstract v kombinaci white/green. Skate motiv bez zbytečné omáčky."
+    "seoDescription": "Pánské tričko ZLE Abstract v kombinaci white/green. Skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-black-white": {
     "displayName": "Tričko ZLE Skateboarding – black/white",
@@ -408,7 +414,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – blue/white | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci blue/white. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci blue/white. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-green-white": {
     "displayName": "Tričko ZLE Skateboarding – green/white",
@@ -416,7 +423,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – green/white | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci green/white. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci green/white. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-orange-black": {
     "displayName": "Tričko ZLE Skateboarding – orange/black",
@@ -424,7 +432,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – orange/black | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci orange/black. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci orange/black. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-pink-white": {
     "displayName": "Tričko ZLE Skateboarding – pink/white",
@@ -432,7 +441,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – pink/white | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci pink/white. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci pink/white. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-red-white": {
     "displayName": "Tričko ZLE Skateboarding – red/white",
@@ -458,7 +468,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – tyrkys/white | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci tyrkys/white. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci tyrkys/white. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboarding-white-black": {
     "displayName": "Tričko ZLE Skateboarding – white/black",
@@ -466,7 +477,8 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "skateboarding", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboarding – white/black | ZLE",
-    "seoDescription": "Tričko ZLE Skateboarding v kombinaci white/black. Čistý skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboarding v kombinaci white/black. Čistý skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   },
   "tricko-zle-skateboards-palm-black": {
     "displayName": "Tričko ZLE Skateboards Palm – black",
