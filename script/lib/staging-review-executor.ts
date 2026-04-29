@@ -12,6 +12,7 @@ import type {
   StagingExecutionReport,
   StagingExecutionSummary,
 } from "./staging-review-types.ts";
+import { resolveGalleryImageOrder } from "./gallery-image-role.ts";
 
 export type ApprovedStagingExecutorInput = {
   runId: string;
@@ -388,7 +389,10 @@ function buildApprovedItems(input: ApprovedStagingExecutorInput): { approvedItem
 }
 
 async function stageItem(runId: string, outputRoot: string, item: ApprovedStagingItem, validateOnly: boolean): Promise<StagingExecutionItem> {
-  const plannedOutputs = plannedOutputsForItem(outputRoot, runId, item);
+  const ordering = resolveGalleryImageOrder(item.sourceImagePaths.map((sourcePath, originalIndex) => ({ sourcePath, originalIndex })));
+  const orderedSourcePaths = ordering.ordered.map((entry) => entry.sourcePath);
+  const itemWithResolvedOrdering: ApprovedStagingItem = { ...item, sourceImagePaths: orderedSourcePaths };
+  const plannedOutputs = plannedOutputsForItem(outputRoot, runId, itemWithResolvedOrdering);
   const execution: StagingExecutionItem = {
     sourceProductKey: item.sourceProductKey,
     resolutionType: item.resolutionType,
@@ -401,13 +405,24 @@ async function stageItem(runId: string, outputRoot: string, item: ApprovedStagin
   };
 
   try {
+    if (ordering.status !== "ok") {
+      execution.status = "failed";
+      execution.reasonCodes.push("review_required_no_safe_hero");
+      execution.errorMessage = ordering.reason;
+      return execution;
+    }
     if (validateOnly) {
+      if (orderedSourcePaths.join("\n") !== item.sourceImagePaths.join("\n")) execution.reasonCodes.push("role_order_applied");
+      if (ordering.ordered.some((entry, index) => entry.role === "size_chart" && index > 0)) execution.reasonCodes.push("size_chart_deprioritized");
       execution.status = "skipped";
       return execution;
     }
 
-    for (let index = 0; index < item.sourceImagePaths.length; index++) {
-      const sourceImagePath = item.sourceImagePaths[index];
+    if (orderedSourcePaths.join("\n") !== item.sourceImagePaths.join("\n")) execution.reasonCodes.push("role_order_applied");
+    if (ordering.ordered.some((entry, index) => entry.role === "size_chart" && index > 0)) execution.reasonCodes.push("size_chart_deprioritized");
+
+    for (let index = 0; index < itemWithResolvedOrdering.sourceImagePaths.length; index++) {
+      const sourceImagePath = itemWithResolvedOrdering.sourceImagePaths[index];
       const slot = index === 0 ? "cover" : String(index).padStart(2, "0");
       const outputDir = createStagingOutputDir(outputRoot, runId, item.stagingTargetKey);
       const outputBase = path.join(outputDir, slot);
