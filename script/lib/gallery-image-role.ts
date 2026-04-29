@@ -27,7 +27,7 @@ const SIZE_CHART_HINTS = [
   "size-guide", "size guide", "sizing-guide", "sizing guide",
 ];
 const LOGO_HINTS = ["logo", "brandmark", "wordmark", "logotype", "znacka"];
-const TECHNICAL_HINTS = ["spec", "specification", "technical", "tech-sheet", "chart"];
+const TECHNICAL_HINTS = ["specification", "technical", "tech", "sheet"];
 const PRODUCT_HINTS = ["tricko", "tee", "shirt", "hoodie", "mikina", "front", "model"];
 const BACK_HINTS = ["back", "zad", "rear"];
 const FABRIC_HINTS = ["detail", "closeup", "close-up", "texture", "fabric", "material"];
@@ -36,24 +36,39 @@ function normalizeTokenSource(value: string): string {
   return value.toLowerCase().replace(/[_%]+/g, "-");
 }
 
-function hasSizeChartSignal(normalized: string): boolean {
-  if (SIZE_CHART_HINTS.some((hint) => normalized.includes(hint))) return true;
-  const hasSizeToken = /\b(size|sizing|velikost|velikosti)\b/i.test(normalized);
-  const hasChartToken = /\b(chart|guide|tabulka|rozmery|rozměry|measurement|specification|spec)\b/i.test(normalized);
+function tokenizeBasename(baseName: string): string[] {
+  return normalizeTokenSource(baseName)
+    .replace(/\.[a-z0-9]+$/i, "")
+    .split(/[^a-z0-9á-ž]+/i)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function hasCompositeToken(tokens: string[], allowedPhrases: string[]): boolean {
+  const joined = tokens.join("-");
+  return allowedPhrases.some((phrase) => joined.includes(phrase));
+}
+
+function hasSizeChartSignal(normalizedBaseName: string, tokens: string[]): boolean {
+  if (SIZE_CHART_HINTS.some((hint) => normalizedBaseName.includes(hint))) return true;
+  const hasSizeToken = tokens.some((token) => ["size", "sizing", "velikost", "velikosti"].includes(token));
+  const hasChartToken = tokens.some((token) => ["chart", "guide", "tabulka", "rozmery", "rozměry", "measurement", "specification"].includes(token))
+    || hasCompositeToken(tokens, ["size-spec", "size-specification"]);
   return hasSizeToken && hasChartToken;
 }
 
 export function classifyGalleryImageRole(sourcePath: string): Omit<ClassifiedGalleryImage, "originalIndex"> {
   const basename = path.basename(sourcePath).toLowerCase();
-  const normalized = normalizeTokenSource(sourcePath);
+  const normalizedBaseName = normalizeTokenSource(basename);
+  const tokens = tokenizeBasename(basename);
   if (/\.(svg|gif)$/i.test(basename)) return { sourcePath, role: "reject", confidence: "high", reason: "unsupported non-product asset extension" };
-  if (hasSizeChartSignal(normalized)) return { sourcePath, role: "size_chart", confidence: "high", reason: "size-chart keyword/signal in path" };
-  if (BACK_HINTS.some((hint) => normalized.includes(hint))) return { sourcePath, role: "back_detail", confidence: "medium", reason: "back-view keyword in path" };
-  if (FABRIC_HINTS.some((hint) => normalized.includes(hint))) return { sourcePath, role: "fabric_detail", confidence: "medium", reason: "detail/fabric keyword in path" };
-  if (LOGO_HINTS.some((hint) => normalized.includes(hint)) || TECHNICAL_HINTS.some((hint) => normalized.includes(hint))) {
-    return { sourcePath, role: "logo_or_technical", confidence: "medium", reason: "logo/technical keyword in path" };
+  if (hasSizeChartSignal(normalizedBaseName, tokens)) return { sourcePath, role: "size_chart", confidence: "high", reason: "size-chart keyword/signal in basename" };
+  if (BACK_HINTS.some((hint) => tokens.includes(hint))) return { sourcePath, role: "back_detail", confidence: "medium", reason: "back-view keyword in basename" };
+  if (FABRIC_HINTS.some((hint) => tokens.includes(hint))) return { sourcePath, role: "fabric_detail", confidence: "medium", reason: "detail/fabric keyword in basename" };
+  if (LOGO_HINTS.some((hint) => tokens.includes(hint)) || TECHNICAL_HINTS.some((hint) => tokens.includes(hint))) {
+    return { sourcePath, role: "logo_or_technical", confidence: "medium", reason: "logo/technical keyword in basename" };
   }
-  if (PRODUCT_HINTS.some((hint) => normalized.includes(hint))) return { sourcePath, role: "product", confidence: "medium", reason: "product-view keyword in path" };
+  if (PRODUCT_HINTS.some((hint) => tokens.includes(hint))) return { sourcePath, role: "product", confidence: "medium", reason: "product-view keyword in basename" };
   if (/^(cover|front)\.(jpg|jpeg|webp|png)$/i.test(basename)) return { sourcePath, role: "product", confidence: "high", reason: "cover/front filename" };
   if (/^\d{2}\.(jpg|jpeg|webp|png)$/i.test(basename)) {
     return { sourcePath, role: "unknown", confidence: "low", reason: "managed numeric slot filename has no semantic role hint" };

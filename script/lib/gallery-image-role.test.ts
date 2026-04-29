@@ -85,6 +85,23 @@ test("classify marks obvious size-chart/logo keywords conservatively", () => {
   assert.equal(classifyGalleryImageRole("/tmp/size-specification.jpg").role, "size_chart");
 });
 
+test("basename-only classification: parent folder hints must not override front.jpg", () => {
+  assert.equal(classifyGalleryImageRole("/tmp/size-chart-bucket/front.jpg").role, "product");
+  assert.equal(classifyGalleryImageRole("/tmp/backups/front.jpg").role, "product");
+});
+
+test("basename-only classification still detects semantic basename hints", () => {
+  assert.equal(classifyGalleryImageRole("/tmp/backups/back-print.jpg").role, "back_detail");
+});
+
+test("token-safe technical matching: special-front is not matched as spec", () => {
+  assert.equal(classifyGalleryImageRole("/tmp/special-front.jpg").role, "product");
+});
+
+test("spec-logo-chart remains logo/technical without size token", () => {
+  assert.equal(classifyGalleryImageRole("/tmp/spec-logo-chart.png").role, "logo_or_technical");
+});
+
 test("managed numeric slot filename alone does not imply product detail", () => {
   assert.equal(classifyGalleryImageRole("/tmp/01.jpg").role, "unknown");
 });
