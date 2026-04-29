@@ -11,6 +11,12 @@ export function securityHeaders(): RequestHandler {
   const reportOnly = isTruthy(process.env.CSP_REPORT_ONLY);
   const reportUri = (process.env.CSP_REPORT_URI || "").trim();
 
+  const prodScriptSrc = ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com"];
+  const devScriptSrc = ["'self'", "'unsafe-inline'", "https://www.googletagmanager.com", "https://www.google-analytics.com"];
+
+  const prodConnectSrc = ["'self'", "https://www.google-analytics.com", "https://region1.google-analytics.com"];
+  const devConnectSrc = ["'self'", "ws:", "wss:", "http:", "https:"];
+
   const helmetMiddleware = helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "same-site" },
@@ -31,8 +37,8 @@ export function securityHeaders(): RequestHandler {
         "img-src": ["'self'", "data:", "blob:", "https:"],
         "font-src": ["'self'", "data:", "https:"],
         "style-src": ["'self'", "https:", "'unsafe-inline'"],
-        "script-src": ["'self'", "https://www.googletagmanager.com", "https://www.google-analytics.com"],
-        "connect-src": ["'self'", "https://www.google-analytics.com", "https://region1.google-analytics.com"],
+        "script-src": isProd ? prodScriptSrc : devScriptSrc,
+        "connect-src": isProd ? prodConnectSrc : devConnectSrc,
         "frame-src": ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         "child-src": ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
         ...(reportUri ? { "report-uri": [reportUri] } : {}),
