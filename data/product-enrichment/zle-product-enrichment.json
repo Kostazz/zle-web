@@ -237,7 +237,8 @@
     "badges": ["ZLE"],
     "tags": ["rainy cap", "čepice", "skate", "zle"],
     "seoTitle": "Rainy cap ZLE – black | ZLE",
-    "seoDescription": "Černá Rainy cap ZLE. Streetová čepice na ven, do města i na spot."
+    "seoDescription": "Černá Rainy cap ZLE. Streetová čepice na ven, do města i na spot.",
+    "material": "100 % nylon; manžeta: 100 % polyester"
   },
   "ksiltovka-zle-army-woodland": {
     "displayName": "Kšiltovka ZLE – army woodland",
@@ -365,7 +366,8 @@
     "badges": ["ZLE"],
     "tags": ["mikina", "skate", "zle"],
     "seoTitle": "Skate mikina ZLE – šedý melír | ZLE",
-    "seoDescription": "Skate mikina ZLE v šedém melíru. Jednoduchý kus pro město, spot i špinavý den."
+    "seoDescription": "Skate mikina ZLE v šedém melíru. Jednoduchý kus pro město, spot i špinavý den.",
+    "material": "80 % bavlna / 20 % polyester"
   },
   "panske-tricko-zle-skateboards-abstract-grey-melange-blue": {
     "displayName": "Pánské tričko ZLE Abstract – grey melange/blue",
@@ -461,6 +463,7 @@
     "badges": ["ZLE", "SB"],
     "tags": ["tričko", "palm", "skateboards", "skate", "zle"],
     "seoTitle": "Tričko ZLE Skateboards Palm – black | ZLE",
-    "seoDescription": "Tričko ZLE Skateboards Palm v černé variantě. Skate motiv bez zbytečné omáčky."
+    "seoDescription": "Tričko ZLE Skateboards Palm v černé variantě. Skate motiv bez zbytečné omáčky.",
+    "material": "100 % bavlna"
   }
 }
