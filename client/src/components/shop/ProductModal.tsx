@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Product } from "@shared/schema";
+import type { ProductPublic } from "@shared/product-public";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +40,7 @@ function ModalImagePlaceholder({ name }: { name: string }) {
 }
 
 interface ProductModalProps {
-  product: Product;
+  product: ProductPublic;
 }
 
 export function ProductModal({ product }: ProductModalProps) {
