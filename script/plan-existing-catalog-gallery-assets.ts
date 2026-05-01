@@ -33,6 +33,8 @@ type PlanItem = {
   sourceHash: string | null;
   proposedSlot?: string;
   proposedFiles?: string[];
+  candidateSlot?: string;
+  candidateFiles?: string[];
   classification: Classification;
   reasonCodes: string[];
 };
@@ -132,6 +134,17 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       return null;
     };
 
+    let nextCandidateSlot = 1;
+    const occupiedCandidateSlots = new Set(occupiedSlots);
+    const nextFreeCandidateSlot = () => {
+      while (nextCandidateSlot <= 8) {
+        const slot = String(nextCandidateSlot).padStart(2, "0");
+        nextCandidateSlot++;
+        if (!occupiedCandidateSlots.has(slot)) return slot;
+      }
+      return null;
+    };
+
     for (const img of productImgs) {
       const sourceHash = img.hash;
       const baseReason = unsafeId ? ["unsafe_local_product_id"] : ["local_product_folder_missing"];
@@ -143,12 +156,12 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "TECHNICAL_IMAGE", reasonCodes: ["technical_or_size_chart", `role_${img.role}`] });
         continue;
       }
-      if (!isSlotEligibleGalleryRole(img.role)) {
+      if (img.role === "reject") {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
       if (!sourceHash) {
-        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash: null, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["missing_source_hash"] });
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash: null, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["missing_source_hash", `role_${img.role}`] });
         continue;
       }
       if (hashToLocalSlots.has(sourceHash)) {
@@ -159,6 +172,21 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       }
       if (seenSourceHashesForProduct.has(sourceHash)) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
+        continue;
+      }
+      if (img.role === "unknown") {
+        const candidate = nextFreeCandidateSlot();
+        if (!candidate) {
+          items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_no_free_slot", "role_unknown"] });
+          continue;
+        }
+        occupiedCandidateSlots.add(candidate);
+        seenSourceHashesForProduct.add(sourceHash);
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, candidateSlot: candidate, candidateFiles: [`${candidate}.jpg`, `${candidate}.webp`], classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_candidate_for_missing_slot", "role_unknown"] });
+        continue;
+      }
+      if (!isSlotEligibleGalleryRole(img.role)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
       const free = nextFreeSlot();
@@ -208,6 +236,11 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
     productsWhere01Proposed: new Set(items.filter((i) => i.proposedSlot === "01").map((i) => i.localProductId).filter(Boolean)).size,
     productsWhere02Proposed: new Set(items.filter((i) => i.proposedSlot === "02").map((i) => i.localProductId).filter(Boolean)).size,
     productsRequiringManualReview: new Set(items.filter((i) => i.classification === "REQUIRES_MANUAL_REVIEW").map((i) => i.localProductId).filter(Boolean)).size,
+    reviewCandidateLogicalImageCount: items.filter((i) => Boolean(i.candidateSlot)).length,
+    reviewCandidateOutputFileCount: items.reduce((n, i) => n + (i.candidateFiles?.length ?? 0), 0),
+    productsWithReviewCandidates: new Set(items.filter((i) => Boolean(i.candidateSlot)).map((i) => i.localProductId).filter(Boolean)).size,
+    productsWhereCandidate01: new Set(items.filter((i) => i.candidateSlot === "01").map((i) => i.localProductId).filter(Boolean)).size,
+    productsWhereCandidate02: new Set(items.filter((i) => i.candidateSlot === "02").map((i) => i.localProductId).filter(Boolean)).size,
   };
   return { items, summary };
 }
@@ -241,6 +274,9 @@ async function main() {
     `- Total source images (including failed-source placeholders): ${summary.totalSourceImages}`,
     `- Proposed NEW logical images: ${summary.proposedNewLogicalImageCount}`,
     `- Proposed NEW output files (.jpg + .webp): ${summary.proposedNewOutputFileCount}`,
+    `- Review candidate logical images (role_unknown): ${summary.reviewCandidateLogicalImageCount}`,
+    `- Review candidate output files (.jpg + .webp): ${summary.reviewCandidateOutputFileCount}`,
+    `- Products with review candidates: ${summary.productsWithReviewCandidates}`,
   ].join("\n") + "\n";
   await fs.promises.writeFile(outputSummaryPath, md, "utf8");
 }

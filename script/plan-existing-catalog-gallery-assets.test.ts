@@ -290,3 +290,53 @@ test("unsupported roles do not cause NO_FREE_SLOT for later valid image", () => 
   assert.equal(items[1]?.classification, "NEW");
   assert.equal(items[1]?.proposedSlot, "08");
 });
+
+test("role_unknown gets non-binding candidate slots and stays manual review", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-candidate-"));
+  const d = path.join(root, "produ");
+  fs.mkdirSync(d, { recursive: true });
+
+  const manifest = {
+    runId: "r8",
+    products: [{
+      sourceProductKey: "produ--x",
+      ingestedImages: [
+        { path: "a.jpg", originalImageUrl: "https://x/53137-scaled.jpg", originalImageIndex: 0 },
+        { path: "b.jpg", originalImageUrl: "https://x/53137-scaled-copy.jpg", originalImageIndex: 1 },
+        { path: "c.jpg", originalImageUrl: "https://x/53071-scaled.jpg", originalImageIndex: 2 },
+      ],
+      downloadedImageHashes: [hashBuffer("u1"), hashBuffer("u1"), hashBuffer("u2")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[0]?.candidateSlot, "01");
+  assert.equal(items[0]?.proposedSlot, undefined);
+  assert.ok(items[0]?.reasonCodes.includes("unknown_role_candidate_for_missing_slot"));
+  assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.equal(items[1]?.candidateSlot, undefined);
+  assert.equal(items[2]?.candidateSlot, "02");
+});
+
+test("role_unknown hash in local and missing hash are not candidates", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-localhash-"));
+  const d = path.join(root, "produ2");
+  mk(d, "cover.jpg", "same-cover");
+  const manifest = {
+    runId: "r9",
+    products: [{
+      sourceProductKey: "produ2--x",
+      ingestedImages: [
+        { path: "a.jpg", originalImageUrl: "https://x/DSC0733-scaled.jpg", originalImageIndex: 0 },
+        { path: "b.jpg", originalImageUrl: "https://x/53509.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("same-cover")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "SAME");
+  assert.equal(items[0]?.candidateSlot, undefined);
+  assert.equal(items[1]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.ok(items[1]?.reasonCodes.includes("missing_source_hash"));
+  assert.equal(items[1]?.candidateSlot, undefined);
+});
