@@ -37,37 +37,37 @@ test("planner safety and slot behavior", async (t) => {
 
   await t.test("Missing 01 can be planned as NEW", () => {
     const d = path.join(root, "prod2"); mk(d, "cover.jpg", "cover");
-    const { items } = planFromData(manifestFor("prod2--x", [{ path: "01.jpg", url: "https://x/a.jpg", content: "a" }]), root);
+    const { items } = planFromData(manifestFor("prod2--x", [{ path: "01.jpg", url: "https://x/front-shirt-a.jpg", content: "a" }]), root);
     assert.equal(items[0]?.proposedSlot, "01");
   });
 
   await t.test("Missing 02 can be planned as NEW", () => {
     const d = path.join(root, "prod3"); mk(d, "01.jpg", "exists");
-    const { items } = planFromData(manifestFor("prod3--x", [{ path: "01.jpg", url: "https://x/b.jpg", content: "b" }]), root);
+    const { items } = planFromData(manifestFor("prod3--x", [{ path: "01.jpg", url: "https://x/front-shirt-b.jpg", content: "b" }]), root);
     assert.equal(items[0]?.proposedSlot, "02");
   });
 
   await t.test("Existing 01 is never overwritten", () => {
     const d = path.join(root, "prod4"); mk(d, "01.jpg", "x");
-    const { items } = planFromData(manifestFor("prod4--x", [{ path: "01.jpg", url: "https://x/c.jpg", content: "c" }]), root);
+    const { items } = planFromData(manifestFor("prod4--x", [{ path: "01.jpg", url: "https://x/front-shirt-c.jpg", content: "c" }]), root);
     assert.notEqual(items[0]?.proposedSlot, "01");
   });
 
   await t.test("Existing 02 is never overwritten", () => {
     const d = path.join(root, "prod5"); mk(d, "01.jpg", "x"); mk(d, "02.jpg", "y");
-    const { items } = planFromData(manifestFor("prod5--x", [{ path: "01.jpg", url: "https://x/d.jpg", content: "d" }]), root);
+    const { items } = planFromData(manifestFor("prod5--x", [{ path: "01.jpg", url: "https://x/front-shirt-d.jpg", content: "d" }]), root);
     assert.notEqual(items[0]?.proposedSlot, "02");
   });
 
   await t.test("Same hash already in folder becomes SAME or DUPLICATE", () => {
     const d = path.join(root, "prod6"); mk(d, "01.jpg", "same-content");
-    const { items } = planFromData(manifestFor("prod6--x", [{ path: "01.jpg", url: "https://x/e.jpg", content: "same-content" }]), root);
+    const { items } = planFromData(manifestFor("prod6--x", [{ path: "01.jpg", url: "https://x/front-shirt-e.jpg", content: "same-content" }]), root);
     assert.ok(["SAME", "DUPLICATE_AFTER_NORMALIZATION"].includes(items[0]!.classification));
   });
 
   await t.test("Different hash for occupied slots never overwrites", () => {
     const d = path.join(root, "prod7"); mk(d, "01.jpg", "x"); mk(d, "02.jpg", "y");
-    const { items } = planFromData(manifestFor("prod7--x", [{ path: "01.jpg", url: "https://x/f.jpg", content: "z" }]), root);
+    const { items } = planFromData(manifestFor("prod7--x", [{ path: "01.jpg", url: "https://x/front-shirt-f.jpg", content: "z" }]), root);
     assert.equal(items[0]?.classification, "NEW");
     assert.equal(items[0]?.proposedSlot, "03");
   });
@@ -79,20 +79,20 @@ test("planner safety and slot behavior", async (t) => {
   });
 
   await t.test("Product id mapping requires existing local folder", () => {
-    const { items } = planFromData(manifestFor("missing-prod--x", [{ path: "01.jpg", url: "https://x/g.jpg", content: "g" }]), root);
+    const { items } = planFromData(manifestFor("missing-prod--x", [{ path: "01.jpg", url: "https://x/front-shirt-g.jpg", content: "g" }]), root);
     assert.equal(items[0]?.classification, "LOCAL_PRODUCT_MISSING");
   });
 
   await t.test("Slot cap 08 is respected", () => {
     const d = path.join(root, "prod9");
     for (let i = 1; i <= 8; i++) mk(d, `${String(i).padStart(2, "0")}.jpg`, `${i}`);
-    const { items } = planFromData(manifestFor("prod9--x", [{ path: "01.jpg", url: "https://x/h.jpg", content: "h" }]), root);
+    const { items } = planFromData(manifestFor("prod9--x", [{ path: "01.jpg", url: "https://x/front-shirt-h.jpg", content: "h" }]), root);
     assert.equal(items[0]?.classification, "NO_FREE_SLOT");
   });
 
   await t.test("Cover hash duplicate is treated as SAME and not re-added as 01", () => {
     const d = path.join(root, "prod10"); mk(d, "cover.jpg", "hero");
-    const { items } = planFromData(manifestFor("prod10--x", [{ path: "01.jpg", url: "https://x/hero.jpg", content: "hero" }]), root);
+    const { items } = planFromData(manifestFor("prod10--x", [{ path: "01.jpg", url: "https://x/front-hero-shirt.jpg", content: "hero" }]), root);
     assert.equal(items[0]?.classification, "SAME");
   });
 
@@ -141,9 +141,9 @@ test("source-level hash dedupe does not consume slots", () => {
     products: [{
       sourceProductKey: "proddup--x",
       ingestedImages: [
-        { path: "01.jpg", originalImageUrl: "https://x/one.jpg", originalImageIndex: 0 },
-        { path: "02.jpg", originalImageUrl: "https://x/one-copy.jpg", originalImageIndex: 1 },
-        { path: "03.jpg", originalImageUrl: "https://x/two.jpg", originalImageIndex: 2 },
+        { path: "01.jpg", originalImageUrl: "https://x/front-one-shirt.jpg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/front-one-copy-shirt.jpg", originalImageIndex: 1 },
+        { path: "03.jpg", originalImageUrl: "https://x/front-two-shirt.jpg", originalImageIndex: 2 },
       ],
       downloadedImageHashes: [hashBuffer("img-1"), hashBuffer("img-1"), hashBuffer("img-2")],
     }],
@@ -168,8 +168,8 @@ test("source duplicates do not force NO_FREE_SLOT when slot remains", () => {
     products: [{
       sourceProductKey: "prodnearfull--x",
       ingestedImages: [
-        { path: "01.jpg", originalImageUrl: "https://x/new-a.jpg", originalImageIndex: 0 },
-        { path: "02.jpg", originalImageUrl: "https://x/new-a-dup.jpg", originalImageIndex: 1 },
+        { path: "01.jpg", originalImageUrl: "https://x/front-new-a-shirt.jpg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/front-new-a-dup-shirt.jpg", originalImageIndex: 1 },
       ],
       downloadedImageHashes: [hashBuffer("new-a"), hashBuffer("new-a")],
     }],
@@ -196,19 +196,19 @@ test("unsafe localProductId never escapes localRoot", () => {
     runId: "r4",
     products: [{
       sourceProductKey: "../evil--x",
-      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/a.jpg", originalImageIndex: 0 }],
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/front-shirt-a.jpg", originalImageIndex: 0 }],
       downloadedImageHashes: [hashBuffer("a")],
     }, {
       sourceProductKey: "evil/path--x",
-      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/b.jpg", originalImageIndex: 0 }],
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/front-shirt-b.jpg", originalImageIndex: 0 }],
       downloadedImageHashes: [hashBuffer("b")],
     }, {
       sourceProductKey: "evil\\path--x",
-      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/c.jpg", originalImageIndex: 0 }],
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/front-shirt-c.jpg", originalImageIndex: 0 }],
       downloadedImageHashes: [hashBuffer("c")],
     }, {
       sourceProductKey: ".hidden--x",
-      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/d.jpg", originalImageIndex: 0 }],
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/front-shirt-d.jpg", originalImageIndex: 0 }],
       downloadedImageHashes: [hashBuffer("d")],
     }],
     failures: [{ sourceProductKey: "../evil--x", imageUrl: "https://x/fail.jpg", reason: "404" }],
@@ -226,11 +226,67 @@ test("missing source hash fails closed with manual review", () => {
     runId: "r5",
     products: [{
       sourceProductKey: "prodhash--x",
-      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/a.jpg", originalImageIndex: 0 }],
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/front-shirt-a.jpg", originalImageIndex: 0 }],
       downloadedImageHashes: [],
     }],
   };
   const { items } = planFromData(manifest as any, root);
   assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
   assert.ok(items[0]?.reasonCodes.includes("missing_source_hash"));
+});
+
+
+test("unsupported/rejected roles never consume slots", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-reject-role-"));
+  const d = path.join(root, "prodrole");
+  fs.mkdirSync(d, { recursive: true });
+
+  const manifest = {
+    runId: "r6",
+    products: [{
+      sourceProductKey: "prodrole--x",
+      ingestedImages: [
+        { path: "01.jpg", originalImageUrl: "https://x/vector.svg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/anim.gif", originalImageIndex: 1 },
+        { path: "03.jpg", originalImageUrl: "https://x/front-valid-shirt.jpg", originalImageIndex: 2 },
+      ],
+      downloadedImageHashes: [hashBuffer("svg"), hashBuffer("gif"), hashBuffer("valid")],
+    }],
+  };
+
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[0]?.proposedSlot, undefined);
+  assert.ok(items[0]?.reasonCodes.includes("unsupported_gallery_image_role"));
+  assert.ok(items[0]?.reasonCodes.includes("role_reject"));
+
+  assert.equal(items[1]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[1]?.proposedSlot, undefined);
+  assert.ok(items[1]?.reasonCodes.includes("role_reject"));
+
+  assert.equal(items[2]?.classification, "NEW");
+  assert.equal(items[2]?.proposedSlot, "01");
+});
+
+test("unsupported roles do not cause NO_FREE_SLOT for later valid image", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-reject-nearfull-"));
+  const d = path.join(root, "prodrole2");
+  for (let i = 1; i <= 7; i++) mk(d, `${String(i).padStart(2, "0")}.jpg`, `existing-${i}`);
+
+  const manifest = {
+    runId: "r7",
+    products: [{
+      sourceProductKey: "prodrole2--x",
+      ingestedImages: [
+        { path: "01.jpg", originalImageUrl: "https://x/unsupported.svg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/front-shirt.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("unsup"), hashBuffer("valid-front")],
+    }],
+  };
+
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[1]?.classification, "NEW");
+  assert.equal(items[1]?.proposedSlot, "08");
 });

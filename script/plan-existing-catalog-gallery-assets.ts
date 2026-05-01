@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { classifyGalleryImageRole } from "./lib/gallery-image-role.ts";
+import { classifyGalleryImageRole, type GalleryImageRole } from "./lib/gallery-image-role.ts";
 
 type Classification =
   | "NEW"
@@ -85,6 +85,11 @@ function safeLocalDir(localRoot: string, localProductId: string): string {
   return resolvedDir;
 }
 
+
+
+function isSlotEligibleGalleryRole(role: GalleryImageRole): boolean {
+  return role === "product" || role === "product_detail" || role === "back_detail" || role === "fabric_detail";
+}
 export function planFromData(manifest: IngestManifest, localRoot: string): { items: PlanItem[]; summary: Record<string, unknown> } {
   const items: PlanItem[] = [];
   const resolvedLocalRoot = path.resolve(localRoot);
@@ -117,9 +122,6 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       role: classifyGalleryImageRole(img.originalImageUrl || img.path).role,
     }));
 
-    const nonTechnical = productImgs.filter((i) => !["size_chart", "logo_or_technical"].includes(i.role));
-    const technical = productImgs.filter((i) => ["size_chart", "logo_or_technical"].includes(i.role));
-
     let nextSlot = 1;
     const nextFreeSlot = () => {
       while (nextSlot <= 8) {
@@ -130,15 +132,19 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       return null;
     };
 
-    for (const img of [...nonTechnical, ...technical]) {
+    for (const img of productImgs) {
       const sourceHash = img.hash;
       const baseReason = unsafeId ? ["unsafe_local_product_id"] : ["local_product_folder_missing"];
       if (!mapped) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId: localProductId ?? null, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "LOCAL_PRODUCT_MISSING", reasonCodes: baseReason });
         continue;
       }
-      if (["size_chart", "logo_or_technical"].includes(img.role)) {
-        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "TECHNICAL_IMAGE", reasonCodes: ["technical_or_size_chart"] });
+      if (img.role === "size_chart" || img.role === "logo_or_technical") {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "TECHNICAL_IMAGE", reasonCodes: ["technical_or_size_chart", `role_${img.role}`] });
+        continue;
+      }
+      if (!isSlotEligibleGalleryRole(img.role)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
       if (!sourceHash) {
