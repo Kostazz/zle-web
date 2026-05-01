@@ -375,8 +375,8 @@ test("candidate and proposed slots never conflict within same product", () => {
     }],
   };
   const { items: items2 } = planFromData(manifest2 as any, root);
-  assert.equal(items2[0]?.candidateSlot, "06");
-  assert.equal(items2[1]?.proposedSlot, "07");
+  assert.equal(items2[1]?.proposedSlot, "06");
+  assert.equal(items2[0]?.candidateSlot, "07");
 });
 
 test("multiple unknown and NEW items allocate non-overlapping deterministic slots", () => {
@@ -397,8 +397,32 @@ test("multiple unknown and NEW items allocate non-overlapping deterministic slot
     }],
   };
   const { items } = planFromData(manifest as any, root);
-  assert.equal(items[0]?.candidateSlot, "05");
-  assert.equal(items[1]?.proposedSlot, "06");
-  assert.equal(items[2]?.candidateSlot, "07");
-  assert.equal(items[3]?.proposedSlot, "08");
+  assert.equal(items[1]?.proposedSlot, "05");
+  assert.equal(items[3]?.proposedSlot, "06");
+  assert.equal(items[0]?.candidateSlot, "07");
+  assert.equal(items[2]?.candidateSlot, "08");
+});
+
+test("unknown candidate never exhausts NEW slot capacity in near-full gallery", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-priority-"));
+  const d = path.join(root, "prodpriority");
+  for (let i = 1; i <= 7; i++) mk(d, `${String(i).padStart(2, "0")}.jpg`, `existing-${i}`);
+  const manifest = {
+    runId: "r13",
+    products: [{
+      sourceProductKey: "prodpriority--x",
+      ingestedImages: [
+        { path: "u.jpg", originalImageUrl: "https://x/53137-scaled.jpg", originalImageIndex: 0 },
+        { path: "p.jpg", originalImageUrl: "https://x/front-priority-shirt.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("unknown-priority"), hashBuffer("new-priority")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[1]?.classification, "NEW");
+  assert.equal(items[1]?.proposedSlot, "08");
+  assert.notEqual(items[1]?.classification, "NO_FREE_SLOT");
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[0]?.candidateSlot, undefined);
+  assert.ok(items[0]?.reasonCodes.includes("unknown_role_no_free_slot"));
 });

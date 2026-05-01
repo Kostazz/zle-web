@@ -124,16 +124,17 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       role: classifyGalleryImageRole(img.originalImageUrl || img.path).role,
     }));
 
-    const plannedOccupiedSlots = new Set(occupiedSlots);
-    let nextPlannedSlot = 1;
-    const nextFreePlannedSlot = () => {
-      while (nextPlannedSlot <= 8) {
-        const slot = String(nextPlannedSlot).padStart(2, "0");
-        nextPlannedSlot++;
-        if (!plannedOccupiedSlots.has(slot)) return slot;
+    const hardOccupiedSlots = new Set(occupiedSlots);
+    let nextHardSlot = 1;
+    const nextFreeHardSlot = () => {
+      while (nextHardSlot <= 8) {
+        const slot = String(nextHardSlot).padStart(2, "0");
+        nextHardSlot++;
+        if (!hardOccupiedSlots.has(slot)) return slot;
       }
       return null;
     };
+    const pendingUnknownCandidates: Array<{ itemIndex: number }> = [];
 
     for (const img of productImgs) {
       const sourceHash = img.hash;
@@ -165,29 +166,48 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         continue;
       }
       if (img.role === "unknown") {
-        const candidate = nextFreePlannedSlot();
-        if (!candidate) {
-          items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_no_free_slot", "role_unknown"] });
-          continue;
-        }
-        plannedOccupiedSlots.add(candidate);
         seenSourceHashesForProduct.add(sourceHash);
-        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, candidateSlot: candidate, candidateFiles: [`${candidate}.jpg`, `${candidate}.webp`], classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_candidate_for_missing_slot", "role_unknown"] });
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["role_unknown"] });
+        pendingUnknownCandidates.push({ itemIndex: items.length - 1 });
         continue;
       }
       if (!isSlotEligibleGalleryRole(img.role)) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
-      const free = nextFreePlannedSlot();
+      const free = nextFreeHardSlot();
       if (!free) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "NO_FREE_SLOT", reasonCodes: ["slots_01_08_occupied"] });
         continue;
       }
       occupiedSlots.add(free);
-      plannedOccupiedSlots.add(free);
+      hardOccupiedSlots.add(free);
       seenSourceHashesForProduct.add(sourceHash);
       items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, proposedSlot: free, proposedFiles: [`${free}.jpg`, `${free}.webp`], classification: "NEW", reasonCodes: ["slot_missing_in_local_gallery"] });
+    }
+
+    const candidateOccupiedSlots = new Set(hardOccupiedSlots);
+    let nextCandidateSlot = 1;
+    const nextFreeCandidateSlot = () => {
+      while (nextCandidateSlot <= 8) {
+        const slot = String(nextCandidateSlot).padStart(2, "0");
+        nextCandidateSlot++;
+        if (!candidateOccupiedSlots.has(slot)) return slot;
+      }
+      return null;
+    };
+    for (const pending of pendingUnknownCandidates) {
+      const item = items[pending.itemIndex];
+      if (!item) continue;
+      const slot = nextFreeCandidateSlot();
+      if (!slot) {
+        item.reasonCodes = ["unknown_role_no_free_slot", "role_unknown"];
+        continue;
+      }
+      candidateOccupiedSlots.add(slot);
+      item.candidateSlot = slot;
+      item.candidateFiles = [`${slot}.jpg`, `${slot}.webp`];
+      item.reasonCodes = ["unknown_role_candidate_for_missing_slot", "role_unknown"];
     }
   }
 
