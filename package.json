@@ -43,7 +43,8 @@
     "catalog:sanitize:plan": "tsx script/catalog-sanitize-plan.ts",
     "photos:audit": "tsx script/audit-totalboardshop-photos.ts",
     "products:gallery-audit": "tsx script/audit-product-gallery-quality.ts",
-    "products:enrichment-validate": "tsx script/validate-product-enrichment.ts"
+    "products:enrichment-validate": "tsx script/validate-product-enrichment.ts",
+    "products:gallery-missing-plan": "tsx script/plan-existing-catalog-gallery-assets.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
