@@ -129,3 +129,55 @@ test("output dir guard enforces tmp/gallery-missing-plans root", async (t) => {
     assert.throws(() => resolvePlannerOutputDir(path.resolve("/tmp/outside-zle")), /outside tmp\/gallery-missing-plans/);
   });
 });
+
+
+test("source-level hash dedupe does not consume slots", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-srcdup-"));
+  const d = path.join(root, "proddup");
+  fs.mkdirSync(d, { recursive: true });
+
+  const manifest = {
+    runId: "r2",
+    products: [{
+      sourceProductKey: "proddup--x",
+      ingestedImages: [
+        { path: "01.jpg", originalImageUrl: "https://x/one.jpg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/one-copy.jpg", originalImageIndex: 1 },
+        { path: "03.jpg", originalImageUrl: "https://x/two.jpg", originalImageIndex: 2 },
+      ],
+      downloadedImageHashes: [hashBuffer("img-1"), hashBuffer("img-1"), hashBuffer("img-2")],
+    }],
+  };
+
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "NEW");
+  assert.equal(items[0]?.proposedSlot, "01");
+  assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.equal(items[1]?.proposedSlot, undefined);
+  assert.equal(items[2]?.classification, "NEW");
+  assert.equal(items[2]?.proposedSlot, "02");
+});
+
+test("source duplicates do not force NO_FREE_SLOT when slot remains", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-srcdup-nearfull-"));
+  const d = path.join(root, "prodnearfull");
+  for (let i = 1; i <= 7; i++) mk(d, `${String(i).padStart(2, "0")}.jpg`, `existing-${i}`);
+
+  const manifest = {
+    runId: "r3",
+    products: [{
+      sourceProductKey: "prodnearfull--x",
+      ingestedImages: [
+        { path: "01.jpg", originalImageUrl: "https://x/new-a.jpg", originalImageIndex: 0 },
+        { path: "02.jpg", originalImageUrl: "https://x/new-a-dup.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("new-a"), hashBuffer("new-a")],
+    }],
+  };
+
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "NEW");
+  assert.equal(items[0]?.proposedSlot, "08");
+  assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.notEqual(items[1]?.classification, "NO_FREE_SLOT");
+});
