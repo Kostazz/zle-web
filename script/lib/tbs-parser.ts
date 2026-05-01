@@ -76,7 +76,7 @@ function firstCapture(input: string, patterns: RegExp[]): string | null {
 
 function normalizeBrand(raw: string): "zle" | null {
   const normalized = raw.toLowerCase().replace(/\s+/g, " ").trim();
-  if (normalized === "zle" || normalized === "zle skateboarding" || normalized === "zle skateboards") return "zle";
+  if (normalized === "zle" || normalized === "zle skateboarding" || normalized === "zle skateboards" || normalized === "zle lifestyle culture brand") return "zle";
   return null;
 }
 
