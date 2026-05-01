@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { planFromData, resolvePlannerOutputDir } from "./plan-existing-catalog-gallery-assets.ts";
+import { planFromData, resolvePlannerOutputDir, validateRunId } from "./plan-existing-catalog-gallery-assets.ts";
 
 function mk(dir: string, file: string, content: string) {
   fs.mkdirSync(dir, { recursive: true });
@@ -180,4 +180,57 @@ test("source duplicates do not force NO_FREE_SLOT when slot remains", () => {
   assert.equal(items[0]?.proposedSlot, "08");
   assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
   assert.notEqual(items[1]?.classification, "NO_FREE_SLOT");
+});
+
+
+test("run id safety validation", () => {
+  assert.equal(validateRunId("tbs-20260501-full-gallery-refresh-02"), "tbs-20260501-full-gallery-refresh-02");
+  for (const bad of ["../evil", "evil/plan", "evil\\plan", "evil plan", ".hidden", "abc..def"]) {
+    assert.throws(() => validateRunId(bad), /Unsafe run id/);
+  }
+});
+
+test("unsafe localProductId never escapes localRoot", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unsafe-id-"));
+  const manifest = {
+    runId: "r4",
+    products: [{
+      sourceProductKey: "../evil--x",
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/a.jpg", originalImageIndex: 0 }],
+      downloadedImageHashes: [hashBuffer("a")],
+    }, {
+      sourceProductKey: "evil/path--x",
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/b.jpg", originalImageIndex: 0 }],
+      downloadedImageHashes: [hashBuffer("b")],
+    }, {
+      sourceProductKey: "evil\\path--x",
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/c.jpg", originalImageIndex: 0 }],
+      downloadedImageHashes: [hashBuffer("c")],
+    }, {
+      sourceProductKey: ".hidden--x",
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/d.jpg", originalImageIndex: 0 }],
+      downloadedImageHashes: [hashBuffer("d")],
+    }],
+    failures: [{ sourceProductKey: "../evil--x", imageUrl: "https://x/fail.jpg", reason: "404" }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  const unsafeItems = items.filter((i) => i.reasonCodes.includes("unsafe_local_product_id"));
+  assert.ok(unsafeItems.length >= 5);
+});
+
+test("missing source hash fails closed with manual review", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-missing-hash-"));
+  const d = path.join(root, "prodhash");
+  fs.mkdirSync(d, { recursive: true });
+  const manifest = {
+    runId: "r5",
+    products: [{
+      sourceProductKey: "prodhash--x",
+      ingestedImages: [{ path: "01.jpg", originalImageUrl: "https://x/a.jpg", originalImageIndex: 0 }],
+      downloadedImageHashes: [],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.ok(items[0]?.reasonCodes.includes("missing_source_hash"));
 });
