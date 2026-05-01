@@ -124,23 +124,13 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       role: classifyGalleryImageRole(img.originalImageUrl || img.path).role,
     }));
 
-    let nextSlot = 1;
-    const nextFreeSlot = () => {
-      while (nextSlot <= 8) {
-        const slot = String(nextSlot).padStart(2, "0");
-        nextSlot++;
-        if (!occupiedSlots.has(slot)) return slot;
-      }
-      return null;
-    };
-
-    let nextCandidateSlot = 1;
-    const occupiedCandidateSlots = new Set(occupiedSlots);
-    const nextFreeCandidateSlot = () => {
-      while (nextCandidateSlot <= 8) {
-        const slot = String(nextCandidateSlot).padStart(2, "0");
-        nextCandidateSlot++;
-        if (!occupiedCandidateSlots.has(slot)) return slot;
+    const plannedOccupiedSlots = new Set(occupiedSlots);
+    let nextPlannedSlot = 1;
+    const nextFreePlannedSlot = () => {
+      while (nextPlannedSlot <= 8) {
+        const slot = String(nextPlannedSlot).padStart(2, "0");
+        nextPlannedSlot++;
+        if (!plannedOccupiedSlots.has(slot)) return slot;
       }
       return null;
     };
@@ -175,12 +165,12 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         continue;
       }
       if (img.role === "unknown") {
-        const candidate = nextFreeCandidateSlot();
+        const candidate = nextFreePlannedSlot();
         if (!candidate) {
           items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_no_free_slot", "role_unknown"] });
           continue;
         }
-        occupiedCandidateSlots.add(candidate);
+        plannedOccupiedSlots.add(candidate);
         seenSourceHashesForProduct.add(sourceHash);
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, candidateSlot: candidate, candidateFiles: [`${candidate}.jpg`, `${candidate}.webp`], classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unknown_role_candidate_for_missing_slot", "role_unknown"] });
         continue;
@@ -189,12 +179,13 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
-      const free = nextFreeSlot();
+      const free = nextFreePlannedSlot();
       if (!free) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "NO_FREE_SLOT", reasonCodes: ["slots_01_08_occupied"] });
         continue;
       }
       occupiedSlots.add(free);
+      plannedOccupiedSlots.add(free);
       seenSourceHashesForProduct.add(sourceHash);
       items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, proposedSlot: free, proposedFiles: [`${free}.jpg`, `${free}.webp`], classification: "NEW", reasonCodes: ["slot_missing_in_local_gallery"] });
     }

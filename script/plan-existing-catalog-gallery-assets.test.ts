@@ -340,3 +340,65 @@ test("role_unknown hash in local and missing hash are not candidates", () => {
   assert.ok(items[1]?.reasonCodes.includes("missing_source_hash"));
   assert.equal(items[1]?.candidateSlot, undefined);
 });
+
+test("candidate and proposed slots never conflict within same product", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-shared-slots-"));
+
+  const d1 = path.join(root, "prodmix1");
+  for (let i = 1; i <= 5; i++) mk(d1, `${String(i).padStart(2, "0")}.jpg`, `existing-${i}`);
+  const manifest1 = {
+    runId: "r10",
+    products: [{
+      sourceProductKey: "prodmix1--x",
+      ingestedImages: [
+        { path: "a.jpg", originalImageUrl: "https://x/front-product-shirt.jpg", originalImageIndex: 0 },
+        { path: "b.jpg", originalImageUrl: "https://x/53137-scaled.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("new-product"), hashBuffer("unknown-a")],
+    }],
+  };
+  const { items: items1 } = planFromData(manifest1 as any, root);
+  assert.equal(items1[0]?.proposedSlot, "06");
+  assert.equal(items1[1]?.candidateSlot, "07");
+
+  const d2 = path.join(root, "prodmix2");
+  for (let i = 1; i <= 5; i++) mk(d2, `${String(i).padStart(2, "0")}.jpg`, `existing2-${i}`);
+  const manifest2 = {
+    runId: "r11",
+    products: [{
+      sourceProductKey: "prodmix2--x",
+      ingestedImages: [
+        { path: "a.jpg", originalImageUrl: "https://x/53071-scaled.jpg", originalImageIndex: 0 },
+        { path: "b.jpg", originalImageUrl: "https://x/front-product-two-shirt.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("unknown-b"), hashBuffer("new-product-b")],
+    }],
+  };
+  const { items: items2 } = planFromData(manifest2 as any, root);
+  assert.equal(items2[0]?.candidateSlot, "06");
+  assert.equal(items2[1]?.proposedSlot, "07");
+});
+
+test("multiple unknown and NEW items allocate non-overlapping deterministic slots", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-shared-seq-"));
+  const d = path.join(root, "prodseq");
+  for (let i = 1; i <= 4; i++) mk(d, `${String(i).padStart(2, "0")}.jpg`, `existing-${i}`);
+  const manifest = {
+    runId: "r12",
+    products: [{
+      sourceProductKey: "prodseq--x",
+      ingestedImages: [
+        { path: "u1.jpg", originalImageUrl: "https://x/53509.jpg", originalImageIndex: 0 },
+        { path: "p1.jpg", originalImageUrl: "https://x/front-product-a-shirt.jpg", originalImageIndex: 1 },
+        { path: "u2.jpg", originalImageUrl: "https://x/DSC0733-scaled.jpg", originalImageIndex: 2 },
+        { path: "p2.jpg", originalImageUrl: "https://x/front-product-b-shirt.jpg", originalImageIndex: 3 },
+      ],
+      downloadedImageHashes: [hashBuffer("u1"), hashBuffer("p1"), hashBuffer("u2"), hashBuffer("p2")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.candidateSlot, "05");
+  assert.equal(items[1]?.proposedSlot, "06");
+  assert.equal(items[2]?.candidateSlot, "07");
+  assert.equal(items[3]?.proposedSlot, "08");
+});
