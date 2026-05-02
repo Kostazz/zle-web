@@ -33,6 +33,8 @@ type PlanItem = {
   sourceHash: string | null;
   proposedSlot?: string;
   proposedFiles?: string[];
+  candidateSlot?: string;
+  candidateFiles?: string[];
   classification: Classification;
   reasonCodes: string[];
 };
@@ -104,7 +106,8 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
     const localFiles = mapped ? fs.readdirSync(localDir!) : [];
     const occupiedSlots = new Set(localFiles.map(slotFromBasename).filter((s): s is string => Boolean(s && s !== "cover")));
     const hashToLocalSlots = new Map<string, Set<string>>();
-    const seenSourceHashesForProduct = new Set<string>();
+    const hardSeenSourceHashesForProduct = new Set<string>();
+    const candidateSeenSourceHashesForProduct = new Set<string>();
     if (mapped) {
       for (const f of localFiles) {
         const slot = slotFromBasename(f);
@@ -122,15 +125,17 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       role: classifyGalleryImageRole(img.originalImageUrl || img.path).role,
     }));
 
-    let nextSlot = 1;
-    const nextFreeSlot = () => {
-      while (nextSlot <= 8) {
-        const slot = String(nextSlot).padStart(2, "0");
-        nextSlot++;
-        if (!occupiedSlots.has(slot)) return slot;
+    const hardOccupiedSlots = new Set(occupiedSlots);
+    let nextHardSlot = 1;
+    const nextFreeHardSlot = () => {
+      while (nextHardSlot <= 8) {
+        const slot = String(nextHardSlot).padStart(2, "0");
+        nextHardSlot++;
+        if (!hardOccupiedSlots.has(slot)) return slot;
       }
       return null;
     };
+    const pendingUnknownCandidates: Array<{ itemIndex: number; sourceHash: string }> = [];
 
     for (const img of productImgs) {
       const sourceHash = img.hash;
@@ -143,12 +148,12 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "TECHNICAL_IMAGE", reasonCodes: ["technical_or_size_chart", `role_${img.role}`] });
         continue;
       }
-      if (!isSlotEligibleGalleryRole(img.role)) {
+      if (img.role === "reject") {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
         continue;
       }
       if (!sourceHash) {
-        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash: null, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["missing_source_hash"] });
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash: null, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["missing_source_hash", `role_${img.role}`] });
         continue;
       }
       if (hashToLocalSlots.has(sourceHash)) {
@@ -157,18 +162,71 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification, reasonCodes: ["hash_exists_in_local_folder"] });
         continue;
       }
-      if (seenSourceHashesForProduct.has(sourceHash)) {
+      if (img.role === "unknown" && hardSeenSourceHashesForProduct.has(sourceHash)) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
         continue;
       }
-      const free = nextFreeSlot();
+      if (img.role === "unknown" && candidateSeenSourceHashesForProduct.has(sourceHash)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
+        continue;
+      }
+      if (img.role !== "unknown" && hardSeenSourceHashesForProduct.has(sourceHash)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
+        continue;
+      }
+      if (img.role === "unknown") {
+        candidateSeenSourceHashesForProduct.add(sourceHash);
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["role_unknown"] });
+        pendingUnknownCandidates.push({ itemIndex: items.length - 1, sourceHash });
+        continue;
+      }
+      if (!isSlotEligibleGalleryRole(img.role)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["unsupported_gallery_image_role", `role_${img.role}`] });
+        continue;
+      }
+      const free = nextFreeHardSlot();
       if (!free) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "NO_FREE_SLOT", reasonCodes: ["slots_01_08_occupied"] });
         continue;
       }
       occupiedSlots.add(free);
-      seenSourceHashesForProduct.add(sourceHash);
+      hardOccupiedSlots.add(free);
+      hardSeenSourceHashesForProduct.add(sourceHash);
       items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, proposedSlot: free, proposedFiles: [`${free}.jpg`, `${free}.webp`], classification: "NEW", reasonCodes: ["slot_missing_in_local_gallery"] });
+      for (const pending of pendingUnknownCandidates) {
+        if (pending.sourceHash !== sourceHash) continue;
+        const pendingItem = items[pending.itemIndex];
+        if (!pendingItem || pendingItem.classification !== "REQUIRES_MANUAL_REVIEW") continue;
+        pendingItem.classification = "DUPLICATE_AFTER_NORMALIZATION";
+        delete pendingItem.candidateSlot;
+        delete pendingItem.candidateFiles;
+        pendingItem.reasonCodes = ["duplicate_source_hash_promoted_to_new"];
+      }
+    }
+
+    const candidateOccupiedSlots = new Set(hardOccupiedSlots);
+    let nextCandidateSlot = 1;
+    const nextFreeCandidateSlot = () => {
+      while (nextCandidateSlot <= 8) {
+        const slot = String(nextCandidateSlot).padStart(2, "0");
+        nextCandidateSlot++;
+        if (!candidateOccupiedSlots.has(slot)) return slot;
+      }
+      return null;
+    };
+    for (const pending of pendingUnknownCandidates) {
+      const item = items[pending.itemIndex];
+      if (!item) continue;
+      if (item.classification !== "REQUIRES_MANUAL_REVIEW" || item.reasonCodes.includes("duplicate_source_hash_promoted_to_new")) continue;
+      const slot = nextFreeCandidateSlot();
+      if (!slot) {
+        item.reasonCodes = ["unknown_role_no_free_slot", "role_unknown"];
+        continue;
+      }
+      candidateOccupiedSlots.add(slot);
+      item.candidateSlot = slot;
+      item.candidateFiles = [`${slot}.jpg`, `${slot}.webp`];
+      item.reasonCodes = ["unknown_role_candidate_for_missing_slot", "role_unknown"];
     }
   }
 
@@ -208,6 +266,11 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
     productsWhere01Proposed: new Set(items.filter((i) => i.proposedSlot === "01").map((i) => i.localProductId).filter(Boolean)).size,
     productsWhere02Proposed: new Set(items.filter((i) => i.proposedSlot === "02").map((i) => i.localProductId).filter(Boolean)).size,
     productsRequiringManualReview: new Set(items.filter((i) => i.classification === "REQUIRES_MANUAL_REVIEW").map((i) => i.localProductId).filter(Boolean)).size,
+    reviewCandidateLogicalImageCount: items.filter((i) => Boolean(i.candidateSlot)).length,
+    reviewCandidateOutputFileCount: items.reduce((n, i) => n + (i.candidateFiles?.length ?? 0), 0),
+    productsWithReviewCandidates: new Set(items.filter((i) => Boolean(i.candidateSlot)).map((i) => i.localProductId).filter(Boolean)).size,
+    productsWhereCandidate01: new Set(items.filter((i) => i.candidateSlot === "01").map((i) => i.localProductId).filter(Boolean)).size,
+    productsWhereCandidate02: new Set(items.filter((i) => i.candidateSlot === "02").map((i) => i.localProductId).filter(Boolean)).size,
   };
   return { items, summary };
 }
@@ -241,6 +304,9 @@ async function main() {
     `- Total source images (including failed-source placeholders): ${summary.totalSourceImages}`,
     `- Proposed NEW logical images: ${summary.proposedNewLogicalImageCount}`,
     `- Proposed NEW output files (.jpg + .webp): ${summary.proposedNewOutputFileCount}`,
+    `- Review candidate logical images (role_unknown): ${summary.reviewCandidateLogicalImageCount}`,
+    `- Review candidate output files (.jpg + .webp): ${summary.reviewCandidateOutputFileCount}`,
+    `- Products with review candidates: ${summary.productsWithReviewCandidates}`,
   ].join("\n") + "\n";
   await fs.promises.writeFile(outputSummaryPath, md, "utf8");
 }
