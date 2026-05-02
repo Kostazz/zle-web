@@ -106,7 +106,8 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
     const localFiles = mapped ? fs.readdirSync(localDir!) : [];
     const occupiedSlots = new Set(localFiles.map(slotFromBasename).filter((s): s is string => Boolean(s && s !== "cover")));
     const hashToLocalSlots = new Map<string, Set<string>>();
-    const seenSourceHashesForProduct = new Set<string>();
+    const hardSeenSourceHashesForProduct = new Set<string>();
+    const candidateSeenSourceHashesForProduct = new Set<string>();
     if (mapped) {
       for (const f of localFiles) {
         const slot = slotFromBasename(f);
@@ -161,12 +162,20 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification, reasonCodes: ["hash_exists_in_local_folder"] });
         continue;
       }
-      if (seenSourceHashesForProduct.has(sourceHash)) {
+      if (img.role === "unknown" && hardSeenSourceHashesForProduct.has(sourceHash)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
+        continue;
+      }
+      if (img.role === "unknown" && candidateSeenSourceHashesForProduct.has(sourceHash)) {
+        items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
+        continue;
+      }
+      if (img.role !== "unknown" && hardSeenSourceHashesForProduct.has(sourceHash)) {
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "DUPLICATE_AFTER_NORMALIZATION", reasonCodes: ["duplicate_source_hash_in_product"] });
         continue;
       }
       if (img.role === "unknown") {
-        seenSourceHashesForProduct.add(sourceHash);
+        candidateSeenSourceHashesForProduct.add(sourceHash);
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["role_unknown"] });
         pendingUnknownCandidates.push({ itemIndex: items.length - 1 });
         continue;
@@ -182,7 +191,7 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       }
       occupiedSlots.add(free);
       hardOccupiedSlots.add(free);
-      seenSourceHashesForProduct.add(sourceHash);
+      hardSeenSourceHashesForProduct.add(sourceHash);
       items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, proposedSlot: free, proposedFiles: [`${free}.jpg`, `${free}.webp`], classification: "NEW", reasonCodes: ["slot_missing_in_local_gallery"] });
     }
 

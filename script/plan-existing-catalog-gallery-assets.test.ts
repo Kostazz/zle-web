@@ -426,3 +426,68 @@ test("unknown candidate never exhausts NEW slot capacity in near-full gallery", 
   assert.equal(items[0]?.candidateSlot, undefined);
   assert.ok(items[0]?.reasonCodes.includes("unknown_role_no_free_slot"));
 });
+
+test("unknown hash does not block later product-like NEW with same hash", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-hash-priority-"));
+  const d = path.join(root, "prodhashprio");
+  fs.mkdirSync(d, { recursive: true });
+  const manifest = {
+    runId: "r14",
+    products: [{
+      sourceProductKey: "prodhashprio--x",
+      ingestedImages: [
+        { path: "u.jpg", originalImageUrl: "https://x/53137-scaled.jpg", originalImageIndex: 0 },
+        { path: "p.jpg", originalImageUrl: "https://x/front-priority-shirt.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("hash-x"), hashBuffer("hash-x")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[1]?.classification, "NEW");
+  assert.equal(items[1]?.proposedSlot, "01");
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+});
+
+test("unknown after product-like NEW with same hash is duplicate", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-after-new-"));
+  const d = path.join(root, "prodhashprio2");
+  fs.mkdirSync(d, { recursive: true });
+  const manifest = {
+    runId: "r15",
+    products: [{
+      sourceProductKey: "prodhashprio2--x",
+      ingestedImages: [
+        { path: "p.jpg", originalImageUrl: "https://x/front-priority-two-shirt.jpg", originalImageIndex: 0 },
+        { path: "u.jpg", originalImageUrl: "https://x/53071-scaled.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("hash-y"), hashBuffer("hash-y")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "NEW");
+  assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.equal(items[1]?.candidateSlot, undefined);
+});
+
+
+test("two unknown images with same hash dedupe among candidates", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "zle-plan-unknown-dup-candidate-"));
+  const d = path.join(root, "prodhashprio3");
+  fs.mkdirSync(d, { recursive: true });
+  const manifest = {
+    runId: "r16",
+    products: [{
+      sourceProductKey: "prodhashprio3--x",
+      ingestedImages: [
+        { path: "u1.jpg", originalImageUrl: "https://x/53137-scaled.jpg", originalImageIndex: 0 },
+        { path: "u2.jpg", originalImageUrl: "https://x/53071-scaled.jpg", originalImageIndex: 1 },
+      ],
+      downloadedImageHashes: [hashBuffer("hash-z"), hashBuffer("hash-z")],
+    }],
+  };
+  const { items } = planFromData(manifest as any, root);
+  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[0]?.candidateSlot, "01");
+  assert.equal(items[1]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.equal(items[1]?.candidateSlot, undefined);
+});
