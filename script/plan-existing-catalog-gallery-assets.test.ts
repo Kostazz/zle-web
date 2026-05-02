@@ -445,7 +445,10 @@ test("unknown hash does not block later product-like NEW with same hash", () => 
   const { items } = planFromData(manifest as any, root);
   assert.equal(items[1]?.classification, "NEW");
   assert.equal(items[1]?.proposedSlot, "01");
-  assert.equal(items[0]?.classification, "REQUIRES_MANUAL_REVIEW");
+  assert.equal(items[0]?.classification, "DUPLICATE_AFTER_NORMALIZATION");
+  assert.equal(items[0]?.candidateSlot, undefined);
+  assert.equal(items[0]?.candidateFiles, undefined);
+  assert.ok(items[0]?.reasonCodes.includes("duplicate_source_hash_promoted_to_new"));
 });
 
 test("unknown after product-like NEW with same hash is duplicate", () => {

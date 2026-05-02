@@ -135,7 +135,7 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       }
       return null;
     };
-    const pendingUnknownCandidates: Array<{ itemIndex: number }> = [];
+    const pendingUnknownCandidates: Array<{ itemIndex: number; sourceHash: string }> = [];
 
     for (const img of productImgs) {
       const sourceHash = img.hash;
@@ -177,7 +177,7 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       if (img.role === "unknown") {
         candidateSeenSourceHashesForProduct.add(sourceHash);
         items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, classification: "REQUIRES_MANUAL_REVIEW", reasonCodes: ["role_unknown"] });
-        pendingUnknownCandidates.push({ itemIndex: items.length - 1 });
+        pendingUnknownCandidates.push({ itemIndex: items.length - 1, sourceHash });
         continue;
       }
       if (!isSlotEligibleGalleryRole(img.role)) {
@@ -193,6 +193,15 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
       hardOccupiedSlots.add(free);
       hardSeenSourceHashesForProduct.add(sourceHash);
       items.push({ sourceProductKey: product.sourceProductKey, localProductId, sourceImagePath: img.path, originalImageUrl: img.originalImageUrl || null, originalImageIndex: img.originalImageIndex, sourceHash, proposedSlot: free, proposedFiles: [`${free}.jpg`, `${free}.webp`], classification: "NEW", reasonCodes: ["slot_missing_in_local_gallery"] });
+      for (const pending of pendingUnknownCandidates) {
+        if (pending.sourceHash !== sourceHash) continue;
+        const pendingItem = items[pending.itemIndex];
+        if (!pendingItem || pendingItem.classification !== "REQUIRES_MANUAL_REVIEW") continue;
+        pendingItem.classification = "DUPLICATE_AFTER_NORMALIZATION";
+        delete pendingItem.candidateSlot;
+        delete pendingItem.candidateFiles;
+        pendingItem.reasonCodes = ["duplicate_source_hash_promoted_to_new"];
+      }
     }
 
     const candidateOccupiedSlots = new Set(hardOccupiedSlots);
@@ -208,6 +217,7 @@ export function planFromData(manifest: IngestManifest, localRoot: string): { ite
     for (const pending of pendingUnknownCandidates) {
       const item = items[pending.itemIndex];
       if (!item) continue;
+      if (item.classification !== "REQUIRES_MANUAL_REVIEW" || item.reasonCodes.includes("duplicate_source_hash_promoted_to_new")) continue;
       const slot = nextFreeCandidateSlot();
       if (!slot) {
         item.reasonCodes = ["unknown_role_no_free_slot", "role_unknown"];
