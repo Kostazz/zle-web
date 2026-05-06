@@ -405,19 +405,19 @@
 
 /* Header logo */
 .zle-header-logo {
-  height: 46px;
+  height: 92px;
 }
 
 @media (min-width: 768px) {
   .zle-header-logo {
-    height: 50px;
+    height: 100px;
   }
 }
 
 /* Hero logo (LCP / big) */
 .zle-hero-logo {
   --zle-hero-logo-offset: 6px;
-  height: 166px;
+  height: 332px;
   max-width: 44vw;
   margin-left: 0.9rem;
   transform: translateY(var(--zle-hero-logo-offset));
@@ -431,7 +431,7 @@
 @media (min-width: 768px) {
   .zle-hero-logo {
     --zle-hero-logo-offset: 8px;
-    height: 206px;
+    height: 412px;
     max-width: 48vw;
     margin-left: 1.3rem;
     transform: translateY(var(--zle-hero-logo-offset));
@@ -440,7 +440,7 @@
 
 @media (min-width: 1280px) {
   .zle-hero-logo {
-    height: 226px;
+    height: 452px;
     max-width: 54vw;
   }
 }
@@ -484,13 +484,13 @@
 
 /* Footer logo */
 .zle-footer-logo {
-  height: 56px;
+  height: 112px;
   margin-top: 0.25rem;
 }
 
 @media (min-width: 768px) {
   .zle-footer-logo {
-    height: 64px;
+    height: 128px;
   }
 }
 
